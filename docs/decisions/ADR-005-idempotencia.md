@@ -24,7 +24,9 @@ O ticket-service é "legado" e fica indisponível por alguns segundos, de propó
 
 ### A. Usar `pendingActionId` como chave
 
-É a alternativa concorrente mais forte: uma confirmação autoriza uma operação, então a própria ação pendente poderia identificar a execução, e o modelo ficaria com uma entidade a menos. Para operações que nascem de uma confirmação, funcionaria. Foi rejeitada porque não cobre o contrato completo. `TRANSFER_TICKET` tem `OperationExecution` **sem** `PendingAction` (DM §3.14). A chave precisa identificar qualquer operação executável, inclusive as que não nascem de uma autorização de funcionário. A identidade da execução pertence a `OperationExecution`, não à proposta que eventualmente a originou.
+É a alternativa concorrente mais forte: uma confirmação autoriza uma operação, então a própria ação pendente poderia identificar a execução. Para operações que nascem de uma confirmação, funcionaria. Foi rejeitada porque não cobre o contrato completo.
+
+`TRANSFER_TICKET` tem `OperationExecution` **sem** `PendingAction` (DM §3.14). A chave precisa identificar qualquer operação executável, inclusive as que não nascem de uma autorização de funcionário. A identidade da execução pertence a `OperationExecution`, não à proposta que eventualmente a originou.
 
 ### B. Deduplicar por conteúdo (solicitante e texto)
 
@@ -37,10 +39,12 @@ Depois de uma atualização bem-sucedida, a versão do chamado avança. Se a res
 ## Consequências
 
 **Positivas**
+
 - Retry seguro e reconciliação simples.
 - Proteção contra duplicação técnica, sem misturá-la com a regra de negócio de duplicidade.
 
 **Negativas e custos**
+
 - Persistir a execução antes da chamada.
 - Guardar resultados associados às chaves, para poder devolvê-los na reconciliação.
 - Pendente (Bloco 3): endpoint específico de consulta pela chave, política de retry e recuperação após reinício (README §9; DM §8.4).
