@@ -3,13 +3,29 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status:** 🟢 Refinamento v2 — **congelado**. Próximo passo: Bloco 1 (Fase 0) no VS Code.
-Este README é a **fonte da verdade** do projeto. Se uma decisão mudar, ela muda aqui primeiro.
+**Status:** 🟡 Bloco 1 em andamento. `01-domain-model.md` aprovado estruturalmente, **aguardando a incorporação das decisões da §4.2**. Próximo artefato: `03-agent-flow.md`.
 
 ## Referências
 
 - **PRD:** Desafio Técnico Nexo Assist — versão 5 (Beyond the Bytes · processo seletivo)
 - **Protótipo:** [Pencil](https://app.pen.dev/s/swhm7Xfy1krKDIc-QyqE9J8ZI2xFB0qbNvHIncCXcLg) — os dados exibidos são ilustrativos
+
+### Hierarquia documental
+
+| Documento                                                                      | É a fonte da verdade de                                                                                                             |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md` (este)                                                             | Visão, requisitos, escopo, arquitetura geral, tecnologias, plano de execução e método de trabalho                                   |
+| [`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md) | **Domínio:** entidades, atributos, contratos, value objects, relacionamentos, cardinalidades, invariantes, ciclos de vida e estados |
+| Demais artefatos (agent flow, ADRs, avaliação, código, testes)                 | Nada por si só: **derivam** das fontes acima e apontam para elas                                                                    |
+
+Uma regra vive em **um único lugar**. Os outros documentos resumem e referenciam.
+
+### Convenções
+
+- **Prosa em português; identificadores e tipos em inglês.**
+- **Premissa de interpretação** = decisão nossa para compatibilizar ou completar o PRD. Não é apresentada como exigência do PRD.
+- **`PENDENTE (Bloco X)`** = lacuna conhecida, com o bloco em que será resolvida. Não bloqueia a escrita de artefatos.
+- Referências `DM §N` apontam para seções do `01-domain-model.md`.
 
 ---
 
@@ -141,98 +157,84 @@ Painel de decisão · confirmação antes de escrever · privacidade · persist�
 - **Busca vetorial / embeddings:** 5–10 artigos curtos não justificam a infraestrutura (ADR-003).
 - **LangGraph:** o PRD prefere Mastra; dominar uma ferramenta vale mais que comparar duas.
 - **Microsserviços além do ticket-service:** separação de responsabilidade não exige processos separados (ADR-002).
-- **Identificação individual dos afetados:** o protótipo pergunta o _alcance_ ("Só eu / Minha equipe / Toda a empresa"), não quem são as pessoas. Fica como evolução.
+- **Identificação individual dos afetados:** o protótipo pergunta o _alcance_ ("Só eu / Minha equipe / Toda a empresa / Não sei"), não quem são as pessoas.
+- **Distinção N1/N2 no modelo:** o PRD não define regras diferentes entre os níveis.
+- **Reabrir conversa encerrada:** uma nova interação gera uma nova conversa.
 
 ---
 
 ## 4. Modelo de domínio
 
-> O detalhamento (atributos completos, invariantes, transições) é o primeiro artefato do Bloco 1: `docs/architecture/01-domain-model.md`.
+### 4.1 Fonte da verdade
 
-### Entidades e donos
+A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)**: entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
 
-| Entidade                    | Dono                         | Responsabilidade                                          |
-| --------------------------- | ---------------------------- | --------------------------------------------------------- |
-| Funcionário                 | ticket-service               | Identidade demonstrativa e papel (`EMPLOYEE` / `ANALYST`) |
-| Chamado                     | ticket-service               | Dados e ciclo de vida                                     |
-| Evento do chamado           | ticket-service               | **Histórico oficial** do chamado                          |
-| Artigo                      | web (módulo de conhecimento) | Conteúdo da central de ajuda, em JSON                     |
-| Conversa                    | web                          | Controle do atendimento                                   |
-| Mensagem                    | web                          | Histórico conversacional                                  |
-| Ação pendente               | web                          | Operação aguardando confirmação                           |
-| Registro de decisão         | web                          | Interpretação e política de um turno do agent             |
-| Execução de operação        | web                          | Resultado real de uma operação confirmada                 |
-| Associação conversa–chamado | web                          | Relacionamento N:N                                        |
-| Interação conversa–chamado  | web                          | Como o chamado participou da conversa                     |
+Alterações nas regras do domínio são aprovadas (§14) e registradas **primeiro** no domain model, antes de qualquer artefato derivado.
 
-### Chamado: três papéis distintos
+**Resumo** — 13 entidades em dois donos:
+
+- **ticket-service:** `Employee`, `Ticket`, `TicketEvent`, `TicketAccessLog`.
+- **web:** `KnowledgeArticle`, `Conversation`, `ConversationEvent`, `Message`, `PendingAction`, `OperationExecution`, `DecisionRecord`, `ConversationTicket`, `ConversationTicketInteraction`.
+
+### 4.2 Decisões aprovadas aguardando incorporação no domain model
+
+Resultado da revisão do domain model v1 (contradições C1–C4 e lacunas L1–L12). **Esta lista é a instrução para a próxima atualização do `01-domain-model.md`**; depois de incorporada, ela é removida daqui.
+
+**C1 — Idempotência e concorrência (reescreve as invariantes 11 e 12; DM §7, §8.6)**
+
+- **Invariante 11:** enquanto o resultado de uma operação estiver desconhecido, qualquer tentativa de concluir **aquela mesma operação lógica** reutiliza o mesmo `OperationExecution.id`. Uma nova operação não pode ser criada para contornar um resultado desconhecido.
+- **Invariante 12:** nenhuma nova `PendingAction` de escrita pode ser iniciada enquanto existir uma `OperationExecution` não terminal na conversa.
+- **Handoff com operação não terminal:** a conversa muda **imediatamente** para `WAITING_ANALYST`. Se houver operação não terminal **para o mesmo chamado**, o `TRANSFER_TICKET` aguarda a conclusão ou reconciliação dela; a transferência não usa outra chave para repetir a operação anterior; o analista é informado das operações em andamento. Bloquear novas propostas não bloqueia a transferência da conversa. PENDENTE (Bloco 7): mecanismo de sincronização.
+
+**C3 — Origem das escritas (reescreve a invariante 5; DM §7)**
+
+- **Invariante 5:** operações de criação, atualização e reabertura de chamados **originadas por solicitações do funcionário** exigem uma `PendingAction` confirmada. `TRANSFER_TICKET` é uma exceção executada pelo backend como parte de um handoff autorizado. Operações originadas pelo **console do analista** seguem autorização própria pelo papel `ANALYST`, com auditoria.
+
+| Origem                     | Autorização                              |
+| -------------------------- | ---------------------------------------- |
+| Solicitação do funcionário | `PendingAction` confirmada               |
+| Handoff pelo backend       | Política de transferência                |
+| Console do analista        | Papel `ANALYST` + autorização do serviço |
+
+`ASSIGN_TICKET` continua PENDENTE (Bloco 7) e não entra em `OperationType` agora.
+
+**C2 / L3 / L6 — Resumo do handoff (DM §3.6)**
 
 ```ts
-type AffectedScope = "SELF" | "TEAM" | "COMPANY" | "UNKNOWN";
-
-interface Ticket {
-  id: string; // INC-xxxxx / REQ-xxxxx
-  requesterId: string; // quem abriu — base da privacidade
-  affectedScope: AffectedScope; // quem é afetado — alcance, não lista de pessoas
-  assignedTo?: string; // quem atende
-  // tipo, categoria, prioridade, status, prazos… → Bloco 1
+interface ConversationEvent {
+  // campos existentes
+  summary?: string; // obrigatório em HANDOFF
+  decisionRecordId?: string; // obrigatório em HANDOFF
 }
 ```
 
-- A **privacidade é baseada em `requesterId`**, nunca em `affectedScope`.
-- **Vencido é calculado** (prazo × relógio), não é um status persistido. Ciclo de vida e SLA são dimensões diferentes.
-- O PRD dá exemplos de status (Aguardando analista, Em andamento, Aprovado, Resolvido) mas **não define uma máquina de estados completa**. A nossa será proposta no Bloco 2, sem ser apresentada como exigência do PRD.
+- `PendingAction` mantém o rascunho estruturado original, mesmo cancelado.
+- `ConversationEvent.summary` é a **fotografia** do contexto apresentada ao analista no momento da transferência — não substitui a fonte original dos dados.
+- `ConversationEvent.decisionRecordId` aponta para a decisão que originou o encaminhamento; o motivo do handoff é o `PolicyReasonCode` dessa decisão.
 
-### Conversa ↔ Chamado (N:N com histórico)
+**C4 — Onde vivem as regras puras (DM §4)**
 
-```ts
-interface ConversationTicket {
-  conversationId: string;
-  ticketId: string;
-  linkedAt: string;
-}
+- As funções puras de domínio do Bloco 2, incluindo `classifyPriority`, pertencem à **camada de domínio do ticket-service** e são testadas nessa aplicação. Uma única implementação; nenhuma cópia no web.
 
-type ConversationTicketInteractionType =
-  | "CREATED"
-  | "UPDATED"
-  | "VIEWED"
-  | "HANDED_OFF";
+**Lacunas pequenas**
 
-interface ConversationTicketInteraction {
-  id: string;
-  conversationId: string;
-  ticketId: string;
-  type: ConversationTicketInteractionType;
-  occurredAt: string;
-}
-```
+| Lacuna | Decisão                                                                                                                                                                            |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1     | `DecisionRecord.pendingActionVersion?: number`. Presente **junto** com `pendingActionId` ou ausente junto com ele. Permite reconstruir qual versão do rascunho cada turno produziu |
+| L4     | `TicketAccessLog` ganha `id: string`                                                                                                                                               |
+| L8     | `Intent` ganha `REOPEN_TICKET`                                                                                                                                                     |
+| L9     | `Conversation.assignedAnalystId` é **limpo** ao sair de `ANALYST_ACTIVE` (devolver ou encerrar). O histórico de quem atendeu fica nos `ConversationEvent`                          |
+| L10    | **Qualquer** encerramento com ação pendente cancela a ação com `CONVERSATION_CLOSED`, na mesma transação local que encerra a conversa                                              |
+| L11    | Handoff sem chamado em foco transfere **só a conversa**: sem `TRANSFER_TICKET` e sem `HANDED_OFF`                                                                                  |
 
-- Só entra na associação o chamado que a conversa **tocou de fato**. Aparecer numa lista de resultados não conta.
-- `VIEWED` = consulta detalhada de um chamado específico.
-- Essas interações são **contexto da conversa**. O histórico oficial do chamado continua sendo o Evento do chamado, no ticket-service. Não misturamos as duas fontes de auditoria.
+**Lacunas adiadas** (entram como `PENDENTE` no domain model)
 
-### Avaliação de impacto (base da prioridade)
-
-```ts
-interface ImpactAssessment {
-  affectedScope: AffectedScope; // alcance
-  workImpact: "BLOCKED" | "DEGRADED_WITH_WORKAROUND" | "NONE"; // impacto no trabalho
-  commitmentAtRiskToday: boolean; // urgência
-}
-```
-
-- **Estados inválidos não são representáveis.** Dois booleanos (`workBlocked` + `alternativeAvailable`) permitiriam "bloqueado e com alternativa"; o enum não permite.
-- **Tipo e impacto são dimensões diferentes.** `workImpact` não decide sozinho se é INC ou REQ:
-
-| Pedido                                          | Tipo | `workImpact`               |
-| ----------------------------------------------- | ---- | -------------------------- |
-| Notebook parou                                  | INC  | `BLOCKED`                  |
-| VPN instável, com alternativa                   | INC  | `DEGRADED_WITH_WORKAROUND` |
-| Solicitar mouse                                 | REQ  | `NONE`                     |
-| Acesso a sistema necessário para trabalhar hoje | REQ  | `BLOCKED`                  |
-
-- O LLM extrai as três dimensões; a função `classifyPriority(assessment)` calcula a prioridade. Testada com **testes de tabela**.
-- **Impacto desconhecido não vira prioridade inventada.** O sistema pergunta ou encaminha.
+| Lacuna                                                          | Destino                      |
+| --------------------------------------------------------------- | ---------------------------- |
+| L2 — transições entre `flow` e `stage`                          | `03-agent-flow.md` (Bloco 1) |
+| L5 — mapeamento `PolicyOutcome` × `PolicyReasonCode`            | Bloco 4                      |
+| L7 — representação de "Sim, resolvido / Ainda não" na `Message` | Bloco 6                      |
+| L12 — catálogo de campos de `TicketEvent.changes`               | Bloco 2                      |
 
 ---
 
@@ -250,7 +252,8 @@ flowchart LR
     DB1[("SQLite<br/>conversas")]
   end
   subgraph ts["apps/ticket-service — Node"]
-    API["API de chamados<br/>Regras do Anexo A"]
+    DOM["Domínio<br/>classifyPriority · SLA · duplicidade"]
+    API["API de chamados"]
     DB2[("SQLite<br/>chamados · funcionários")]
   end
   UI --> BFF --> AG
@@ -258,6 +261,7 @@ flowchart LR
   BFF --> DB1
   AG -- tools de leitura --> API
   BFF -- operações confirmadas --> API
+  API --> DOM
   API --> DB2
 ```
 
@@ -267,9 +271,9 @@ flowchart LR
 nexo-assist/
 ├── apps/
 │   ├── web/              # Next.js: UI + BFF + agent + módulo de conhecimento
-│   └── ticket-service/   # Serviço simulado, dono das regras e dados de chamados
+│   └── ticket-service/   # Serviço simulado; domínio e dados de chamados
 ├── docs/
-│   ├── architecture/
+│   ├── architecture/     # 01-domain-model.md, 03-agent-flow.md, …
 │   ├── decisions/        # ADRs
 │   └── evaluation/       # cenários e estratégia de avaliação
 ├── .env.example
@@ -279,7 +283,7 @@ nexo-assist/
 ### Princípios
 
 - **Duas aplicações executáveis.** Só o ticket-service precisa ser separado, porque o PRD exige.
-- **O ticket-service é dono das regras de chamado** (prioridade, SLA, duplicidade, reabertura, idempotência). Não ficam em pacote compartilhado.
+- **O ticket-service é dono das regras de chamado** (prioridade, SLA, duplicidade, reabertura, idempotência), na sua camada de domínio. Não ficam em pacote compartilhado nem são copiadas no web.
 - **Artigos ficam no web**, num módulo de conhecimento. O ticket-service não vira um serviço genérico de dados.
 - **Pacotes só quando houver necessidade concreta.** Contratos começam locais; extraímos `packages/contracts` se os dois apps precisarem compartilhar.
 - **Agent só no servidor.** Credenciais do provedor nunca chegam ao navegador.
@@ -301,160 +305,64 @@ nexo-assist/
 
 ## 6. Como o agent decide
 
+Contratos completos (`DecisionRecord`, `PendingAction`, `OperationExecution`, `TicketDraft`, catálogos): **DM §3.12–§3.15**.
+
 ### Estratégia híbrida (ADR-001)
 
-| Operação                            | Agent                               | Backend                                 |
-| ----------------------------------- | ----------------------------------- | --------------------------------------- |
-| Consultar artigos                   | Executa a tool                      | Fornece o módulo de conhecimento        |
-| Listar / ver meus chamados          | Executa a tool                      | Injeta a identidade da sessão           |
-| Propor abertura                     | Chama `proposeTicketDraft`          | Valida e grava a ação pendente (no web) |
-| Propor atualização / reabertura     | Chama `proposeTicketUpdate`         | Valida e grava a ação pendente (no web) |
-| Solicitar analista                  | Emite a intenção (`requestHandoff`) | Valida e **executa** o handoff          |
-| Criar / atualizar / reabrir chamado | **Não executa**                     | Executa após confirmação na UI          |
+| Operação                            | Agent                               | Backend                                                                                                                                                                                        |
+| ----------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Consultar artigos                   | Executa a tool                      | Fornece o módulo de conhecimento                                                                                                                                                               |
+| Listar / ver meus chamados          | Executa a tool                      | Injeta a identidade da sessão                                                                                                                                                                  |
+| Propor abertura                     | Chama `proposeTicketDraft`          | O web orquestra: pede ao **ticket-service** a classificação e o prazo (leitura, sem efeito colateral) e grava a `PendingAction` com o resultado. Na confirmação, o ticket-service **revalida** |
+| Propor atualização / reabertura     | Chama `proposeTicketUpdate`         | Valida e grava a `PendingAction` (no web)                                                                                                                                                      |
+| Solicitar analista                  | Emite a intenção (`requestHandoff`) | Valida e **executa** o handoff                                                                                                                                                                 |
+| Propor encerramento                 | Pergunta se resolveu                | UI mostra confirmação; endpoint encerra após o clique do funcionário                                                                                                                           |
+| Criar / atualizar / reabrir chamado | **Não executa**                     | Executa após confirmação na UI                                                                                                                                                                 |
 
 - O LLM **não tem nenhuma tool capaz de escrever no ticket-service**.
-- As tools de proposta gravam uma ação pendente no banco do web. Isso não dá ao agent permissão de escrita nos chamados.
+- As tools de proposta gravam uma `PendingAction` no banco do web. Isso não dá ao agent permissão de escrita nos chamados.
 - `requestHandoff` **só emite a intenção**. Quem transfere é o backend.
+- **Encerramento** não usa `PendingAction` nem `OperationExecution` (não há escrita no ticket-service).
 
 ### Três camadas de cada resposta
 
-1. **Interpretação** — o que o modelo entendeu (intenção, entidades, avaliação de impacto, campos faltando).
-2. **Política** — o que o sistema permite (regras aplicadas, prioridade calculada, duplicidade verificada).
+1. **Interpretação** — o que o modelo entendeu (intenção, entidades, impacto parcial, campos faltando).
+2. **Política** — o que o sistema permite (regras aplicadas, `classifyPriority`, duplicidade verificada).
 3. **Execução** — o que realmente aconteceu (tools chamadas e resultado retornado pelo serviço).
 
-### Registro de decisão × Execução de operação
+`DecisionRecord` (decisão de um turno), `PendingAction` (autorização) e `OperationExecution` (execução) são **registros separados**, porque acontecem em momentos diferentes.
 
-São registros **separados**, porque acontecem em momentos diferentes: o agent propõe a criação num turno e o funcionário confirma em outro.
-
-```ts
-type Intent =
-  | "ANSWER_KB"
-  | "LIST_MY_TICKETS"
-  | "CREATE_TICKET"
-  | "UPDATE_TICKET"
-  | "HANDOFF"
-  | "OUT_OF_SCOPE"
-  | "CLARIFY";
-
-// Um por turno do agent
-interface DecisionRecord {
-  id: string;
-  conversationId: string;
-  interpretation: {
-    intent: Intent;
-    confidence: "LOW" | "MEDIUM" | "HIGH"; // sinal auxiliar, NÃO probabilidade
-    entities: {
-      problem?: string;
-      category?: TicketCategory;
-      operatingSystem?: string;
-      impact?: Partial<ImpactAssessment>;
-    };
-    missingFields: string[];
-  };
-  policy: {
-    outcome:
-      | "ANSWER"
-      | "ASK"
-      | "PROPOSE_ACTION"
-      | "HANDOFF"
-      | "DENY"
-      | "REDIRECT";
-    reasonCode: string;
-    appliedRules: string[];
-  };
-  evidence: Array<{
-    type: "ARTICLE" | "TICKET" | "BUSINESS_RULE";
-    referenceId: string;
-  }>;
-  toolExecutions: Array<{
-    name: string;
-    status: "SUCCESS" | "FAILED";
-    durationMs: number;
-  }>;
-  pendingActionId?: string;
-}
-
-// Uma por operação confirmada
-interface OperationExecution {
-  id: string;
-  pendingActionId: string; // = chave de idempotência
-  operation: "CREATE" | "UPDATE" | "REOPEN" | "TRANSFER";
-  status: "SUCCEEDED" | "FAILED" | "OUTCOME_UNKNOWN";
-  ticketId?: string;
-  attempts: number;
-}
-```
-
-- O **backend monta** `toolExecutions` a partir do que de fato rodou. O modelo não declara sucesso de nada.
-- A **prioridade é calculada** a partir da `ImpactAssessment`. O LLM nunca escolhe CRÍTICA/ALTA/MÉDIA/BAIXA.
+- O **backend monta** o registro de tools executadas. O modelo não declara sucesso de nada.
 - A **confiança declarada** não autoriza nenhuma operação. Serve como um dos sinais para encaminhar ao analista.
 - **Não expomos o raciocínio interno do modelo.** Expomos evidências, regras e ações — verificáveis.
 
 ### Na interface
 
-- Acima de cada resposta: as ações em linguagem natural ("consultou seus chamados", "classificou a prioridade") — como no protótipo.
+- Acima de cada resposta: as ações em linguagem natural ("consultou seus chamados", "classificou a prioridade"), lidas do `DecisionRecord` apontado pela `Message` — como no protótipo.
 - Ao expandir: o registro de decisão legível (entendimento, regra aplicada, evidência, resultado).
 
 ---
 
 ## 7. Estados
 
-Três ciclos **independentes**.
+Especificação completa (estados, diagramas, quem dispara cada transição, concorrência): **DM §8**.
 
-### A. Estado da conversa — quem controla o atendimento
+Quatro ciclos **independentes** (ADR-006):
 
-| Estado            | Agent responde? |
-| ----------------- | --------------- |
-| `AI_ACTIVE`       | Sim             |
-| `WAITING_ANALYST` | Não             |
-| `ANALYST_ACTIVE`  | Não             |
-| `CLOSED`          | Não             |
+| Ciclo                | Responde à pergunta             | Estados                                                                                                    |
+| -------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **A. Conversa**      | Quem controla o atendimento?    | `AI_ACTIVE` · `WAITING_ANALYST` · `ANALYST_ACTIVE` · `CLOSED` (terminal)                                   |
+| **B. Interação**     | O que esperamos do funcionário? | `InteractionContext` (`flow` + `stage`), persistido na conversa. Transições: PENDENTE (`03-agent-flow.md`) |
+| **C. Ação pendente** | O funcionário autorizou?        | `PENDING_CONFIRMATION` · `CONFIRMED` · `REJECTED` · `CANCELLED`                                            |
+| **D. Execução**      | O que aconteceu com a operação? | `PROCESSING` · `SUCCEEDED` · `FAILED` · `OUTCOME_UNKNOWN`                                                  |
 
-```mermaid
-stateDiagram-v2
-  [*] --> AI_ACTIVE
-  AI_ACTIVE --> WAITING_ANALYST: transferir
-  WAITING_ANALYST --> ANALYST_ACTIVE: analista assume
-  ANALYST_ACTIVE --> AI_ACTIVE: devolver ao agent
-  WAITING_ANALYST --> AI_ACTIVE: devolver ao agent
-  ANALYST_ACTIVE --> CLOSED: encerrar
-  AI_ACTIVE --> CLOSED: encerrar
-```
+Regras centrais:
 
-- O backend **verifica o estado antes de cada execução** do agent. Fora de `AI_ACTIVE`, o LLM nem é chamado (garante a regra e economiza custo).
-- "Assumir" é uma **transição atômica** — dois analistas não assumem a mesma conversa.
-
-### B. Estado da interação — o que esperamos do funcionário
-
-Ex.: informar o sistema operacional, escolher um chamado, dizer quem é afetado. **Não muda** o controle da conversa; vive no contexto do agent.
-
-### C. Estado da ação pendente — operação que exige autorização
-
-| Estado                 | Significado                                       |
-| ---------------------- | ------------------------------------------------- |
-| `PENDING_CONFIRMATION` | Rascunho apresentado                              |
-| `EXECUTING`            | Confirmado, serviço processando                   |
-| `SUCCEEDED`            | Concluído                                         |
-| `FAILED`               | Falhou de forma definitiva                        |
-| `OUTCOME_UNKNOWN`      | Timeout ou erro ambíguo — **precisa reconciliar** |
-| `REJECTED`             | Funcionário cancelou                              |
-
-```mermaid
-stateDiagram-v2
-  [*] --> PENDING_CONFIRMATION
-  PENDING_CONFIRMATION --> EXECUTING: confirmar (ID + versão)
-  PENDING_CONFIRMATION --> REJECTED: cancelar
-  EXECUTING --> SUCCEEDED
-  EXECUTING --> FAILED
-  EXECUTING --> OUTCOME_UNKNOWN: timeout
-  OUTCOME_UNKNOWN --> SUCCEEDED: reconciliação encontra
-  OUTCOME_UNKNOWN --> FAILED: reconciliação confirma ausência
-```
-
-- **Reconciliação é uma ação, não um estado:** consulta o ticket-service pela chave de idempotência. Se continuar sem resposta, permanece em `OUTCOME_UNKNOWN`.
-- A confirmação é vinculada ao **ID e à versão** do rascunho. "Sim" solto não confirma nada.
-- Rascunho **não executa** se a conversa não estiver em `AI_ACTIVE`.
-- `EXPIRED` entra quando definirmos a validade do rascunho (Bloco 5).
+- O agent só roda em `AI_ACTIVE`; fora disso, o LLM nem é chamado.
+- Handoff ou encerramento cancelam a ação pendente na mesma transação local.
+- Encerramento é bloqueado enquanto houver execução não terminal.
+- Confirmação só vale para o ID e a versão atuais do rascunho.
+- Falta de resposta não é `FAILED`; o resultado desconhecido é reconciliado pelo mesmo `id`.
 
 ---
 
@@ -462,11 +370,25 @@ stateDiagram-v2
 
 > **A autenticação é simulada** para o ambiente demonstrativo, como o PRD permite (qualquer senha para funcionários do seed). A identidade e o papel do usuário são estabelecidos no servidor a partir do funcionário e da sessão, e **nunca são aceitos como parâmetros fornecidos pelo LLM**.
 
-O que demonstramos de fato:
+### Quem vê o quê (premissa de interpretação)
+
+O PRD diz que informação de um chamado só vai para quem o abriu, e também que analistas recebem chamados e atendem conversas transferidas. Interpretamos a regra de privacidade como proteção **entre funcionários**; o service desk exerce sua função.
+
+| Papel      | Acesso a chamados                                                            |
+| ---------- | ---------------------------------------------------------------------------- |
+| `EMPLOYEE` | Somente os próprios (`requesterId`)                                          |
+| Agent      | Somente os do funcionário autenticado na sessão                              |
+| `ANALYST`  | Chamados de funcionários pelo console, **com auditoria** (`TicketAccessLog`) |
+
+- Consultar não altera o chamado: a auditoria do analista não é `TicketEvent`.
+- Em produção, isso evoluiria para permissões por equipe, departamento ou nível.
+
+### Proteções
 
 - **Identidade vem da sessão.** As tools não têm parâmetro `userId`; o backend injeta o usuário autenticado.
-- **O ticket-service valida o solicitante** em toda leitura e escrita — defesa em profundidade.
-- **Autorização por papel:** funcionário não acessa o console; só `ANALYST` assume conversas.
+- **O ticket-service valida o solicitante** em toda leitura e escrita de funcionário — defesa em profundidade.
+- **Autorização por origem da escrita:** funcionário via `PendingAction` confirmada; handoff pela política de transferência; console pelo papel `ANALYST` (§4.2, C3).
+- Funcionário não acessa o console; só `ANALYST` assume, devolve ou encerra conversas.
 - O **LLM não recebe credenciais**; o frontend nunca recebe a chave do provedor.
 - **Logs sem dados sensíveis** desnecessários.
 - **Chaves fora do código**, via `.env` (`.env.example` versionado).
@@ -477,20 +399,37 @@ O que **não** afirmamos: autenticação corporativa real (SSO, MFA, gestão de 
 
 ## 9. Confiabilidade
 
-O serviço de chamados é "legado" e fica indisponível por alguns segundos — de propósito.
+O serviço de chamados é "legado" e fica indisponível por alguns segundos — de propósito. Regras de concorrência entre ciclos: **DM §8.6**.
 
 ### Idempotência ≠ duplicidade
 
 | Mecanismo                   | Protege contra                                          | Onde                                                                                |
 | --------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **Idempotência**            | A mesma requisição executada duas vezes por retry       | Chave = ID da ação pendente; restrição de unicidade no ticket-service               |
+| **Idempotência**            | A mesma requisição executada duas vezes por retry       | Chave = `OperationExecution.id`; restrição de unicidade no ticket-service           |
 | **Detecção de duplicidade** | Novo pedido sobre um problema que já tem chamado aberto | Verificada antes de propor o rascunho; o funcionário confirma atualizar o existente |
 
 O ticket-service é a autoridade das duas regras.
 
-### Timeout com resultado desconhecido
+### Fluxo de uma operação
 
-Timeout numa criação **não significa falha** — o chamado pode ter sido criado e só a resposta se perdeu. A operação vai para `OUTCOME_UNKNOWN` e é reconciliada pela chave de idempotência **antes** de qualquer nova tentativa.
+1. O backend cria e **persiste** a `OperationExecution` (`PROCESSING`).
+2. Envia o `id` ao ticket-service como chave de idempotência.
+3. Toda tentativa da mesma operação lógica reutiliza o **mesmo** `id`.
+4. Em timeout, `OUTCOME_UNKNOWN`. Uma nova operação não pode ser criada para contornar um resultado desconhecido.
+
+### Ordem obrigatória no ticket-service
+
+1. Consultar a chave de idempotência.
+2. Se já existe operação concluída com essa chave, **devolver o resultado original**.
+3. Se não existe, verificar `expectedTicketVersion` (atualização e reabertura).
+4. Executar a operação.
+5. Persistir o resultado associado à chave.
+
+Sem essa ordem, o retry de uma atualização que já deu certo falharia por "versão desatualizada" — a própria atualização mudou a versão.
+
+### Reconciliação
+
+Com a idempotência correta, **repetir a operação com o mesmo `id` já reconcilia**: se ela foi executada, o serviço devolve o resultado guardado; se não, executa. PENDENTE (Bloco 3): se haverá também um endpoint específico de consulta pela chave.
 
 ### Falhas na leitura
 
@@ -498,10 +437,11 @@ Retry com backoff curto. Se persistir, o agent avisa que o sistema está instáv
 
 ### Transferir conversa × transferir chamado
 
-- **Transferir conversa** (web): muda o estado para `WAITING_ANALYST` e pausa o agent.
-- **Transferir chamado** (ticket-service): registra a atribuição, com resumo.
-- O caso de uso de transferir conversa **orquestra** a transferência do chamado quando há um chamado vinculado.
-- **Não assumimos atomicidade** entre os dois serviços. A recuperação quando só um lado conclui é decidida no Bloco 7.
+- **Transferir conversa** (web): muda para `WAITING_ANALYST` **imediatamente**, pausa o agent, cancela a ação pendente e registra o `ConversationEvent` `HANDOFF` com resumo — numa transação local.
+- **Transferir chamado** (ticket-service): `OperationExecution` do tipo `TRANSFER_TICKET`, sem `PendingAction`. Altera o status do chamado; **não** preenche `assignedTo`. Se houver operação não terminal no mesmo chamado, **aguarda** a conclusão ou reconciliação dela.
+- **Sem chamado em foco**, só a conversa é transferida.
+- **Assumir a conversa** preenche `Conversation.assignedAnalystId`, **não** `Ticket.assignedTo`.
+- **Não assumimos atomicidade** entre os dois serviços. PENDENTE (Bloco 7): sincronização, recuperação quando só um lado conclui, `ASSIGN_TICKET` e integração com o console.
 
 ---
 
@@ -509,41 +449,49 @@ Retry com backoff curto. Se persistir, o agent avisa que o sistema está instáv
 
 ### Onde testes fazem diferença
 
-| Nível              | O quê                                                                                                           |
-| ------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Unitário           | Regras do Anexo A: `classifyPriority` (testes de tabela), SLA em horas úteis, duplicidade, reabertura em 7 dias |
-| Integração         | Ticket-service: idempotência, privacidade, falha simulada, reconciliação                                        |
-| Avaliação do agent | Cenários congelados contra baseline                                                                             |
+| Nível              | O quê                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unitário           | Domínio do ticket-service: `classifyPriority` (tabela com todas as combinações), SLA, duplicidade, reabertura em 7 dias; transições de estado |
+| Integração         | Ticket-service: idempotência antes da versão, privacidade, falha simulada, reconciliação, auditoria do analista                               |
+| Avaliação do agent | Cenários congelados contra baseline                                                                                                           |
 
 ### Avaliação do agent
 
 - **Baseline primeiro.** Depois, mudar uma variável por vez (prompt, modelo, tools) e comparar no mesmo conjunto.
-- Começamos com ~10 cenários e crescemos a cada fatia (meta: 25).
+- Começamos com ~17 cenários e crescemos a cada fatia (meta: 25).
 
-| Cenário inicial                            | Esperado                            |
-| ------------------------------------------ | ----------------------------------- |
-| Horário do service desk                    | Responde pelo artigo                |
-| VPN erro 809 no Windows 10                 | Instrução do artigo                 |
-| VPN erro 809 no Windows 11                 | Não aplica o artigo; propõe chamado |
-| "Qual o status do meu chamado?"            | Lista só os chamados do funcionário |
-| Pergunta sobre chamado de outra pessoa     | Nega                                |
-| Senha do SAP de novo (resolvido há 4 dias) | Propõe reabrir                      |
-| Notebook lento com chamado já aberto       | Propõe atualizar, não duplicar      |
-| Segundo monitor                            | REQ, prioridade baixa               |
-| Sistema parado para a equipe               | Crítica + encaminhamento            |
-| Assunto de RH                              | Redireciona                         |
+| Cenário inicial                               | Esperado                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| Horário do service desk                       | Responde pelo artigo                                                 |
+| VPN erro 809 no Windows 10                    | Instrução do artigo                                                  |
+| VPN erro 809 no Windows 11                    | Não aplica o artigo (`applicability`); propõe chamado                |
+| "Qual o status do meu chamado?"               | Lista só os chamados do funcionário                                  |
+| Pergunta sobre chamado de outra pessoa        | Nega                                                                 |
+| Senha do SAP de novo (resolvido há 4 dias)    | Propõe reabrir                                                       |
+| Notebook lento com chamado já aberto          | Propõe atualizar, não duplicar                                       |
+| Segundo monitor                               | REQ, prioridade baixa                                                |
+| Sistema parado para a equipe                  | Crítica + encaminhamento                                             |
+| "Parou tudo" sem dizer quem é afetado         | Pergunta o alcance (`AFFECTED_SCOPE_MISSING`)                        |
+| "Parou para mim", alcance "Não sei"           | Alta (`AFFECTED_SCOPE_UNKNOWN`), sem handoff                         |
+| Assunto de RH                                 | Redireciona                                                          |
+| Pede analista com rascunho aberto             | Handoff; rascunho `CANCELLED`; resumo no evento                      |
+| Pede analista com operação em andamento       | Conversa transferida na hora; `TRANSFER_TICKET` aguarda a operação   |
+| "Isso resolveu, obrigado"                     | Pede confirmação de resolução; encerra com `resolutionSource: AGENT` |
+| Chamado alterado entre proposta e confirmação | Rejeita como desatualizado; nova proposta                            |
+| Timeout na criação seguido de retry           | Um único chamado criado                                              |
 
 ### Métricas
 
-| Métrica                            | Tolerância         |
-| ---------------------------------- | ------------------ |
-| Vazamento de chamados de terceiros | **Zero**           |
-| Escrita sem confirmação            | **Zero**           |
-| Chamado duplicado                  | **Zero**           |
-| Intenção correta                   | Medida no baseline |
-| Tool correta                       | Medida no baseline |
-| Encaminhamento correto             | Medida no baseline |
-| Resposta fundamentada em artigo    | Medida no baseline |
+| Métrica                             | Tolerância         |
+| ----------------------------------- | ------------------ |
+| Vazamento de chamados de terceiros  | **Zero**           |
+| Escrita sem confirmação             | **Zero**           |
+| Chamado duplicado                   | **Zero**           |
+| Confirmação de versão antiga aceita | **Zero**           |
+| Intenção correta                    | Medida no baseline |
+| Tool correta                        | Medida no baseline |
+| Encaminhamento correto              | Medida no baseline |
+| Resposta fundamentada em artigo     | Medida no baseline |
 
 Cada execução registra: cenário, entrada, esperado, obtido, modelo, versão do prompt/tools e motivo de aprovação/reprovação.
 
@@ -551,21 +499,21 @@ Cada execução registra: cenário, entrada, esperado, obtido, modelo, versão d
 
 ## 11. Decisões arquiteturais (ADRs)
 
-- **Decisões já fechadas** (abaixo, "Aceito") são documentadas no Bloco 1.
+- **Decisões já fechadas** ("Aceito") são documentadas no Bloco 1.
 - **Decisões futuras** são registradas **no momento em que forem aprovadas**, com as alternativas reais consideradas.
 - O ADR-001 é escrito por inteiro primeiro: é a decisão central do projeto.
 
-| ADR | Tema                                                             | Status  |
-| --- | ---------------------------------------------------------------- | ------- |
-| 001 | **Agent híbrido:** leituras livres, escritas só após confirmação | Aceito  |
-| 002 | Arquitetura enxuta: duas aplicações executáveis                  | Aceito  |
-| 003 | Central de ajuda no web, busca lexical, sem embeddings           | Aceito  |
-| 004 | Identidade da sessão injetada nas tools; login simulado          | Aceito  |
-| 005 | Idempotência e detecção de duplicidade como mecanismos distintos | Aceito  |
-| 006 | Três ciclos de estado independentes; `OUTCOME_UNKNOWN`           | Aceito  |
-| 007 | Prioridade calculada a partir de `ImpactAssessment`              | Aceito  |
-| 008 | Persistência: SQLite atrás de repositório; ORM/driver            | Bloco 3 |
-| 009 | Escolha do modelo LLM                                            | Bloco 4 |
+| ADR | Tema                                                                                                                                          | Status  |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 001 | **Agent híbrido:** leituras livres, escritas só após confirmação                                                                              | Aceito  |
+| 002 | Arquitetura enxuta: duas aplicações executáveis                                                                                               | Aceito  |
+| 003 | Central de ajuda no web, busca lexical, sem embeddings                                                                                        | Aceito  |
+| 004 | Identidade da sessão nas tools; login simulado; acesso do analista com auditoria; autorização por origem da escrita                           | Aceito  |
+| 005 | Idempotência (`OperationExecution.id`, verificada antes da versão) e duplicidade como mecanismos distintos                                    | Aceito  |
+| 006 | Ciclos de estado independentes: conversa, interação, autorização, execução                                                                    | Aceito  |
+| 007 | `classifyPriority` total no domínio do ticket-service, precedência explícita, `NEEDS_CLARIFICATION`, Alta como piso para alcance desconhecido | Aceito  |
+| 008 | Persistência: SQLite atrás de repositório; ORM/driver                                                                                         | Bloco 3 |
+| 009 | Escolha do modelo LLM                                                                                                                         | Bloco 4 |
 
 Cada ADR responde: **por que assim? quais alternativas? o que mudaria com 20 mil funcionários em vez de 2 mil?**
 
@@ -575,18 +523,25 @@ Cada ADR responde: **por que assim? quais alternativas? o que mudaria com 20 mil
 
 Nenhuma bloqueia o início. Cada uma tem o bloco em que será decidida.
 
-| #   | Questão                                                        | Decisão inicial                                                                                                             | Resolver no |
-| --- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 1   | Status do chamado e transições válidas                         | Propor a partir dos exemplos do PRD                                                                                         | Bloco 2     |
-| 2   | Critério de "mesmo problema" (duplicidade)                     | Candidatos: mesmo solicitante + mesma categoria + status aberto; agent compara, funcionário confirma                        | Bloco 2     |
-| 3   | Calendário de SLA                                              | Seg–sex, 8h–18h (artigo de exemplo do PRD); Crítica em horas corridas (plantão 24h); feriados fora; calendário configurável | Bloco 2     |
-| 4   | ORM e driver do SQLite                                         | —                                                                                                                           | Bloco 3     |
-| 5   | Modelo LLM                                                     | Rápido e barato; regras no código reduzem a exigência                                                                       | Bloco 4     |
-| 6   | Como definir "baixa confiança" para transferir                 | Combinar sinais (confiança declarada, campos faltando, tool falhou, intenção ambígua) e calibrar com os cenários            | Bloco 4     |
-| 7   | Reabertura: agent propõe ou funcionário pede?                  | Agent propõe ao detectar o mesmo problema resolvido há ≤ 7 dias                                                             | Bloco 5     |
-| 8   | Validade do rascunho após mudança de assunto                   | Mantém pendente; exige confirmação específica                                                                               | Bloco 5     |
-| 9   | 30 mensagens: do usuário ou totais? Por conversa ou por login? | Mensagens do usuário, por conversa; limite configurável                                                                     | Bloco 6     |
-| 10  | Conversa transferida, chamado não (ou vice-versa)              | Sem atomicidade entre serviços                                                                                              | Bloco 7     |
+| #   | Questão                                                                                                                              | Decisão inicial                                                                                                        | Resolver no                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| 1   | Transições entre `flow` e `stage` do `InteractionContext` (L2)                                                                       | —                                                                                                                      | Bloco 1 (`03-agent-flow.md`) |
+| 2   | Status do chamado e transições válidas                                                                                               | Propor a partir dos exemplos do PRD                                                                                    | Bloco 2                      |
+| 3   | Critério de "mesmo problema" (duplicidade)                                                                                           | Candidatos: mesmo solicitante + mesma categoria + status aberto; agent compara, funcionário confirma                   | Bloco 2                      |
+| 4   | Calendário de SLA (hora/dia útil, início da contagem, reinício, fora do expediente, feriados) e campos de prazo do chamado           | O artigo de exemplo (seg–sex, 8h–18h; plantão crítico 24h) é **evidência**, não especificação. Calendário configurável | Bloco 2                      |
+| 5   | Lista final de tipos de `TicketEvent` e catálogo de `changes` (L12)                                                                  | Conforme as operações implementadas                                                                                    | Bloco 2                      |
+| 6   | ORM e driver do SQLite                                                                                                               | —                                                                                                                      | Bloco 3                      |
+| 7   | Política de retry (timeout, backoff, limite, erros transitórios × definitivos, recuperação após reinício)                            | —                                                                                                                      | Bloco 3                      |
+| 8   | Endpoint de consulta pela chave de idempotência, além do retry                                                                       | Retry com mesmo `id` já reconcilia                                                                                     | Bloco 3                      |
+| 9   | Modelo LLM                                                                                                                           | Rápido e barato; regras no código reduzem a exigência                                                                  | Bloco 4                      |
+| 10  | Como definir "baixa confiança" para transferir                                                                                       | Combinar sinais (confiança declarada, campos faltando, tool falhou, intenção ambígua) e calibrar com os cenários       | Bloco 4                      |
+| 11  | Catálogo de `appliedRules`; mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5)                                                     | IDs estáveis, criados conforme as regras forem implementadas                                                           | Bloco 4                      |
+| 12  | Reabertura: agent propõe ou funcionário pede?                                                                                        | Agent propõe ao detectar o mesmo problema resolvido há ≤ 7 dias                                                        | Bloco 5                      |
+| 13  | Validade do rascunho (`EXPIRED`); nova proposta com outra pendente aberta                                                            | Uma pendente por conversa; nova proposta exige concluir ou cancelar a anterior                                         | Bloco 5                      |
+| 14  | 30 mensagens: do usuário ou totais? Por conversa ou por login?                                                                       | Mensagens do usuário, por conversa; limite configurável                                                                | Bloco 6                      |
+| 15  | Snapshot de `QUICK_REPLIES`; representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                         | Recurso persistido e recuperável                                                                                       | Bloco 6                      |
+| 16  | Encerramento por inatividade                                                                                                         | Fora do MVP                                                                                                            | Bloco 6                      |
+| 17  | Sincronização do handoff com operação em andamento; recuperação quando só um lado conclui; `ASSIGN_TICKET`; integração com o console | Sem atomicidade entre serviços; `TRANSFER_TICKET` aguarda operação do mesmo chamado                                    | Bloco 7                      |
 
 ---
 
@@ -594,17 +549,19 @@ Nenhuma bloqueia o início. Cada uma tem o bloco em que será decidida.
 
 Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado e os problemas encontrados ditam o ritmo.
 
-| Bloco | Entrega                                                                           | Pronto quando…                                                       |
-| ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 1     | Fase 0: domain model, state model, contrato de decisão, ADRs 001–007, 10 cenários | Consigo explicar o fluxo inteiro sem olhar o documento               |
-| 2     | Regras do Anexo A com TDD (funções puras)                                         | Testes verdes, sem dependências além do test runner                  |
-| 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada             | Retry após timeout não duplica chamado                               |
-| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`       | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
-| 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente               | Tela 2 de ponta a ponta                                              |
-| 6     | Chat fiel ao protótipo + painel de decisão                                        | Dá para ver o quê, por quê e com que evidência                       |
-| 7     | Fatia 4: transferência, console, assumir/devolver/encerrar                        | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
-| 8     | Fechamento: evals contra baseline, README final, revisão de commits               | Avaliador roda com poucos comandos                                   |
-| 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                      | —                                                                    |
+| Bloco | Entrega                                                                                             | Pronto quando…                                                       |
+| ----- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1     | Fase 0: ~~domain model~~ (v1 feito; aguardando §4.2), agent flow, ADRs 001–007, cenários            | Consigo explicar o fluxo inteiro sem olhar o documento               |
+| 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura) | Testes verdes, sem dependências além do test runner                  |
+| 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                               | Retry após timeout não duplica chamado                               |
+| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                         | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
+| 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente                                 | Tela 2 de ponta a ponta                                              |
+| 6     | Chat fiel ao protótipo + painel de decisão + encerramento                                           | Dá para ver o quê, por quê e com que evidência                       |
+| 7     | Fatia 4: transferência, console, assumir/devolver/encerrar, auditoria                               | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
+| 8     | Fechamento: evals contra baseline, README final, revisão de commits                                 | Avaliador roda com poucos comandos                                   |
+| 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                                        | —                                                                    |
+
+> O antigo `02-state-model.md` foi absorvido pelo domain model (DM §8). Não criaremos um documento separado de estados, para não duplicar a especificação.
 
 ### Fatias verticais
 
@@ -626,17 +583,45 @@ Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado
         └──────────────────────── revisão ◄────────────────────────┘
 ```
 
+### Fluxo de uma decisão
+
+1. **ChatGPT + Claude (chat)** avaliam divergências e fecham decisões.
+2. **Eu registro** a decisão na fonte da verdade da área: domínio → `01-domain-model.md`; projeto → este README.
+3. **VS Code + Claude** produz ou atualiza o artefato, **sem decisões adicionais**.
+4. **Revisão** do resultado contra a fonte: o artefato não pode inventar regras.
+5. **Eu aprovo** o artefato e seguimos.
+
+### Comportamento esperado do Claude no VS Code
+
+**Congelar decisões não significa fingir que todas as questões estão resolvidas.** O artefato é entregue mesmo com questões não bloqueantes.
+
+| Situação                               | Comportamento                                                       |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| Decisão definida na fonte da verdade   | Implementar exatamente                                              |
+| Detalhe destinado a outro bloco        | Marcar `PENDENTE (Bloco X)` no texto e seguir                       |
+| Informação ausente no PRD e nas fontes | Não inventar; marcar como pendente                                  |
+| Alternativa técnica não decidida       | Apresentar opções e registrar, sem escolher                         |
+| Contradição com decisão aprovada       | Registrar numa seção própria, citando os dois trechos, sem resolver |
+| Nova decisão arquitetural necessária   | Não decidir sozinho                                                 |
+
+### Instrução para atualizar o domain model (próximo passo)
+
+> Leia o `README.md` §4.2 e o `docs/architecture/01-domain-model.md` atual. Incorpore no domain model **exclusivamente** as decisões listadas na §4.2 (C1, C2/L3/L6, C3, C4, L1, L4, L8, L9, L10, L11) e marque L2, L5, L7 e L12 como `PENDENTE` nos blocos indicados. Atualize as seções afetadas (contratos, invariantes, ciclos de vida, lacunas e contradições), a seção de rastreabilidade e acrescente um histórico de versões no próprio documento (v1 → v2). Não altere outras decisões nem o README. Ao final, liste cada decisão da §4.2 e a seção do domain model onde ela foi incorporada, e qualquer nova contradição encontrada.
+
+**Critério de revisão:** o artefato não é aprovado por estar bem escrito, e sim se cada item tiver origem rastreável na fonte da verdade.
+
 ### Regras
 
 1. **Eu decido.** As IAs argumentam, questionam e recomendam.
-2. **Nenhuma sugestão vira requisito automaticamente.** Divergências entre as IAs são analisadas antes de entrar aqui.
-3. **Este README é a fonte da verdade.** Mudou a decisão, muda o documento.
+2. **Nenhuma sugestão vira requisito automaticamente.** Divergências entre as IAs são analisadas antes de entrar nas fontes.
+3. **Cada regra vive em uma única fonte da verdade.** Os outros documentos resumem e referenciam.
 4. **Implementação só depois do refinamento**, com contexto e critério de pronto claros.
 5. **Toda implementação volta para revisão**: código, arquitetura, testes e aderência ao acordado.
+6. **Saber parar de especificar.** Revisões de artefatos geram correções pontuais, não novas rodadas de refinamento.
 
 ### Hábitos
 
-- **Commit no fim de cada bloco**, com mensagem que conta a decisão (ex.: `docs: separa estado da conversa do estado da ação pendente`).
+- **Commit no fim de cada bloco** (e de cada artefato aprovado), com mensagem que conta a decisão.
 - **Uma mudança sem IA no fim de cada bloco**, para treinar a entrevista:
 
 | Bloco          | Mudança de treino                        |
@@ -670,7 +655,10 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 
 ## 16. Histórico do refinamento
 
-| Versão | Mudanças                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| v1     | Consolidação inicial: tese central, arquitetura enxuta, agent híbrido, três estados, idempotência × duplicidade, plano em blocos                                                                                                                                                                                                                                                                             |
-| v2     | `requesterId` / `affectedScope` / `assignedTo`; artigos movidos para o web; conversa–chamado N:N com histórico de interações; `ImpactAssessment` com `workImpact` enum; `OUTCOME_UNKNOWN`; registro de decisão separado da execução; login simulado documentado; vencido calculado; persistência atrás de repositório; ADR-001 = agent híbrido; pendências com bloco de resolução; previsão em dias removida |
+| Versão | Mudanças                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1     | Consolidação inicial: tese central, arquitetura enxuta, agent híbrido, três estados, idempotência × duplicidade, plano em blocos                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| v2     | `requesterId` / `affectedScope` / `assignedTo`; artigos no web; conversa–chamado N:N com histórico; `ImpactAssessment` com `workImpact` enum; `OUTCOME_UNKNOWN`; decisão separada da execução; login simulado; vencido calculado; persistência atrás de repositório; ADR-001 = agent híbrido                                                                                                                                                                                                                                                              |
+| v2.1   | Respostas às 30 dúvidas do domain model: autorização separada de execução; idempotência por `OperationExecution.id`; `CANCELLED` com `HANDOFF`; encerramento pelo agent; acesso do analista com auditoria; `classifyPriority` total; cardinalidades e invariantes                                                                                                                                                                                                                                                                                         |
+| v2.2   | Respostas às 13 dúvidas restantes: `TicketDraft` discriminado; `Ticket.version`; idempotência antes da versão; `CommitmentRisk`; "Não sei" + bloqueado = Alta; `ConversationEvent`; `Message` com decisão e anexos; regras de concorrência; catálogos tipados. Ajustes de revisão: `classifyPriority` no ticket-service; `UNKNOWN` ≠ `NO`; `NOT_ASKED` por validação                                                                                                                                                                                      |
+| v2.3   | Revisão do domain model v1. **Hierarquia documental:** `01-domain-model.md` vira a fonte da verdade do domínio; §4, §6 e §7 deste README viram resumo com referência. Decisões C1 (invariantes 11 e 12; handoff imediato com `TRANSFER_TICKET` aguardando), C2/L3/L6 (resumo e decisão no `ConversationEvent` `HANDOFF`), C3 (autorização por origem da escrita), C4 (regras puras no domínio do ticket-service) e lacunas L1, L4, L8–L11 — listadas na §4.2 até a incorporação. L2, L5, L7, L12 adiadas. `02-state-model.md` absorvido pelo domain model |
