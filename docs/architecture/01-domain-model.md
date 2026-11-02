@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.1** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.2** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -124,7 +124,7 @@ Regras e observações:
 - A máquina de estados de `TicketStatus` é **[Premissa]** a ser proposta no Bloco 2. O PRD só dá exemplos: Aguardando analista, Em andamento, Aprovado, Resolvido.
 - Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
 
-PENDENTE (Bloco 2): `TicketStatus` e transições válidas (README §12 #1); campos de prazo do chamado e calendário de SLA (README §12 #3); critério de "mesmo problema" para duplicidade (README §12 #2).
+PENDENTE (Bloco 2): `TicketStatus` e transições válidas (README §12 #2); campos de prazo do chamado e calendário de SLA (README §12 #4); critério de "mesmo problema" para duplicidade (README §12 #3).
 
 ### 3.3 TicketDraft (payload da PendingAction)
 
@@ -222,7 +222,8 @@ Regras:
 - Quem encerrou e quando ficam no `ConversationEvent` do tipo `CLOSED`; **não duplicados** na conversa.
 - `resolutionSource: "AGENT"` alimenta a tag "Resolvida pelo agent" do console.
 - `PendingAction` é a fonte da verdade do rascunho apresentado; o contexto **não duplica** o status dela.
-- Ao devolver a conversa ao agent, o contexto volta para `NONE` / `IDLE`. Mensagens, histórico, o `summary` do handoff e as `notes` do analista são preservados; o agent consulta os dados de novo antes de propor qualquer coisa (README §7A).
+- Ao devolver a conversa ao agent, o contexto é **totalmente limpo**: `flow`, `stage`, `targetTicketId` e `collectedData`. Após a devolução, o contexto fica em `NONE` / `IDLE`, sem foco nem dados de coleta. Isso descreve o estado **após a devolução**; durante o atendimento normal, `NONE` / `IDLE` pode ter `targetTicketId` (`03-agent-flow.md`, D5). Mensagens, histórico, o `summary` do handoff e as `notes` do analista são preservados; o agent consulta os dados de novo antes de propor qualquer coisa (README §7A).
+- `READY_TO_PROPOSE` é um estágio **transitório** (`03-agent-flow.md`, D3 e D11). O valor permanece em `InteractionStage`. Este documento não estabelece, como regra de domínio, se esse estágio é gravado no banco ou apenas atravessado (ver `03-agent-flow.md` §5.2).
 - **Chamado em foco** = `InteractionContext.targetTicketId` no instante do handoff (§8.7).
 - O `InteractionContext` não muda o controle da conversa (README §7B). O histórico persistido é a fonte da verdade; a memória do LLM não é (README §7B).
 
@@ -314,7 +315,7 @@ interface Message {
 ```
 
 - A mensagem guarda **referências** aos cards, não cópias de dados.
-- Toda referência aponta para um recurso persistido ou snapshot recuperável. `QUICK_REPLIES` precisa reconstruir **exatamente** as opções oferecidas, mesmo após reinício. PENDENTE (Bloco 6): onde o snapshot das opções é armazenado (README §12 #14).
+- Toda referência aponta para um recurso persistido ou snapshot recuperável. `QUICK_REPLIES` precisa reconstruir **exatamente** as opções oferecidas, mesmo após reinício. PENDENTE (Bloco 6): onde o snapshot das opções é armazenado (README §12 #15).
 
 ### 3.9 TicketEvent
 
@@ -330,7 +331,7 @@ interface TicketEvent {
 }
 ```
 
-- Histórico oficial de alterações. PENDENTE (Bloco 2): lista final de tipos, conforme as operações implementadas (README §12 #4).
+- Histórico oficial de alterações. PENDENTE (Bloco 2): lista final de tipos, conforme as operações implementadas (README §12 #5).
 - No evento `TRANSFERRED`, `summary` recebe a cópia de `ConversationEvent.summary` enviada pelo `TRANSFER_TICKET` (§3.6).
 - Toda mutação de chamado feita por analista gera `TicketEvent` com `actor.type: "ANALYST"` (§7.3).
 
@@ -371,7 +372,7 @@ interface KnowledgeArticle {
 
 ```ts
 type Intent =
-  | "ANSWER_KB" | "LIST_MY_TICKETS" | "CREATE_TICKET" | "UPDATE_TICKET" | "REOPEN_TICKET"
+  | "ANSWER_KB" | "LIST_MY_TICKETS" | "VIEW_TICKET" | "CREATE_TICKET" | "UPDATE_TICKET" | "REOPEN_TICKET"
   | "HANDOFF" | "CLOSE_CONVERSATION" | "OUT_OF_SCOPE" | "CLARIFY";
 
 type PolicyOutcome =
@@ -402,12 +403,13 @@ Regras:
 
 - `pendingActionVersion` está presente **junto** com `pendingActionId` ou ausente junto com ele. Permite reconstruir qual versão do rascunho cada turno produziu.
 - `Intent` passa a conter `REOPEN_TICKET`, alinhado a `InteractionFlow`, `PendingActionType` e `OperationType`.
+- `LIST_MY_TICKETS` e `VIEW_TICKET` têm significados distintos: `LIST_MY_TICKETS` é a **listagem** dos chamados autorizados do funcionário; `VIEW_TICKET` é a **consulta detalhada** de um chamado específico. Na Tela 3, a escolha de um chamado na lista e a consulta por id informado usam `VIEW_TICKET` (`03-agent-flow.md` v1.1, §9). `VIEW_TICKET` não cria novo `InteractionFlow`: o `InteractionFlow` `TICKET_LOOKUP` (§3.5) permanece como está.
 
 - Três camadas por resposta: **interpretação** (o que o modelo entendeu), **política** (o que o sistema permite), **execução** (o que realmente aconteceu) (README §6).
 - O **backend monta** `toolExecutions` a partir do que de fato rodou. O modelo não declara sucesso de nada (README §6).
 - A **confiança declarada não autoriza nenhuma operação**; serve como um dos sinais para encaminhar ao analista (README §6).
 - **Não se expõe o raciocínio interno do modelo**; expõem-se evidências, regras e ações (README §6).
-- `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). PENDENTE (Bloco 4): catálogo definido conforme as regras forem implementadas (§3.15, README §12 #10).
+- `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). PENDENTE (Bloco 4): catálogo definido conforme as regras forem implementadas (§3.15, README §12 #11).
 
 ### 3.13 PendingAction (README §6)
 
@@ -680,7 +682,7 @@ Sobre as invariantes 11 e 12 em conjunto com o handoff, ver §8.6. A exceção d
 | Handoff cancela a ação na mesma transação local que muda a conversa para `WAITING_ANALYST` | README §7C, README §9 |
 | Assumir `WAITING_ANALYST → ANALYST_ACTIVE` é atômico: dois analistas não assumem a mesma conversa | README §7A |
 | Backend verifica o estado antes de cada execução do agent; fora de `AI_ACTIVE` o LLM nem é chamado | README §7A |
-| Devolver ao agent limpa o contexto da interação (`NONE` / `IDLE`) | §3.5, README §7A |
+| Devolver ao agent limpa todo o contexto da interação (`flow`, `stage`, `targetTicketId` e `collectedData`); após a devolução, `NONE` / `IDLE` sem foco nem dados de coleta | §3.5, README §7A |
 | `Message` guarda referências aos cards, não cópias | §3.8 |
 | Encerramento por confirmação do funcionário não usa `PendingAction` nem `OperationExecution` | README §6 |
 | `PriorityReasonCode` e `PolicyReasonCode` são catálogos distintos | §3.15 |
@@ -752,14 +754,14 @@ Regras do ciclo:
 - Ao sair de `ANALYST_ACTIVE` (`→ AI_ACTIVE` ou `→ CLOSED`), `Conversation.assignedAnalystId` é limpo; quem atendeu permanece registrado nos `ConversationEvent` (`ANALYST_ASSIGNED`, `RETURNED_TO_AGENT`, `CLOSED`).
 - Na transição `AI_ACTIVE → WAITING_ANALYST` a conversa muda **imediatamente**, mesmo com `OperationExecution` não terminal (ver 8.6). O `ConversationEvent` `HANDOFF` carrega `summary` e `decisionRecordId` (seção 3.6).
 - **`CLOSED` é terminal.** Ao voltar outro dia (história 6), o funcionário inicia uma nova conversa; o agent tem acesso aos chamados dele e ao histórico persistido (README §7A).
-- Encerramento por inatividade: fora do MVP. PENDENTE (Bloco 6) (README §7A, README §12 #15).
+- Encerramento por inatividade: fora do MVP. PENDENTE (Bloco 6) (README §7A, README §12 #16).
 - As únicas transições definidas são as da tabela acima; nenhuma outra existe (em particular, não há `WAITING_ANALYST → WAITING_ANALYST` nem `ANALYST_ACTIVE → ANALYST_ACTIVE`).
 
 ### 8.2 Interação (README §7B)
 
 - Estrutura em `InteractionContext` (§3.5), **persistida** na `Conversation`.
 - **Não muda** o controle da conversa. O histórico persistido é a fonte da verdade; a memória do LLM não é.
-- Valores de `flow` e `stage` estão definidos; as transições válidas entre pares `(flow, stage)` estão **PENDENTES em `03-agent-flow.md` (Bloco 1)** (L2). Ver seção 11.2.
+- Valores de `flow` e `stage` estão definidos; as transições válidas entre pares `(flow, stage)` estão definidas em `03-agent-flow.md` v1.1, §§3–6 (L2 resolvida; ver seção 11.2).
 
 ### 8.3 Ação pendente (README §7C)
 
@@ -779,7 +781,7 @@ stateDiagram-v2
     PENDING_CONFIRMATION --> CANCELLED: handoff / conversa encerrada
 ```
 
-- PENDENTE (Bloco 5): `EXPIRED` e a validade do rascunho; comportamento de nova proposta com outra pendente aberta (decisão inicial do README: nova proposta exige concluir ou cancelar a anterior) (README §7C, README §12 #12).
+- PENDENTE (Bloco 5): `EXPIRED` e a validade do rascunho; comportamento de nova proposta com outra pendente aberta (decisão inicial do README: nova proposta exige concluir ou cancelar a anterior) (README §7C, README §12 #13).
 
 ### 8.4 Execução de operação (README §7D)
 
@@ -802,12 +804,12 @@ stateDiagram-v2
     OUTCOME_UNKNOWN --> PROCESSING: retry seguro com mesmo ID
 ```
 
-- Reconciliação: repetir a operação com o mesmo `id` já reconcilia (se executada, o serviço devolve o resultado guardado; se não, executa) (README §9). PENDENTE (Bloco 3): endpoint específico de consulta pela chave (README §9, README §12 #7).
-- PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos, recuperação após reinício (README §7D, README §12 #6).
+- Reconciliação: repetir a operação com o mesmo `id` já reconcilia (se executada, o serviço devolve o resultado guardado; se não, executa) (README §9). PENDENTE (Bloco 3): endpoint específico de consulta pela chave (README §9, README §12 #8).
+- PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos, recuperação após reinício (README §7D, README §12 #7).
 
 ### 8.5 Ticket
 
-- Ciclo de vida de `Ticket.status`: **PENDENTE (Bloco 2)**, máquina de estados proposta como **[Premissa]** (README §12 #1). Este documento não define estados nem transições.
+- Ciclo de vida de `Ticket.status`: **PENDENTE (Bloco 2)**, máquina de estados proposta como **[Premissa]** (README §12 #2). Este documento não define estados nem transições.
 - `Ticket.version` é incrementada pelo ticket-service a cada alteração.
 - Reabertura permitida para chamado resolvido há até 7 dias **[PRD]** (README §2).
 
@@ -860,12 +862,13 @@ Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numera
 
 | # | Lacuna | Resíduo aberto | Tratamento |
 | --- | --- | --- | --- |
-| 5 | Estrutura de `InteractionContext` | Transições válidas entre pares `(flow, stage)` não definidas (L2) | §3.5, §8.2. PENDENTE (`03-agent-flow.md`, Bloco 1) |
 | 7 | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle` | Lista final de tipos de `TicketEvent` (Bloco 2); snapshot de `QUICK_REPLIES` (Bloco 6) | §3.8, §3.9 |
 | 8 | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7) | §8.8. PENDENTE (Bloco 6) |
 | 10 | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo` | `ASSIGN_TICKET` fora de `OperationType` | §8.7. PENDENTE (Bloco 7) |
 | 11 | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN` | Parâmetros de timeout, backoff e tentativas | §8.4. PENDENTE (Bloco 3) |
 | 13 | Catálogos de códigos string | `appliedRules` (Bloco 4); `TicketStatus` (Bloco 2); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4) | §3.15 |
+
+A lacuna #5 (estrutura de `InteractionContext`; transições entre pares `(flow, stage)`, L2) foi resolvida por `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
 ---
 
@@ -875,29 +878,30 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 
 | Pendência | Bloco | Origem |
 | --- | --- | --- |
-| PENDENTE (Bloco 2): `TicketStatus` e transições válidas | 2 | §3.2, README §12 #1 |
-| PENDENTE (Bloco 2): critério de "mesmo problema" (duplicidade) | 2 | README §12 #2 |
-| PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) | 2 | §3.2, README §12 #3 |
-| PENDENTE (Bloco 2): lista final de tipos de `TicketEvent` | 2 | §3.9, README §12 #4 |
-| PENDENTE (Bloco 3): ORM e driver do SQLite | 3 | README §5, README §12 #5 |
-| PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício | 3 | README §7D, README §12 #6 |
-| PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência | 3 | README §9, README §12 #7 |
-| PENDENTE (Bloco 4): modelo LLM | 4 | README §12 #8 |
-| PENDENTE (Bloco 4): critério de "baixa confiança" para transferir | 4 | README §12 #9 |
-| PENDENTE (Bloco 4): catálogo de `appliedRules` | 4 | §3.15, README §12 #10 |
-| PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial) | 5 | README §12 #11 |
-| PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta | 5 | README §7C, README §12 #12 |
-| PENDENTE (Bloco 6): limite de 30 mensagens (do usuário ou totais; por conversa ou por login) | 6 | README §12 #13 |
-| PENDENTE (Bloco 6): onde fica o snapshot das opções de `QUICK_REPLIES` | 6 | §3.8, README §12 #14 |
-| PENDENTE (Bloco 6): encerramento por inatividade (fora do MVP) | 6 | README §7A, README §12 #15 |
-| PENDENTE (Bloco 7): operação `ASSIGN_TICKET` ausente de `OperationType` embora `TicketEvent` preveja `ASSIGNED` (não entra em `OperationType` agora) | 7 | README §9, README §12 #16, §7.1 |
+| PENDENTE (Bloco 2): `TicketStatus` e transições válidas | 2 | §3.2, README §12 #2 |
+| PENDENTE (Bloco 2): critério de "mesmo problema" (duplicidade) | 2 | README §12 #3 |
+| PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) | 2 | §3.2, README §12 #4 |
+| PENDENTE (Bloco 2): lista final de tipos de `TicketEvent` | 2 | §3.9, README §12 #5 |
+| PENDENTE (Bloco 3): ORM e driver do SQLite | 3 | README §5, README §12 #6 |
+| PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício | 3 | README §7D, README §12 #7 |
+| PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência | 3 | README §9, README §12 #8 |
+| PENDENTE (Bloco 4): modelo LLM | 4 | README §12 #9 |
+| PENDENTE (Bloco 4): critério de "baixa confiança" para transferir | 4 | README §12 #10 |
+| PENDENTE (Bloco 4): catálogo de `appliedRules` | 4 | §3.15, README §12 #11 |
+| PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial) | 5 | README §12 #12 |
+| PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta | 5 | README §7C, README §12 #13 |
+| PENDENTE (Bloco 6): limite de 30 mensagens (do usuário ou totais; por conversa ou por login) | 6 | README §12 #14 |
+| PENDENTE (Bloco 6): onde fica o snapshot das opções de `QUICK_REPLIES` | 6 | §3.8, README §12 #15 |
+| PENDENTE (Bloco 6): encerramento por inatividade (fora do MVP) | 6 | README §7A, README §12 #16 |
+| PENDENTE (Bloco 7): operação `ASSIGN_TICKET` ausente de `OperationType` embora `TicketEvent` preveja `ASSIGNED` (não entra em `OperationType` agora) | 7 | README §9, README §12 #17, §7.1 |
 | PENDENTE (Bloco 7): o que acontece se a reconciliação do `TRANSFER_TICKET` não resolver (conversa transferida, chamado não); mecanismo de sincronização | 7 | §8.6 (C7) |
 | PENDENTE (Bloco 7): autorização pelo papel `ANALYST` nas escritas feitas pelo console | 7 | §7.3 |
-| PENDENTE (`03-agent-flow.md`, Bloco 1): transições entre `flow` e `stage` do `InteractionContext` (L2) | 1 | §8.2 |
 | PENDENTE (Bloco 4): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5) | 4 | §3.15 |
 | PENDENTE (Bloco 6): representação de "Sim, resolvido / Ainda não" na `Message` (L7) | 6 | §3.8 |
 | PENDENTE (Bloco 2): catálogo de campos de `TicketEvent.changes` (L12) | 2 | §3.9 |
-| PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console | 7 | README §9, README §12 #16 |
+| PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console | 7 | README §9, README §12 #17 |
+
+As transições entre `flow` e `stage` do `InteractionContext` (L2) não constam mais como pendência: estão definidas em `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
 ---
 
@@ -905,13 +909,13 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 
 ### 11.1 Introdução
 
-Os itens abaixo são ausências **observadas ao derivar o modelo**, que não tinham bloco de resolução na derivação inicial e foram encaminhadas: L2, L5, L7 e L12 hoje têm bloco ou artefato indicado na coluna Situação. Mantêm-se apenas as lacunas ainda abertas; os identificadores L1–L12 são preservados (as ausentes daqui estão resolvidas).
+Os itens abaixo são ausências **observadas ao derivar o modelo**, que não tinham bloco de resolução na derivação inicial e foram encaminhadas: L5, L7 e L12 hoje têm bloco indicado na coluna Situação; L2 está RESOLVIDA por `03-agent-flow.md` v1.1, §§3–6, e permanece listada para registrar a situação. Os identificadores L1–L12 são preservados (as ausentes daqui estão resolvidas).
 
 ### 11.2 Lista
 
 | ID | Lacuna | Onde aparece | Situação |
 | --- | --- | --- | --- |
-| L2 | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`). | §3.5, README §7B | **PENDENTE** (`03-agent-flow.md`, Bloco 1) |
+| L2 | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`). | §3.5, README §7B | **RESOLVIDA** por `03-agent-flow.md` v1.1, §§3–6 |
 | L5 | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PENDENTE** (Bloco 4) |
 | L7 | Como a pergunta "Sim, resolvido / Ainda não" é representada na `Message` (`QUICK_REPLIES`? outro anexo?). | README §6, §3.8 | **PENDENTE** (Bloco 6) |
 | L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`. | §3.9, §3.15 | **PENDENTE** (Bloco 2) |
@@ -986,14 +990,14 @@ Fontes: seções do `README.md` (prefixo "README"), PRD e ADRs. "—" indica mod
 | 1 Visão geral | README §1, README §5, README §6, README §7, ADR-001, ADR-006 |
 | 2 Entidades e responsabilidades | README §7D |
 | 3.1 Employee | README §3, README §8 |
-| 3.2 Ticket | README §2, README §9, README §12 #1 a #4 |
+| 3.2 Ticket | README §2, README §9, README §12 #2 a #5 |
 | 3.3 TicketDraft | README §2 |
 | 3.4 ImpactAssessment | — |
 | 3.5 Conversation, InteractionContext | README §7B |
 | 3.6 ConversationEvent | README §7A |
 | 3.7 ConversationTicket, Interaction | — |
-| 3.8 Message | README §12 #14 |
-| 3.9 TicketEvent | README §12 #4 |
+| 3.8 Message | README §12 #15 |
+| 3.9 TicketEvent | README §12 #5 |
 | 3.10 TicketAccessLog | README §8 |
 | 3.11 KnowledgeArticle | README §10, ADR-003 |
 | 3.12 DecisionRecord | README §6 |
@@ -1022,8 +1026,20 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v1 | `README.md` v2.2 (seções 4, 6, 7, 8 e 9 do README) | Derivação inicial do domain model. Contradições C1-C4 e lacunas L1-L12 registradas sem resolução. |
 | v2 | Antiga README §4.2 (decisões aprovadas após a revisão da v1) | Incorporadas **exclusivamente** as decisões dessa seção (abaixo). Numeração de invariantes, lacunas e contradições preservada. Novas contradições C5-C7 registradas sem resolução. |
 | v2.1 | Antiga README §4.2, aprovada na revisão da v2 | Resolvidas as lacunas C5 e C6 (e o resíduo de L3); C7 registrada como PENDENTE (Bloco 7), com a direção definida; auditoria de escritas do analista (§7.3); revisão editorial. |
+| v2.2 | v2.1; `03-agent-flow.md` v1.1; README §14 (sincronização aprovada) | Sincronização com `03-agent-flow.md` v1.1, sem nova decisão de domínio: `VIEW_TICKET` em `Intent` (T2); L2 marcada RESOLVIDA; devolução ao agent limpa todo o contexto (T1); `READY_TO_PROPOSE` documentado como transitório (T4); referências a `README §12 #N` auditadas pelo significado (T12). |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.1 para a v2.2
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| T2 | 3.12 | `VIEW_TICKET` (consulta detalhada de um chamado específico) incluído em `Intent`; `LIST_MY_TICKETS` permanece como listagem; nenhum novo `InteractionFlow` |
+| L2 | 8.2, 9, 10, 11.1, 11.2 | Marcada RESOLVIDA por `03-agent-flow.md` v1.1, §§3–6; retirada das pendências (§9, §10), com remissão ao Agent Flow |
+| T1 | 3.5, 7.2 | Devolução ao agent limpa `flow`, `stage`, `targetTicketId` e `collectedData`; `NONE` / `IDLE` com foco durante o atendimento normal não é alterado |
+| T4 | 3.5 | `READY_TO_PROPOSE` registrado como estágio transitório (D3, D11); permanece em `InteractionStage` |
+| T12 | 3.2, 3.8, 3.9, 3.12, 8.1, 8.3, 8.4, 8.5, 10, 13 | Referências a `README §12 #N` auditadas pelo significado, conforme a numeração atual da tabela do README §12 |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.2 |
 
 ### Alterações da v2 para a v2.1
 
