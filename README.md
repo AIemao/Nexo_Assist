@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.7):** 🟡 Bloco 1 em andamento. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Próximo artefato: cenários de avaliação (`docs/evaluation/`).
+**Status (README v2.8):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1 concluídos (`docs/evaluation/`). Próximo: Bloco 2 — domínio do ticket-service com TDD.
 
 ## Referências
 
@@ -418,6 +418,8 @@ Retry com backoff curto. Se persistir, o agent avisa que o sistema está instáv
 | Chamado alterado entre proposta e confirmação | Rejeita como desatualizado; nova proposta                                                                                                       |
 | Timeout na criação seguido de retry           | Um único chamado criado                                                                                                                         |
 
+Conjunto congelado com 20 cenários, fixtures e matriz de cobertura: [docs/evaluation/01-evaluation-scenarios.md](docs/evaluation/01-evaluation-scenarios.md).
+
 ### Métricas
 
 | Métrica                             | Tolerância         |
@@ -491,7 +493,7 @@ Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado
 
 | Bloco | Entrega                                                                                                            | Pronto quando…                                                       |
 | ----- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| 1     | Fase 0: ~~domain model~~ (v2.2 aprovado), ~~agent flow~~ (v1.2 concluído), ~~ADRs 001–007~~ (concluídos), cenários | Consigo explicar o fluxo inteiro sem olhar o documento               |
+| 1     | Fase 0: ~~domain model~~ (v2.2 aprovado), ~~agent flow~~ (v1.2 concluído), ~~ADRs 001–007~~ (concluídos), ~~cenários~~ (concluídos) | Consigo explicar o fluxo inteiro sem olhar o documento               |
 | 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura)                | Testes verdes, sem dependências além do test runner                  |
 | 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                                              | Retry após timeout não duplica chamado                               |
 | 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                                        | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
@@ -616,3 +618,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.5   | Fluxo de git registrado no método de trabalho (§14); `.gitignore` criado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | v2.6   | Sincronização com `03-agent-flow.md` v1.1 (e `01-domain-model.md` v2.2): §12 #1 (L2) marcada RESOLVIDA, sem renumerar; §12 #3 corrigida (o ticket-service identifica candidatos a duplicidade; o LLM interpreta a resposta, mas não decide; a resposta do funcionário não autoriza criar duplicata); §7B aponta `03-agent-flow.md` como resolução de L2; §13 marca o Agent Flow como concluído no Bloco 1                                                                                                                                                 |
 | v2.7   | ADRs 001–007 publicados em `docs/decisions/`; índice de ADRs criado; §11, §13 e status do projeto atualizados                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| v2.8   | Cenários de avaliação v1 publicados em `docs/evaluation/` (20 cenários, fixtures, matriz de cobertura); §10, §13 e status atualizados; Bloco 1 concluído |
