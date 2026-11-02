@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.6):** 🟡 Bloco 1 em andamento. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). Próximo artefato: ADRs 001–007 (ADR-001 primeiro).
+**Status (README v2.7):** 🟡 Bloco 1 em andamento. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Próximo artefato: cenários de avaliação (`docs/evaluation/`).
 
 ## Referências
 
@@ -441,19 +441,21 @@ Cada execução registra: cenário, entrada, esperado, obtido, modelo, versão d
 - **Decisões futuras** são registradas **no momento em que forem aprovadas**, com as alternativas reais consideradas.
 - O ADR-001 é escrito por inteiro primeiro: é a decisão central do projeto.
 
-| ADR | Tema                                                                                                                                          | Status  |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 001 | **Agent híbrido:** leituras livres, escritas só após confirmação                                                                              | Aceito  |
-| 002 | Arquitetura enxuta: duas aplicações executáveis                                                                                               | Aceito  |
-| 003 | Central de ajuda no web, busca lexical, sem embeddings                                                                                        | Aceito  |
-| 004 | Identidade da sessão nas tools; login simulado; acesso do analista com auditoria; autorização por origem da escrita                           | Aceito  |
-| 005 | Idempotência (`OperationExecution.id`, verificada antes da versão) e duplicidade como mecanismos distintos                                    | Aceito  |
-| 006 | Ciclos de estado independentes: conversa, interação, autorização, execução                                                                    | Aceito  |
-| 007 | `classifyPriority` total no domínio do ticket-service, precedência explícita, `NEEDS_CLARIFICATION`, Alta como piso para alcance desconhecido | Aceito  |
-| 008 | Persistência: SQLite atrás de repositório; ORM/driver                                                                                         | Bloco 3 |
-| 009 | Escolha do modelo LLM                                                                                                                         | Bloco 4 |
+| ADR                                                     | Tema                                                                                                                                                       | Status  |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| [001](docs/decisions/ADR-001-agent-hibrido.md)          | **Agent híbrido:** leituras livres, escritas só após confirmação                                                                                           | Aceito  |
+| [002](docs/decisions/ADR-002-duas-aplicacoes.md)        | Arquitetura enxuta: duas aplicações executáveis                                                                                                            | Aceito  |
+| [003](docs/decisions/ADR-003-busca-lexical.md)          | Central de ajuda no web, busca lexical, sem embeddings                                                                                                     | Aceito  |
+| [004](docs/decisions/ADR-004-identidade-e-auditoria.md) | Identidade da sessão nas tools; login simulado; acesso do analista com auditoria; autorização por origem da escrita                                        | Aceito  |
+| [005](docs/decisions/ADR-005-idempotencia.md)           | Idempotência (`OperationExecution.id`, verificada antes da versão) e duplicidade como mecanismos distintos                                                 | Aceito  |
+| [006](docs/decisions/ADR-006-ciclos-independentes.md)   | Ciclos de estado independentes: conversa, interação, autorização, execução                                                                                 | Aceito  |
+| [007](docs/decisions/ADR-007-classify-priority.md)      | `classifyPriority` total no domínio do ticket-service, precedência explícita, `NEEDS_CLARIFICATION`, Alta como piso para bloqueio com alcance desconhecido | Aceito  |
+| 008                                                     | Persistência: SQLite atrás de repositório; ORM/driver                                                                                                      | Bloco 3 |
+| 009                                                     | Escolha do modelo LLM                                                                                                                                      | Bloco 4 |
 
 Cada ADR responde: **por que assim? quais alternativas? o que mudaria com 20 mil funcionários em vez de 2 mil?**
+
+Índice de decisões arquiteturais: [docs/decisions/README.md](docs/decisions/README.md).
 
 ---
 
@@ -487,17 +489,17 @@ Nenhuma bloqueia o início. Cada uma tem o bloco em que será decidida.
 
 Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado e os problemas encontrados ditam o ritmo.
 
-| Bloco | Entrega                                                                                             | Pronto quando…                                                       |
-| ----- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 1     | Fase 0: ~~domain model~~ (v2.2 aprovado), ~~agent flow~~ (v1.1 concluído), ADRs 001–007, cenários   | Consigo explicar o fluxo inteiro sem olhar o documento               |
-| 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura) | Testes verdes, sem dependências além do test runner                  |
-| 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                               | Retry após timeout não duplica chamado                               |
-| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                         | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
-| 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente                                 | Tela 2 de ponta a ponta                                              |
-| 6     | Chat fiel ao protótipo + painel de decisão + encerramento                                           | Dá para ver o quê, por quê e com que evidência                       |
-| 7     | Fatia 4: transferência, console, assumir/devolver/encerrar, auditoria                               | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
-| 8     | Fechamento: evals contra baseline, README final, revisão de commits                                 | Avaliador roda com poucos comandos                                   |
-| 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                                        | —                                                                    |
+| Bloco | Entrega                                                                                                            | Pronto quando…                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| 1     | Fase 0: ~~domain model~~ (v2.2 aprovado), ~~agent flow~~ (v1.2 concluído), ~~ADRs 001–007~~ (concluídos), cenários | Consigo explicar o fluxo inteiro sem olhar o documento               |
+| 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura)                | Testes verdes, sem dependências além do test runner                  |
+| 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                                              | Retry após timeout não duplica chamado                               |
+| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                                        | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
+| 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente                                                | Tela 2 de ponta a ponta                                              |
+| 6     | Chat fiel ao protótipo + painel de decisão + encerramento                                                          | Dá para ver o quê, por quê e com que evidência                       |
+| 7     | Fatia 4: transferência, console, assumir/devolver/encerrar, auditoria                                              | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
+| 8     | Fechamento: evals contra baseline, README final, revisão de commits                                                | Avaliador roda com poucos comandos                                   |
+| 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                                                       | —                                                                    |
 
 > O antigo `02-state-model.md` foi absorvido pelo domain model (DM §8). Não criaremos um documento separado de estados, para não duplicar a especificação.
 
@@ -613,3 +615,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.4   | `01-domain-model.md` **v2.1 aprovado e congelado** (C5: chamado em foco; C6: resumo único do handoff; C7: direção da sincronização, mecanismo no Bloco 7; auditoria de escritas do analista via `TicketEvent`). Antiga §4.2 removida, já incorporada ao domain model. Regra de congelamento registrada. Ajustes de revisão: auditoria do analista separada em consultas × mutações; questão 17 inclui autorização das escritas do console; cenário de handoff com operação em andamento alinhado a C7                                                     |
 | v2.5   | Fluxo de git registrado no método de trabalho (§14); `.gitignore` criado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | v2.6   | Sincronização com `03-agent-flow.md` v1.1 (e `01-domain-model.md` v2.2): §12 #1 (L2) marcada RESOLVIDA, sem renumerar; §12 #3 corrigida (o ticket-service identifica candidatos a duplicidade; o LLM interpreta a resposta, mas não decide; a resposta do funcionário não autoriza criar duplicata); §7B aponta `03-agent-flow.md` como resolução de L2; §13 marca o Agent Flow como concluído no Bloco 1                                                                                                                                                 |
+| v2.7   | ADRs 001–007 publicados em `docs/decisions/`; índice de ADRs criado; §11, §13 e status do projeto atualizados                                                                                                                                                                                                                                                                                                                                                                                                                                             |

@@ -1,0 +1,15 @@
+# Decisões arquiteturais (ADRs)
+
+Os ADRs registram as decisões arquiteturais do projeto e suas justificativas. As especificações detalhadas permanecem nos documentos de arquitetura (`docs/architecture/`). Cada ADR responde às três perguntas de README §11: por que a decisão foi tomada, quais alternativas foram consideradas e o que mudaria com 20 mil funcionários.
+
+| ADR | Tema | Status | Arquivo |
+| --- | --- | --- | --- |
+| 001 | **Agent híbrido:** leituras livres, escritas só após confirmação | Aceito | [ADR-001-agent-hibrido.md](ADR-001-agent-hibrido.md) |
+| 002 | Arquitetura enxuta: duas aplicações executáveis | Aceito | [ADR-002-duas-aplicacoes.md](ADR-002-duas-aplicacoes.md) |
+| 003 | Central de ajuda no web, busca lexical, sem embeddings | Aceito | [ADR-003-busca-lexical.md](ADR-003-busca-lexical.md) |
+| 004 | Identidade da sessão nas tools; login simulado; acesso do analista com auditoria; autorização por origem da escrita | Aceito | [ADR-004-identidade-e-auditoria.md](ADR-004-identidade-e-auditoria.md) |
+| 005 | Idempotência (`OperationExecution.id`, verificada antes da versão) e duplicidade como mecanismos distintos | Aceito | [ADR-005-idempotencia.md](ADR-005-idempotencia.md) |
+| 006 | Ciclos de estado independentes: conversa, interação, autorização, execução | Aceito | [ADR-006-ciclos-independentes.md](ADR-006-ciclos-independentes.md) |
+| 007 | `classifyPriority` total no domínio do ticket-service, precedência explícita, `NEEDS_CLARIFICATION`, Alta como piso para alcance desconhecido | Aceito | [ADR-007-classify-priority.md](ADR-007-classify-priority.md) |
+| 008 | Persistência: SQLite atrás de repositório; ORM/driver | Bloco 3 | a criar quando aprovado |
+| 009 | Escolha do modelo LLM | Bloco 4 | a criar quando aprovado |
