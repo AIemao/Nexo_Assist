@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status:** 🟡 Bloco 1 em andamento. `01-domain-model.md` aprovado estruturalmente, **aguardando a incorporação das decisões da §4.2**. Próximo artefato: `03-agent-flow.md`.
+**Status:** 🟡 Bloco 1 em andamento. `01-domain-model.md` **v2.1 aprovado e congelado**. Próximo artefato: `03-agent-flow.md`.
 
 ## Referências
 
@@ -165,76 +165,14 @@ Painel de decisão · confirmação antes de escrever · privacidade · persist�
 
 ## 4. Modelo de domínio
 
-### 4.1 Fonte da verdade
+A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.1, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
 
-A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)**: entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
-
-Alterações nas regras do domínio são aprovadas (§14) e registradas **primeiro** no domain model, antes de qualquer artefato derivado.
+**Congelado** significa: muda só por **inconsistência comprovada** ou por **decisão atribuída a um bloco** (as pendências da DM §10). Mudanças são aprovadas (§14) e registradas **primeiro** no domain model, antes de qualquer artefato derivado.
 
 **Resumo** — 13 entidades em dois donos:
 
 - **ticket-service:** `Employee`, `Ticket`, `TicketEvent`, `TicketAccessLog`.
 - **web:** `KnowledgeArticle`, `Conversation`, `ConversationEvent`, `Message`, `PendingAction`, `OperationExecution`, `DecisionRecord`, `ConversationTicket`, `ConversationTicketInteraction`.
-
-### 4.2 Decisões aprovadas aguardando incorporação no domain model
-
-Resultado da revisão do domain model v1 (contradições C1–C4 e lacunas L1–L12). **Esta lista é a instrução para a próxima atualização do `01-domain-model.md`**; depois de incorporada, ela é removida daqui.
-
-**C1 — Idempotência e concorrência (reescreve as invariantes 11 e 12; DM §7, §8.6)**
-
-- **Invariante 11:** enquanto o resultado de uma operação estiver desconhecido, qualquer tentativa de concluir **aquela mesma operação lógica** reutiliza o mesmo `OperationExecution.id`. Uma nova operação não pode ser criada para contornar um resultado desconhecido.
-- **Invariante 12:** nenhuma nova `PendingAction` de escrita pode ser iniciada enquanto existir uma `OperationExecution` não terminal na conversa.
-- **Handoff com operação não terminal:** a conversa muda **imediatamente** para `WAITING_ANALYST`. Se houver operação não terminal **para o mesmo chamado**, o `TRANSFER_TICKET` aguarda a conclusão ou reconciliação dela; a transferência não usa outra chave para repetir a operação anterior; o analista é informado das operações em andamento. Bloquear novas propostas não bloqueia a transferência da conversa. PENDENTE (Bloco 7): mecanismo de sincronização.
-
-**C3 — Origem das escritas (reescreve a invariante 5; DM §7)**
-
-- **Invariante 5:** operações de criação, atualização e reabertura de chamados **originadas por solicitações do funcionário** exigem uma `PendingAction` confirmada. `TRANSFER_TICKET` é uma exceção executada pelo backend como parte de um handoff autorizado. Operações originadas pelo **console do analista** seguem autorização própria pelo papel `ANALYST`, com auditoria.
-
-| Origem                     | Autorização                              |
-| -------------------------- | ---------------------------------------- |
-| Solicitação do funcionário | `PendingAction` confirmada               |
-| Handoff pelo backend       | Política de transferência                |
-| Console do analista        | Papel `ANALYST` + autorização do serviço |
-
-`ASSIGN_TICKET` continua PENDENTE (Bloco 7) e não entra em `OperationType` agora.
-
-**C2 / L3 / L6 — Resumo do handoff (DM §3.6)**
-
-```ts
-interface ConversationEvent {
-  // campos existentes
-  summary?: string; // obrigatório em HANDOFF
-  decisionRecordId?: string; // obrigatório em HANDOFF
-}
-```
-
-- `PendingAction` mantém o rascunho estruturado original, mesmo cancelado.
-- `ConversationEvent.summary` é a **fotografia** do contexto apresentada ao analista no momento da transferência — não substitui a fonte original dos dados.
-- `ConversationEvent.decisionRecordId` aponta para a decisão que originou o encaminhamento; o motivo do handoff é o `PolicyReasonCode` dessa decisão.
-
-**C4 — Onde vivem as regras puras (DM §4)**
-
-- As funções puras de domínio do Bloco 2, incluindo `classifyPriority`, pertencem à **camada de domínio do ticket-service** e são testadas nessa aplicação. Uma única implementação; nenhuma cópia no web.
-
-**Lacunas pequenas**
-
-| Lacuna | Decisão                                                                                                                                                                            |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L1     | `DecisionRecord.pendingActionVersion?: number`. Presente **junto** com `pendingActionId` ou ausente junto com ele. Permite reconstruir qual versão do rascunho cada turno produziu |
-| L4     | `TicketAccessLog` ganha `id: string`                                                                                                                                               |
-| L8     | `Intent` ganha `REOPEN_TICKET`                                                                                                                                                     |
-| L9     | `Conversation.assignedAnalystId` é **limpo** ao sair de `ANALYST_ACTIVE` (devolver ou encerrar). O histórico de quem atendeu fica nos `ConversationEvent`                          |
-| L10    | **Qualquer** encerramento com ação pendente cancela a ação com `CONVERSATION_CLOSED`, na mesma transação local que encerra a conversa                                              |
-| L11    | Handoff sem chamado em foco transfere **só a conversa**: sem `TRANSFER_TICKET` e sem `HANDED_OFF`                                                                                  |
-
-**Lacunas adiadas** (entram como `PENDENTE` no domain model)
-
-| Lacuna                                                          | Destino                      |
-| --------------------------------------------------------------- | ---------------------------- |
-| L2 — transições entre `flow` e `stage`                          | `03-agent-flow.md` (Bloco 1) |
-| L5 — mapeamento `PolicyOutcome` × `PolicyReasonCode`            | Bloco 4                      |
-| L7 — representação de "Sim, resolvido / Ainda não" na `Message` | Bloco 6                      |
-| L12 — catálogo de campos de `TicketEvent.changes`               | Bloco 2                      |
 
 ---
 
@@ -374,20 +312,20 @@ Regras centrais:
 
 O PRD diz que informação de um chamado só vai para quem o abriu, e também que analistas recebem chamados e atendem conversas transferidas. Interpretamos a regra de privacidade como proteção **entre funcionários**; o service desk exerce sua função.
 
-| Papel      | Acesso a chamados                                                            |
-| ---------- | ---------------------------------------------------------------------------- |
-| `EMPLOYEE` | Somente os próprios (`requesterId`)                                          |
-| Agent      | Somente os do funcionário autenticado na sessão                              |
-| `ANALYST`  | Chamados de funcionários pelo console, **com auditoria** (`TicketAccessLog`) |
+| Papel      | Acesso a chamados                                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EMPLOYEE` | Somente os próprios (`requesterId`)                                                                                                             |
+| Agent      | Somente os do funcionário autenticado na sessão                                                                                                 |
+| `ANALYST`  | Chamados de funcionários pelo console, **com auditoria**: consultas em `TicketAccessLog`; mutações em `TicketEvent` com `actor.type: "ANALYST"` |
 
-- Consultar não altera o chamado: a auditoria do analista não é `TicketEvent`.
+- Consultar não altera o chamado, por isso a consulta é auditada fora do `TicketEvent`. Toda alteração feita pelo analista entra no `TicketEvent`, como qualquer mutação.
 - Em produção, isso evoluiria para permissões por equipe, departamento ou nível.
 
 ### Proteções
 
 - **Identidade vem da sessão.** As tools não têm parâmetro `userId`; o backend injeta o usuário autenticado.
 - **O ticket-service valida o solicitante** em toda leitura e escrita de funcionário — defesa em profundidade.
-- **Autorização por origem da escrita:** funcionário via `PendingAction` confirmada; handoff pela política de transferência; console pelo papel `ANALYST` (§4.2, C3).
+- **Autorização por origem da escrita:** funcionário via `PendingAction` confirmada; handoff pela política de transferência; console pelo papel `ANALYST` (DM §7.1, invariante 5).
 - Funcionário não acessa o console; só `ANALYST` assume, devolve ou encerra conversas.
 - O **LLM não recebe credenciais**; o frontend nunca recebe a chave do provedor.
 - **Logs sem dados sensíveis** desnecessários.
@@ -460,25 +398,25 @@ Retry com backoff curto. Se persistir, o agent avisa que o sistema está instáv
 - **Baseline primeiro.** Depois, mudar uma variável por vez (prompt, modelo, tools) e comparar no mesmo conjunto.
 - Começamos com ~17 cenários e crescemos a cada fatia (meta: 25).
 
-| Cenário inicial                               | Esperado                                                             |
-| --------------------------------------------- | -------------------------------------------------------------------- |
-| Horário do service desk                       | Responde pelo artigo                                                 |
-| VPN erro 809 no Windows 10                    | Instrução do artigo                                                  |
-| VPN erro 809 no Windows 11                    | Não aplica o artigo (`applicability`); propõe chamado                |
-| "Qual o status do meu chamado?"               | Lista só os chamados do funcionário                                  |
-| Pergunta sobre chamado de outra pessoa        | Nega                                                                 |
-| Senha do SAP de novo (resolvido há 4 dias)    | Propõe reabrir                                                       |
-| Notebook lento com chamado já aberto          | Propõe atualizar, não duplicar                                       |
-| Segundo monitor                               | REQ, prioridade baixa                                                |
-| Sistema parado para a equipe                  | Crítica + encaminhamento                                             |
-| "Parou tudo" sem dizer quem é afetado         | Pergunta o alcance (`AFFECTED_SCOPE_MISSING`)                        |
-| "Parou para mim", alcance "Não sei"           | Alta (`AFFECTED_SCOPE_UNKNOWN`), sem handoff                         |
-| Assunto de RH                                 | Redireciona                                                          |
-| Pede analista com rascunho aberto             | Handoff; rascunho `CANCELLED`; resumo no evento                      |
-| Pede analista com operação em andamento       | Conversa transferida na hora; `TRANSFER_TICKET` aguarda a operação   |
-| "Isso resolveu, obrigado"                     | Pede confirmação de resolução; encerra com `resolutionSource: AGENT` |
-| Chamado alterado entre proposta e confirmação | Rejeita como desatualizado; nova proposta                            |
-| Timeout na criação seguido de retry           | Um único chamado criado                                              |
+| Cenário inicial                               | Esperado                                                                                                                                        |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Horário do service desk                       | Responde pelo artigo                                                                                                                            |
+| VPN erro 809 no Windows 10                    | Instrução do artigo                                                                                                                             |
+| VPN erro 809 no Windows 11                    | Não aplica o artigo (`applicability`); propõe chamado                                                                                           |
+| "Qual o status do meu chamado?"               | Lista só os chamados do funcionário                                                                                                             |
+| Pergunta sobre chamado de outra pessoa        | Nega                                                                                                                                            |
+| Senha do SAP de novo (resolvido há 4 dias)    | Propõe reabrir                                                                                                                                  |
+| Notebook lento com chamado já aberto          | Propõe atualizar, não duplicar                                                                                                                  |
+| Segundo monitor                               | REQ, prioridade baixa                                                                                                                           |
+| Sistema parado para a equipe                  | Crítica + encaminhamento                                                                                                                        |
+| "Parou tudo" sem dizer quem é afetado         | Pergunta o alcance (`AFFECTED_SCOPE_MISSING`)                                                                                                   |
+| "Parou para mim", alcance "Não sei"           | Alta (`AFFECTED_SCOPE_UNKNOWN`), sem handoff                                                                                                    |
+| Assunto de RH                                 | Redireciona                                                                                                                                     |
+| Pede analista com rascunho aberto             | Handoff; rascunho `CANCELLED`; resumo no evento                                                                                                 |
+| Pede analista com operação em andamento       | Conversa transferida imediatamente; o `TRANSFER_TICKET` só é criado após a conclusão ou reconciliação da operação não terminal do mesmo chamado |
+| "Isso resolveu, obrigado"                     | Pede confirmação de resolução; encerra com `resolutionSource: AGENT`                                                                            |
+| Chamado alterado entre proposta e confirmação | Rejeita como desatualizado; nova proposta                                                                                                       |
+| Timeout na criação seguido de retry           | Um único chamado criado                                                                                                                         |
 
 ### Métricas
 
@@ -523,25 +461,25 @@ Cada ADR responde: **por que assim? quais alternativas? o que mudaria com 20 mil
 
 Nenhuma bloqueia o início. Cada uma tem o bloco em que será decidida.
 
-| #   | Questão                                                                                                                              | Decisão inicial                                                                                                        | Resolver no                  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| 1   | Transições entre `flow` e `stage` do `InteractionContext` (L2)                                                                       | —                                                                                                                      | Bloco 1 (`03-agent-flow.md`) |
-| 2   | Status do chamado e transições válidas                                                                                               | Propor a partir dos exemplos do PRD                                                                                    | Bloco 2                      |
-| 3   | Critério de "mesmo problema" (duplicidade)                                                                                           | Candidatos: mesmo solicitante + mesma categoria + status aberto; agent compara, funcionário confirma                   | Bloco 2                      |
-| 4   | Calendário de SLA (hora/dia útil, início da contagem, reinício, fora do expediente, feriados) e campos de prazo do chamado           | O artigo de exemplo (seg–sex, 8h–18h; plantão crítico 24h) é **evidência**, não especificação. Calendário configurável | Bloco 2                      |
-| 5   | Lista final de tipos de `TicketEvent` e catálogo de `changes` (L12)                                                                  | Conforme as operações implementadas                                                                                    | Bloco 2                      |
-| 6   | ORM e driver do SQLite                                                                                                               | —                                                                                                                      | Bloco 3                      |
-| 7   | Política de retry (timeout, backoff, limite, erros transitórios × definitivos, recuperação após reinício)                            | —                                                                                                                      | Bloco 3                      |
-| 8   | Endpoint de consulta pela chave de idempotência, além do retry                                                                       | Retry com mesmo `id` já reconcilia                                                                                     | Bloco 3                      |
-| 9   | Modelo LLM                                                                                                                           | Rápido e barato; regras no código reduzem a exigência                                                                  | Bloco 4                      |
-| 10  | Como definir "baixa confiança" para transferir                                                                                       | Combinar sinais (confiança declarada, campos faltando, tool falhou, intenção ambígua) e calibrar com os cenários       | Bloco 4                      |
-| 11  | Catálogo de `appliedRules`; mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5)                                                     | IDs estáveis, criados conforme as regras forem implementadas                                                           | Bloco 4                      |
-| 12  | Reabertura: agent propõe ou funcionário pede?                                                                                        | Agent propõe ao detectar o mesmo problema resolvido há ≤ 7 dias                                                        | Bloco 5                      |
-| 13  | Validade do rascunho (`EXPIRED`); nova proposta com outra pendente aberta                                                            | Uma pendente por conversa; nova proposta exige concluir ou cancelar a anterior                                         | Bloco 5                      |
-| 14  | 30 mensagens: do usuário ou totais? Por conversa ou por login?                                                                       | Mensagens do usuário, por conversa; limite configurável                                                                | Bloco 6                      |
-| 15  | Snapshot de `QUICK_REPLIES`; representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                         | Recurso persistido e recuperável                                                                                       | Bloco 6                      |
-| 16  | Encerramento por inatividade                                                                                                         | Fora do MVP                                                                                                            | Bloco 6                      |
-| 17  | Sincronização do handoff com operação em andamento; recuperação quando só um lado conclui; `ASSIGN_TICKET`; integração com o console | Sem atomicidade entre serviços; `TRANSFER_TICKET` aguarda operação do mesmo chamado                                    | Bloco 7                      |
+| #   | Questão                                                                                                                                                                                        | Decisão inicial                                                                                                        | Resolver no                  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| 1   | Transições entre `flow` e `stage` do `InteractionContext` (L2)                                                                                                                                 | —                                                                                                                      | Bloco 1 (`03-agent-flow.md`) |
+| 2   | Status do chamado e transições válidas                                                                                                                                                         | Propor a partir dos exemplos do PRD                                                                                    | Bloco 2                      |
+| 3   | Critério de "mesmo problema" (duplicidade)                                                                                                                                                     | Candidatos: mesmo solicitante + mesma categoria + status aberto; agent compara, funcionário confirma                   | Bloco 2                      |
+| 4   | Calendário de SLA (hora/dia útil, início da contagem, reinício, fora do expediente, feriados) e campos de prazo do chamado                                                                     | O artigo de exemplo (seg–sex, 8h–18h; plantão crítico 24h) é **evidência**, não especificação. Calendário configurável | Bloco 2                      |
+| 5   | Lista final de tipos de `TicketEvent` e catálogo de `changes` (L12)                                                                                                                            | Conforme as operações implementadas                                                                                    | Bloco 2                      |
+| 6   | ORM e driver do SQLite                                                                                                                                                                         | —                                                                                                                      | Bloco 3                      |
+| 7   | Política de retry (timeout, backoff, limite, erros transitórios × definitivos, recuperação após reinício)                                                                                      | —                                                                                                                      | Bloco 3                      |
+| 8   | Endpoint de consulta pela chave de idempotência, além do retry                                                                                                                                 | Retry com mesmo `id` já reconcilia                                                                                     | Bloco 3                      |
+| 9   | Modelo LLM                                                                                                                                                                                     | Rápido e barato; regras no código reduzem a exigência                                                                  | Bloco 4                      |
+| 10  | Como definir "baixa confiança" para transferir                                                                                                                                                 | Combinar sinais (confiança declarada, campos faltando, tool falhou, intenção ambígua) e calibrar com os cenários       | Bloco 4                      |
+| 11  | Catálogo de `appliedRules`; mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5)                                                                                                               | IDs estáveis, criados conforme as regras forem implementadas                                                           | Bloco 4                      |
+| 12  | Reabertura: agent propõe ou funcionário pede?                                                                                                                                                  | Agent propõe ao detectar o mesmo problema resolvido há ≤ 7 dias                                                        | Bloco 5                      |
+| 13  | Validade do rascunho (`EXPIRED`); nova proposta com outra pendente aberta                                                                                                                      | Uma pendente por conversa; nova proposta exige concluir ou cancelar a anterior                                         | Bloco 5                      |
+| 14  | 30 mensagens: do usuário ou totais? Por conversa ou por login?                                                                                                                                 | Mensagens do usuário, por conversa; limite configurável                                                                | Bloco 6                      |
+| 15  | Snapshot de `QUICK_REPLIES`; representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                                                                                   | Recurso persistido e recuperável                                                                                       | Bloco 6                      |
+| 16  | Encerramento por inatividade                                                                                                                                                                   | Fora do MVP                                                                                                            | Bloco 6                      |
+| 17  | Sincronização do handoff com operação em andamento; recuperação quando só um lado conclui; `ASSIGN_TICKET`; autorização das escritas do console pelo papel `ANALYST`; integração com o console | Sem atomicidade entre serviços; o `TRANSFER_TICKET` só é criado após a operação não terminal do mesmo chamado terminar | Bloco 7                      |
 
 ---
 
@@ -551,7 +489,7 @@ Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado
 
 | Bloco | Entrega                                                                                             | Pronto quando…                                                       |
 | ----- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 1     | Fase 0: ~~domain model~~ (v1 feito; aguardando §4.2), agent flow, ADRs 001–007, cenários            | Consigo explicar o fluxo inteiro sem olhar o documento               |
+| 1     | Fase 0: ~~domain model~~ (v2.1 aprovado), agent flow, ADRs 001–007, cenários                        | Consigo explicar o fluxo inteiro sem olhar o documento               |
 | 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura) | Testes verdes, sem dependências além do test runner                  |
 | 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                               | Retry após timeout não duplica chamado                               |
 | 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                         | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
@@ -604,9 +542,9 @@ Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado
 | Contradição com decisão aprovada       | Registrar numa seção própria, citando os dois trechos, sem resolver |
 | Nova decisão arquitetural necessária   | Não decidir sozinho                                                 |
 
-### Instrução para atualizar o domain model (próximo passo)
+### Domain model congelado
 
-> Leia o `README.md` §4.2 e o `docs/architecture/01-domain-model.md` atual. Incorpore no domain model **exclusivamente** as decisões listadas na §4.2 (C1, C2/L3/L6, C3, C4, L1, L4, L8, L9, L10, L11) e marque L2, L5, L7 e L12 como `PENDENTE` nos blocos indicados. Atualize as seções afetadas (contratos, invariantes, ciclos de vida, lacunas e contradições), a seção de rastreabilidade e acrescente um histórico de versões no próprio documento (v1 → v2). Não altere outras decisões nem o README. Ao final, liste cada decisão da §4.2 e a seção do domain model onde ela foi incorporada, e qualquer nova contradição encontrada.
+O `01-domain-model.md` muda só por **inconsistência comprovada** ou por **decisão atribuída a um bloco** (DM §10). Quando isso acontecer, a decisão é registrada **direto no domain model** (é a fonte da verdade do domínio), com nova entrada no histórico dele (DM §14).
 
 **Critério de revisão:** o artefato não é aprovado por estar bem escrito, e sim se cada item tiver origem rastreável na fonte da verdade.
 
@@ -662,3 +600,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.1   | Respostas às 30 dúvidas do domain model: autorização separada de execução; idempotência por `OperationExecution.id`; `CANCELLED` com `HANDOFF`; encerramento pelo agent; acesso do analista com auditoria; `classifyPriority` total; cardinalidades e invariantes                                                                                                                                                                                                                                                                                         |
 | v2.2   | Respostas às 13 dúvidas restantes: `TicketDraft` discriminado; `Ticket.version`; idempotência antes da versão; `CommitmentRisk`; "Não sei" + bloqueado = Alta; `ConversationEvent`; `Message` com decisão e anexos; regras de concorrência; catálogos tipados. Ajustes de revisão: `classifyPriority` no ticket-service; `UNKNOWN` ≠ `NO`; `NOT_ASKED` por validação                                                                                                                                                                                      |
 | v2.3   | Revisão do domain model v1. **Hierarquia documental:** `01-domain-model.md` vira a fonte da verdade do domínio; §4, §6 e §7 deste README viram resumo com referência. Decisões C1 (invariantes 11 e 12; handoff imediato com `TRANSFER_TICKET` aguardando), C2/L3/L6 (resumo e decisão no `ConversationEvent` `HANDOFF`), C3 (autorização por origem da escrita), C4 (regras puras no domínio do ticket-service) e lacunas L1, L4, L8–L11 — listadas na §4.2 até a incorporação. L2, L5, L7, L12 adiadas. `02-state-model.md` absorvido pelo domain model |
+| v2.4   | `01-domain-model.md` **v2.1 aprovado e congelado** (C5: chamado em foco; C6: resumo único do handoff; C7: direção da sincronização, mecanismo no Bloco 7; auditoria de escritas do analista via `TicketEvent`). Antiga §4.2 removida, já incorporada ao domain model. Regra de congelamento registrada. Ajustes de revisão: auditoria do analista separada em consultas × mutações; questão 17 inclui autorização das escritas do console; cenário de handoff com operação em andamento alinhado a C7                                                     |

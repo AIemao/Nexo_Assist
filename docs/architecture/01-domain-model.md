@@ -1,6 +1,8 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, derivado do `README.md` v2.2 (seções 4, 6, 7, 8 e 9). **Nenhuma decisão nova** é introduzida aqui. O README é a fonte da verdade; se este documento divergir dele, o README prevalece.
+> Artefato do Bloco 1, **versão 2.1** (ver seção 14, Histórico de versões).
+>
+> **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
 > Estado: documentação arquitetural. Nenhum código funcional foi produzido.
 
@@ -8,7 +10,7 @@
 
 ### 0.1 Classificação das afirmações
 
-Cada regra é rotulada pela sua natureza, conforme a convenção do README (Convenções; §14):
+Cada regra é rotulada pela sua natureza, conforme a convenção do README (Convenções):
 
 | Rótulo | Significado |
 | --- | --- |
@@ -22,46 +24,46 @@ Quando o README não rotula a origem de uma regra, este documento cita apenas a 
 
 ### 0.2 Convenções
 
-Prosa em português; identificadores, tipos e valores de enum em inglês. As referências `§N.N` apontam para seções do `README.md`.
+Prosa em português; identificadores, tipos e valores de enum em inglês. Convenção de referências: `§N.N` sem prefixo aponta para uma seção **deste documento**; `README §N.N` aponta para uma seção do `README.md`; o PRD e os ADRs são identificados pela própria fonte (ex.: PRD, ADR-001).
 
 ---
 
 ## 1. Visão geral do domínio
 
-O sistema é um agent de atendimento do service desk de TI. A tese central é: **o LLM interpreta e propõe; o código decide e executa** (§1, ADR-001).
+O sistema é um agent de atendimento do service desk de TI. A tese central é: **o LLM interpreta e propõe; o código decide e executa** (README §1, ADR-001).
 
-O domínio tem dois donos arquiteturais (§4.1, §5). A coluna "Dono" é contexto arquitetural; nenhuma regra de negócio depende de onde a entidade mora (§4.1).
+O domínio tem dois donos arquiteturais (§2, README §5). A coluna "Dono" é contexto arquitetural; nenhuma regra de negócio depende de onde a entidade mora (§2).
 
 - **ticket-service:** `Employee`, `Ticket`, `TicketEvent`, `TicketAccessLog`.
 - **web:** `KnowledgeArticle`, `Conversation`, `ConversationEvent`, `Message`, `PendingAction`, `OperationExecution`, `DecisionRecord`, `ConversationTicket`, `ConversationTicketInteraction`.
 
-Quatro ciclos de estado independentes (§7, ADR-006): conversa, interação, ação pendente e execução de operação.
+Quatro ciclos de estado independentes (README §7, ADR-006): conversa, interação, ação pendente e execução de operação.
 
-Três registros separados por acontecerem em momentos diferentes (§6): `DecisionRecord` (decisão de um turno do agent), `PendingAction` (autorização do funcionário) e `OperationExecution` (execução técnica).
+Três registros separados por acontecerem em momentos diferentes (README §6): `DecisionRecord` (decisão de um turno do agent), `PendingAction` (autorização do funcionário) e `OperationExecution` (execução técnica).
 
 ---
 
 ## 2. Entidades e responsabilidades
 
-Fonte: §4.1.
+Fonte: contratos conceituais da seção 3.
 
 | Entidade | Dono | Responsabilidade | Origem |
 | --- | --- | --- | --- |
-| `Employee` | ticket-service | Identidade demonstrativa e papel | §4.1, §4.2 |
-| `Ticket` | ticket-service | Dados e ciclo de vida do chamado | §4.1, §4.3 |
-| `TicketEvent` | ticket-service | **Histórico oficial** do chamado (alterações) | §4.1, §4.8 |
-| `TicketAccessLog` | ticket-service | Auditoria de consultas feitas pelo console | §4.1, §8 |
-| `KnowledgeArticle` | web (módulo de conhecimento) | Conteúdo da central de ajuda, em JSON | §4.1, §4.8 |
-| `Conversation` | web | Controle do atendimento e contexto da interação | §4.1, §4.6 |
-| `ConversationEvent` | web | **Histórico oficial** das transições da conversa (ator, horário, motivo) | §4.1, §4.6 |
-| `Message` | web | Histórico conversacional, com vínculo à decisão e aos cards | §4.1, §4.8 |
-| `PendingAction` | web | **Autorização** do funcionário | §4.1, §6 |
-| `OperationExecution` | web | **Execução técnica** de uma operação no ticket-service | §4.1, §6 |
-| `DecisionRecord` | web | Interpretação e política de um turno do agent | §4.1, §6 |
-| `ConversationTicket` | web | Relacionamento N:N conversa–chamado | §4.1, §4.7 |
-| `ConversationTicketInteraction` | web | Como o chamado participou da conversa | §4.1, §4.7 |
+| `Employee` | ticket-service | Identidade demonstrativa e papel | §3.1 |
+| `Ticket` | ticket-service | Dados e ciclo de vida do chamado | §3.2 |
+| `TicketEvent` | ticket-service | **Histórico oficial** do chamado (alterações) | §3.9 |
+| `TicketAccessLog` | ticket-service | Auditoria de consultas feitas pelo console | §3.10, README §8 |
+| `KnowledgeArticle` | web (módulo de conhecimento) | Conteúdo da central de ajuda, em JSON | §3.11 |
+| `Conversation` | web | Controle do atendimento e contexto da interação | §3.5 |
+| `ConversationEvent` | web | **Histórico oficial** das transições da conversa (ator, horário, motivo) | §3.6, §8.1 |
+| `Message` | web | Histórico conversacional, com vínculo à decisão e aos cards | §3.8 |
+| `PendingAction` | web | **Autorização** do funcionário | §3.13, README §6 |
+| `OperationExecution` | web | **Execução técnica** de uma operação no ticket-service | §3.14, README §6 |
+| `DecisionRecord` | web | Interpretação e política de um turno do agent | §3.12, README §6 |
+| `ConversationTicket` | web | Relacionamento N:N conversa–chamado | §3.7 |
+| `ConversationTicketInteraction` | web | Como o chamado participou da conversa | §3.7 |
 
-Fontes da verdade (§7D): autorização = `PendingAction`; execução = `OperationExecution`, conciliada com o ticket-service; histórico oficial do chamado = `TicketEvent` (§4.7); histórico oficial da conversa = `ConversationEvent`; rascunho apresentado = `PendingAction` (§4.6).
+Fontes da verdade (README §7D): autorização = `PendingAction`; execução = `OperationExecution`, conciliada com o ticket-service; histórico oficial do chamado = `TicketEvent` (§3.9); histórico oficial da conversa = `ConversationEvent`; rascunho apresentado = `PendingAction` (§3.5).
 
 ---
 
@@ -69,7 +71,7 @@ Fontes da verdade (§7D): autorização = `PendingAction`; execução = `Operati
 
 Os blocos a seguir reproduzem os contratos do README. São **contratos conceituais** (Convenções): definem nomes, campos e regras, não tipos finais.
 
-### 3.1 Employee (§4.2)
+### 3.1 Employee
 
 ```ts
 type EmployeeRole = "EMPLOYEE" | "ANALYST";
@@ -83,10 +85,10 @@ interface Employee {
 }
 ```
 
-- Distinção N1/N2 **não** é modelada: o PRD não define regras diferentes entre os níveis (§3, "Fora").
-- Autenticação simulada, com qualquer senha para funcionários do seed (§3, §8). Identidade e papel são estabelecidos no servidor a partir da sessão e nunca vêm de parâmetros fornecidos pelo LLM (§8).
+- Distinção N1/N2 **não** é modelada: o PRD não define regras diferentes entre os níveis (README §3, "Fora").
+- Autenticação simulada, com qualquer senha para funcionários do seed (README §3, README §8). Identidade e papel são estabelecidos no servidor a partir da sessão e nunca vêm de parâmetros fornecidos pelo LLM (README §8).
 
-### 3.2 Ticket (§4.3)
+### 3.2 Ticket
 
 ```ts
 type TicketType = "INC" | "REQ";
@@ -113,18 +115,18 @@ interface Ticket {
 
 Regras e observações:
 
-- Tipos e categorias do service desk são regras **[PRD]** (Anexo A, §2). Os valores de enum em inglês são **[Contrato]**.
-- O formato de 5 dígitos do `id` segue exemplos do PRD e **não é invariante** (§4.3).
-- **Vencido é calculado** (prazo x relógio), nunca persistido como status (§2, §4.3).
-- **Atualização acrescenta** informação; não substitui silenciosamente a descrição original (§4.3).
-- `requesterId` vem da sessão, nunca do rascunho; `assignedTo` não é escolhido na abertura (§4.3).
-- `Ticket.assignedTo` (quem atende o chamado) é distinto de `Conversation.assignedAnalystId` (quem atende a conversa) (§4.6, §9).
-- A máquina de estados de `TicketStatus` é **[Premissa]** a ser proposta no Bloco 2. O PRD só dá exemplos: Aguardando analista, Em andamento, Aprovado, Resolvido (§4.3).
-- Prazos por prioridade são **[PRD]** (§2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
+- Tipos e categorias do service desk são regras **[PRD]** (Anexo A, README §2). Os valores de enum em inglês são **[Contrato]**.
+- O formato de 5 dígitos do `id` segue exemplos do PRD e **não é invariante**.
+- **Vencido é calculado** (prazo x relógio), nunca persistido como status (README §2).
+- **Atualização acrescenta** informação; não substitui silenciosamente a descrição original.
+- `requesterId` vem da sessão, nunca do rascunho; `assignedTo` não é escolhido na abertura.
+- `Ticket.assignedTo` (quem atende o chamado) é distinto de `Conversation.assignedAnalystId` (quem atende a conversa) (§3.5, README §9).
+- A máquina de estados de `TicketStatus` é **[Premissa]** a ser proposta no Bloco 2. O PRD só dá exemplos: Aguardando analista, Em andamento, Aprovado, Resolvido.
+- Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
 
-PENDENTE (Bloco 2): `TicketStatus` e transições válidas (§12 #1); campos de prazo do chamado e calendário de SLA (§12 #3); critério de "mesmo problema" para duplicidade (§12 #2).
+PENDENTE (Bloco 2): `TicketStatus` e transições válidas (README §12 #1); campos de prazo do chamado e calendário de SLA (README §12 #3); critério de "mesmo problema" para duplicidade (README §12 #2).
 
-### 3.3 TicketDraft (payload da PendingAction) (§4.3)
+### 3.3 TicketDraft (payload da PendingAction)
 
 União discriminada; cada operação tem seus próprios campos obrigatórios.
 
@@ -160,12 +162,12 @@ interface ReopenTicketDraft {
 
 Regras:
 
-- O funcionário confirma **exatamente** a prioridade e o prazo exibidos no card. O ticket-service **revalida** antes de criar; se o resultado mudou, nova proposta é apresentada (§4.3).
-- Se `expectedTicketVersion` não bate com a versão atual do chamado, a operação é rejeitada como desatualizada e o agent consulta de novo antes de propor (§4.3).
-- Resolvido há até 7 dias pode ser reaberto **[PRD]** (§2).
-- Abertura exige título, descrição, tipo, categoria, prioridade e afetados; fluxo rascunho, confirmação, criação **[PRD]** (§2).
+- O funcionário confirma **exatamente** a prioridade e o prazo exibidos no card. O ticket-service **revalida** antes de criar; se o resultado mudou, nova proposta é apresentada.
+- Se `expectedTicketVersion` não bate com a versão atual do chamado, a operação é rejeitada como desatualizada e o agent consulta de novo antes de propor.
+- Resolvido há até 7 dias pode ser reaberto **[PRD]** (README §2).
+- Abertura exige título, descrição, tipo, categoria, prioridade e afetados; fluxo rascunho, confirmação, criação **[PRD]** (README §2).
 
-### 3.4 ImpactAssessment e ImpactAssessmentDraft (§4.4)
+### 3.4 ImpactAssessment e ImpactAssessmentDraft
 
 ```ts
 type AffectedScope  = "SELF" | "TEAM" | "COMPANY" | "UNKNOWN";
@@ -183,7 +185,7 @@ type ImpactAssessmentDraft = Partial<ImpactAssessment>; // em construção
 
 Ver §5 (Value Objects) para semântica completa.
 
-### 3.5 Conversation e InteractionContext (§4.6)
+### 3.5 Conversation e InteractionContext
 
 ```ts
 type ConversationStatus = "AI_ACTIVE" | "WAITING_ANALYST" | "ANALYST_ACTIVE" | "CLOSED";
@@ -192,8 +194,8 @@ interface Conversation {
   id: string;
   ownerEmployeeId: string;
   status: ConversationStatus;
-  assignedAnalystId?: string;                // presente somente em ANALYST_ACTIVE
-  interactionContext: InteractionContext;    // §7B, persistido
+  assignedAnalystId?: string;                // presente somente em ANALYST_ACTIVE; limpo ao sair desse estado
+  interactionContext: InteractionContext;    // README §7B, persistido
   resolutionSource?: "AGENT" | "ANALYST";    // presente somente em CLOSED
   createdAt: string;
   updatedAt: string;
@@ -216,13 +218,15 @@ interface InteractionContext {
 
 Regras:
 
-- Quem encerrou e quando ficam no `ConversationEvent` do tipo `CLOSED`; **não duplicados** na conversa (§4.6).
-- `resolutionSource: "AGENT"` alimenta a tag "Resolvida pelo agent" do console (§4.6).
-- `PendingAction` é a fonte da verdade do rascunho apresentado; o contexto **não duplica** o status dela (§4.6).
-- Ao devolver a conversa ao agent, o contexto volta para `NONE` / `IDLE`. Mensagens, histórico e resumo do analista são preservados; o agent consulta os dados de novo antes de propor qualquer coisa (§4.6, §7A).
-- O `InteractionContext` não muda o controle da conversa (§7B). O histórico persistido é a fonte da verdade; a memória do LLM não é (§7B).
+- `assignedAnalystId` é **limpo** ao sair de `ANALYST_ACTIVE` (devolver ou encerrar). O histórico de quem atendeu fica nos `ConversationEvent`.
+- Quem encerrou e quando ficam no `ConversationEvent` do tipo `CLOSED`; **não duplicados** na conversa.
+- `resolutionSource: "AGENT"` alimenta a tag "Resolvida pelo agent" do console.
+- `PendingAction` é a fonte da verdade do rascunho apresentado; o contexto **não duplica** o status dela.
+- Ao devolver a conversa ao agent, o contexto volta para `NONE` / `IDLE`. Mensagens, histórico, o `summary` do handoff e as `notes` do analista são preservados; o agent consulta os dados de novo antes de propor qualquer coisa (README §7A).
+- **Chamado em foco** = `InteractionContext.targetTicketId` no instante do handoff (§8.7).
+- O `InteractionContext` não muda o controle da conversa (README §7B). O histórico persistido é a fonte da verdade; a memória do LLM não é (README §7B).
 
-### 3.6 ConversationEvent (§4.6)
+### 3.6 ConversationEvent
 
 ```ts
 type ConversationEventType = "HANDOFF" | "ANALYST_ASSIGNED" | "RETURNED_TO_AGENT" | "CLOSED";
@@ -238,12 +242,19 @@ interface ConversationEvent {
   occurredAt: string;
   reasonCode?: ConversationEventReason; // obrigatório em RETURNED_TO_AGENT
   notes?: string;
+  summary?: string;                     // obrigatório em HANDOFF
+  decisionRecordId?: string;            // obrigatório em HANDOFF
 }
 ```
 
-- Gravado em **toda transição** da §7A. A devolução ao agent registra motivo tanto a partir de `WAITING_ANALYST` quanto de `ANALYST_ACTIVE` (§4.6).
+- Gravado em **toda transição** da conversa (§8.1). A devolução ao agent registra motivo tanto a partir de `WAITING_ANALYST` quanto de `ANALYST_ACTIVE`.
+- `summary` é a **fotografia** do contexto apresentada ao analista no momento da transferência; **não substitui** a fonte original dos dados. A `PendingAction` mantém o rascunho estruturado original, mesmo cancelada.
+- `decisionRecordId` aponta para a decisão que originou o encaminhamento; o **motivo do handoff** é o `PolicyReasonCode` dessa decisão. `ConversationEventReason` continua cobrindo apenas a devolução ao agent.
+- `summary` e `decisionRecordId` são obrigatórios apenas em `HANDOFF`; nos demais tipos permanecem opcionais, sem regra adicional definida.
+- `summary` é o **único resumo do handoff**. O `TRANSFER_TICKET` envia uma **cópia** desse texto ao ticket-service (fronteira entre serviços); a cópia é registrada em `TicketEvent.summary`, no evento `TRANSFERRED` (§3.9, §8.7).
+- `notes` guarda as observações do analista ao devolver a conversa (`RETURNED_TO_AGENT`), quando houver. Não é uma segunda versão do resumo do handoff.
 
-### 3.7 ConversationTicket e ConversationTicketInteraction (§4.7)
+### 3.7 ConversationTicket e ConversationTicketInteraction
 
 ```ts
 interface ConversationTicket {
@@ -264,7 +275,7 @@ interface ConversationTicketInteraction {
 }
 ```
 
-Momento do registro de cada interação (§4.7):
+Momento do registro de cada interação:
 
 | Interação | Quando registrar |
 | --- | --- |
@@ -274,11 +285,11 @@ Momento do registro de cada interação (§4.7):
 | `VIEWED` | Após consulta **detalhada e bem-sucedida** de um chamado específico |
 | `HANDED_OFF` | Após `TRANSFER_TICKET` em `SUCCEEDED` |
 
-- A associação nasce na **primeira interação efetiva**. Aparecer numa lista de resultados **não** cria associação (§4.7).
-- `HANDED_OFF` só para chamados efetivamente encaminhados (por padrão, o chamado em foco). A transferência **da conversa** é registrada em `ConversationEvent` (§4.7).
-- O registro é **idempotente** pelo `operationExecutionId`: retries não duplicam interações (§4.7).
+- A associação nasce na **primeira interação efetiva**. Aparecer numa lista de resultados **não** cria associação.
+- `HANDED_OFF` só para chamados efetivamente encaminhados (por padrão, o chamado em foco; §8.7). A transferência **da conversa** é registrada em `ConversationEvent`. Handoff sem chamado em foco não gera `TRANSFER_TICKET` nem `HANDED_OFF`, mesmo com outros chamados vinculados.
+- O registro é **idempotente** pelo `operationExecutionId`: retries não duplicam interações.
 
-### 3.8 Message (§4.8)
+### 3.8 Message
 
 ```ts
 type MessageAuthor =
@@ -302,10 +313,10 @@ interface Message {
 }
 ```
 
-- A mensagem guarda **referências** aos cards, não cópias de dados (§4.8).
-- Toda referência aponta para um recurso persistido ou snapshot recuperável. `QUICK_REPLIES` precisa reconstruir **exatamente** as opções oferecidas, mesmo após reinício. PENDENTE (Bloco 6): onde o snapshot das opções é armazenado (§4.8, §12 #14).
+- A mensagem guarda **referências** aos cards, não cópias de dados.
+- Toda referência aponta para um recurso persistido ou snapshot recuperável. `QUICK_REPLIES` precisa reconstruir **exatamente** as opções oferecidas, mesmo após reinício. PENDENTE (Bloco 6): onde o snapshot das opções é armazenado (README §12 #14).
 
-### 3.9 TicketEvent (§4.8)
+### 3.9 TicketEvent
 
 ```ts
 interface TicketEvent {
@@ -319,16 +330,28 @@ interface TicketEvent {
 }
 ```
 
-- Histórico oficial de alterações. PENDENTE (Bloco 2): lista final de tipos, conforme as operações implementadas (§4.8, §12 #4).
+- Histórico oficial de alterações. PENDENTE (Bloco 2): lista final de tipos, conforme as operações implementadas (README §12 #4).
+- No evento `TRANSFERRED`, `summary` recebe a cópia de `ConversationEvent.summary` enviada pelo `TRANSFER_TICKET` (§3.6).
+- Toda mutação de chamado feita por analista gera `TicketEvent` com `actor.type: "ANALYST"` (§7.3).
 
-### 3.10 TicketAccessLog (§4.1, §8)
+### 3.10 TicketAccessLog (README §8)
 
-Campos documentados em §8: `analystId`, `ticketId`, `occurredAt`, `origin: CONSOLE`.
+Campos: `id`, `analystId`, `ticketId`, `occurredAt` e `origin: CONSOLE` (README §8).
 
-- Cada consulta de analista pelo console gera um `TicketAccessLog`. **Não é `TicketEvent`:** consultar não altera o chamado (§8).
-- O README não define `id` nem outros atributos além dos quatro citados. Ver seção 11.2.
+```ts
+interface TicketAccessLog {
+  id: string;
+  analystId: string;
+  ticketId: string;
+  occurredAt: string;
+  origin: "CONSOLE";
+}
+```
 
-### 3.11 KnowledgeArticle (§4.8)
+- Cada consulta de analista pelo console gera um `TicketAccessLog`. **Não é `TicketEvent`:** consultar não altera o chamado (README §8).
+- Os tipos dos campos seguem a convenção dos demais contratos (identificadores e datas como `string`).
+
+### 3.11 KnowledgeArticle
 
 ```ts
 interface KnowledgeArticle {
@@ -341,14 +364,14 @@ interface KnowledgeArticle {
 }
 ```
 
-- `applicability` impede aplicar, por exemplo, o artigo de VPN do Windows 10 a quem usa Windows 11 (§4.8, §10).
-- Busca lexical, sem embeddings (ADR-003, §3).
+- `applicability` impede aplicar, por exemplo, o artigo de VPN do Windows 10 a quem usa Windows 11 (README §10).
+- Busca lexical, sem embeddings (ADR-003, README §3).
 
-### 3.12 DecisionRecord (§6)
+### 3.12 DecisionRecord (README §6)
 
 ```ts
 type Intent =
-  | "ANSWER_KB" | "LIST_MY_TICKETS" | "CREATE_TICKET" | "UPDATE_TICKET"
+  | "ANSWER_KB" | "LIST_MY_TICKETS" | "CREATE_TICKET" | "UPDATE_TICKET" | "REOPEN_TICKET"
   | "HANDOFF" | "CLOSE_CONVERSATION" | "OUT_OF_SCOPE" | "CLARIFY";
 
 type PolicyOutcome =
@@ -371,18 +394,22 @@ interface DecisionRecord {            // um por turno do agent
   evidence: Array<{ type: "ARTICLE" | "TICKET" | "BUSINESS_RULE"; referenceId: string }>;
   toolExecutions: Array<{ name: string; status: "SUCCESS" | "FAILED"; durationMs: number }>;
   pendingActionId?: string;            // ação criada OU alterada neste turno
+  pendingActionVersion?: number;       // versão do rascunho produzida neste turno
 }
 ```
 
 Regras:
 
-- Três camadas por resposta: **interpretação** (o que o modelo entendeu), **política** (o que o sistema permite), **execução** (o que realmente aconteceu) (§6).
-- O **backend monta** `toolExecutions` a partir do que de fato rodou. O modelo não declara sucesso de nada (§6).
-- A **confiança declarada não autoriza nenhuma operação**; serve como um dos sinais para encaminhar ao analista (§6).
-- **Não se expõe o raciocínio interno do modelo**; expõem-se evidências, regras e ações (§6).
-- `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). PENDENTE (Bloco 4): catálogo definido conforme as regras forem implementadas (§4.11, §12 #10).
+- `pendingActionVersion` está presente **junto** com `pendingActionId` ou ausente junto com ele. Permite reconstruir qual versão do rascunho cada turno produziu.
+- `Intent` passa a conter `REOPEN_TICKET`, alinhado a `InteractionFlow`, `PendingActionType` e `OperationType`.
 
-### 3.13 PendingAction (§6)
+- Três camadas por resposta: **interpretação** (o que o modelo entendeu), **política** (o que o sistema permite), **execução** (o que realmente aconteceu) (README §6).
+- O **backend monta** `toolExecutions` a partir do que de fato rodou. O modelo não declara sucesso de nada (README §6).
+- A **confiança declarada não autoriza nenhuma operação**; serve como um dos sinais para encaminhar ao analista (README §6).
+- **Não se expõe o raciocínio interno do modelo**; expõem-se evidências, regras e ações (README §6).
+- `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). PENDENTE (Bloco 4): catálogo definido conforme as regras forem implementadas (§3.15, README §12 #10).
+
+### 3.13 PendingAction (README §6)
 
 ```ts
 type PendingActionType = "CREATE_TICKET" | "UPDATE_TICKET" | "REOPEN_TICKET";
@@ -393,14 +420,17 @@ interface PendingAction {
   conversationId: string;
   createdByDecisionRecordId: string; // as decisões seguintes apontam via DecisionRecord.pendingActionId
   type: PendingActionType;
-  version: number;                   // começa em 1; incrementa conforme §4.3
+  version: number;                   // começa em 1; incrementa conforme a tabela abaixo
   payload: TicketDraft;
-  status: PendingActionStatus;       // §7C
+  status: PendingActionStatus;       // README §7C
   cancellationReason?: "HANDOFF" | "CONVERSATION_CLOSED";
 }
 ```
 
-O que incrementa `version` (§4.3):
+- `CONVERSATION_CLOSED` ocorre em **qualquer** encerramento da conversa com ação pendente, na mesma transação local que encerra a conversa.
+- Mesmo cancelada, a `PendingAction` mantém o rascunho estruturado original.
+
+O que incrementa `version`:
 
 | Alteração | Incrementa? |
 | --- | --- |
@@ -410,7 +440,7 @@ O que incrementa `version` (§4.3):
 | Apenas formatação do texto | Não |
 | Nova mensagem sem alteração do rascunho | Não |
 
-### 3.14 OperationExecution (§6, §9)
+### 3.14 OperationExecution (README §6, README §9)
 
 ```ts
 type OperationType = "CREATE_TICKET" | "UPDATE_TICKET" | "REOPEN_TICKET" | "TRANSFER_TICKET";
@@ -421,19 +451,20 @@ interface OperationExecution {
   conversationId: string;
   pendingActionId?: string;  // ausente em TRANSFER_TICKET originado por handoff
   operation: OperationType;
-  status: OperationExecutionStatus; // §7D
+  status: OperationExecutionStatus; // README §7D
   ticketId?: string;
   attempts: number;          // tentativas técnicas da MESMA operação
 }
 ```
 
-- Toda tentativa da mesma operação reutiliza o **mesmo** `id` (`attempts + 1`) (§7D, §9).
-- Nova operação de negócio = novo `id`. Repetição técnica = mesmo `id` (§9).
-- `PendingActionType` não inclui `TRANSFER_TICKET`; `OperationType` inclui (§6).
+- Toda tentativa da mesma operação reutiliza o **mesmo** `id` (`attempts + 1`) (README §7D, README §9).
+- Nova operação de negócio = novo `id`. Repetição técnica = mesmo `id` (README §9).
+- `PendingActionType` não inclui `TRANSFER_TICKET`; `OperationType` inclui (README §6).
+- O `TRANSFER_TICKET` envia ao ticket-service uma cópia de `ConversationEvent.summary` (§3.6).
 
-### 3.15 Catálogos de códigos (§4.11)
+### 3.15 Catálogos de códigos
 
-Códigos operacionais são **tipados e estáveis**; o texto exibido na UI é separado (§4.11).
+Códigos operacionais são **tipados e estáveis**; o texto exibido na UI é separado.
 
 ```ts
 type MissingField =
@@ -450,13 +481,15 @@ type PolicyReasonCode =    // por que esta ação (política)
   | "TOOL_FAILURE" | "OUT_OF_SCOPE" | "INSUFFICIENT_INFORMATION" | "USER_CONFIRMED_RESOLUTION";
 ```
 
-- `PriorityReasonCode` e `PolicyReasonCode` são **catálogos distintos** (§4.11).
+- `PriorityReasonCode` e `PolicyReasonCode` são **catálogos distintos**.
 
 ---
 
 ## 4. Funções de domínio: classifyPriority (ADR-007)
 
-Fonte: §4.5. Regra do **ticket-service** (dono das regras de chamado); o web não tem cópia e obtém o resultado por **leitura** (§4.5, §6).
+Regra do **ticket-service** (dono das regras de chamado); o web não tem cópia e obtém o resultado por **leitura** (README §6).
+
+As funções puras de domínio do Bloco 2, incluindo `classifyPriority`, pertencem à **camada de domínio do ticket-service** e são testadas nessa aplicação. Uma única implementação; nenhuma cópia no web. Contradição C4 resolvida (seção 12).
 
 ```ts
 type PriorityClassification =
@@ -482,13 +515,13 @@ function classifyPriority(assessment: ImpactAssessmentDraft): PriorityClassifica
 
 Regras associadas:
 
-- **Regra 4 [Premissa]:** "Não sei" + bloqueado vira Alta, prioridade do **impacto mínimo conhecido**. Não afirma que o caso não possa ser crítico; `AFFECTED_SCOPE_UNKNOWN` fica visível ao analista. **Não** gera handoff automático nem repete a pergunta (§4.5).
-- Com `BLOCKED`, a pergunta sobre compromisso é dispensada; o chamado grava `commitmentRisk: NOT_ASKED` (§4.5).
-- `commitmentRisk = UNKNOWN` ou `NO` não eleva a prioridade e segue para as regras 7 e 8. **[Premissa] conservadora:** com risco desconhecido, usa-se o impacto conhecido sem presumir urgência adicional; a incerteza fica registrada e visível (§4.5).
-- Fora de `BLOCKED`, o alcance não altera a prioridade, mas continua **obrigatório para abrir o chamado** (completude do rascunho difere de classificação) (§4.5).
-- `NEEDS_CLARIFICATION` **não é uma prioridade**; é um resultado discriminado (§4.5).
-- Coberta por testes de tabela com todas as combinações (§4.5, §10).
-- O LLM nunca escolhe a prioridade nem o prazo (§4.10 #3).
+- **Regra 4 [Premissa]:** "Não sei" + bloqueado vira Alta, prioridade do **impacto mínimo conhecido**. Não afirma que o caso não possa ser crítico; `AFFECTED_SCOPE_UNKNOWN` fica visível ao analista. **Não** gera handoff automático nem repete a pergunta.
+- Com `BLOCKED`, a pergunta sobre compromisso é dispensada; o chamado grava `commitmentRisk: NOT_ASKED`.
+- `commitmentRisk = UNKNOWN` ou `NO` não eleva a prioridade e segue para as regras 7 e 8. **[Premissa] conservadora:** com risco desconhecido, usa-se o impacto conhecido sem presumir urgência adicional; a incerteza fica registrada e visível.
+- Fora de `BLOCKED`, o alcance não altera a prioridade, mas continua **obrigatório para abrir o chamado** (completude do rascunho difere de classificação).
+- `NEEDS_CLARIFICATION` **não é uma prioridade**; é um resultado discriminado.
+- Coberta por testes de tabela com todas as combinações (README §10).
+- O LLM nunca escolhe a prioridade nem o prazo (invariante 3).
 
 ---
 
@@ -496,16 +529,16 @@ Regras associadas:
 
 | Value Object | Definição | Origem |
 | --- | --- | --- |
-| `ImpactAssessment` | `affectedScope`, `workImpact`, `commitmentRisk`. Sem id, sem repositório próprio; vive dentro do `Ticket` (snapshot usado na classificação) | §4.3, §4.4 |
-| `ImpactAssessmentDraft` | `Partial<ImpactAssessment>`: o que existe durante a conversa | §4.4 |
-| `TicketDraft` (e variantes) | Payload da `PendingAction`; união discriminada por `operation` | §4.3 |
-| `InteractionContext` | Estrutura embutida e persistida na `Conversation` | §4.6 |
-| `MessageAuthor`, `MessageAttachment` | Estruturas embutidas na `Message` | §4.8 |
-| `PriorityClassification` | Resultado discriminado de `classifyPriority` (`CLASSIFIED` ou `NEEDS_CLARIFICATION`) | §4.5 |
+| `ImpactAssessment` | `affectedScope`, `workImpact`, `commitmentRisk`. Sem id, sem repositório próprio; vive dentro do `Ticket` (snapshot usado na classificação) | §3.4 |
+| `ImpactAssessmentDraft` | `Partial<ImpactAssessment>`: o que existe durante a conversa | §3.4 |
+| `TicketDraft` (e variantes) | Payload da `PendingAction`; união discriminada por `operation` | §3.3 |
+| `InteractionContext` | Estrutura embutida e persistida na `Conversation` | §3.5 |
+| `MessageAuthor`, `MessageAttachment` | Estruturas embutidas na `Message` | §3.8 |
+| `PriorityClassification` | Resultado discriminado de `classifyPriority` (`CLASSIFIED` ou `NEEDS_CLARIFICATION`) | §4 |
 
-Observação: o README declara explicitamente como value object apenas `ImpactAssessment` (§4.4: "Value object: sem id, sem repositório próprio"). A classificação dos demais itens da tabela como value objects é a leitura estrutural deste documento (estruturas embutidas sem identidade própria nos contratos); não é declaração textual do README.
+Observação: apenas `ImpactAssessment` é declarado explicitamente como value object ("sem id, sem repositório próprio"). A classificação dos demais itens da tabela como value objects é a leitura estrutural deste documento (estruturas embutidas sem identidade própria nos contratos); não é declaração textual da fonte.
 
-### 5.1 Semântica de ImpactAssessment (§4.4)
+### 5.1 Semântica de ImpactAssessment
 
 | Representação | Significado |
 | --- | --- |
@@ -514,10 +547,10 @@ Observação: o README declara explicitamente como value object apenas `ImpactAs
 | `NOT_ASKED` | Não foi necessário perguntar para classificar |
 | `YES` / `NO` | Resposta explícita |
 
-- **Enums em vez de booleanos e `null`**, para tornar combinações contraditórias de `workImpact` não representáveis e evitar interpretações diferentes de `null`/`undefined`/`false` entre TypeScript, JSON e SQLite (§4.4).
-- `NOT_ASKED` só é válido com `workImpact: BLOCKED`. **O tipo ainda permite a combinação inválida**; a regra é garantida por **validação de domínio obrigatória** (ex.: Zod `.superRefine()`). Evoluir para união discriminada é alternativa registrada, sem decisão (§4.4).
-- **`UNKNOWN` difere de `NO`.** Podem produzir a mesma prioridade, mas não são a mesma informação: `UNKNOWN` continua gravado e visível no card e no painel do analista (§4.4).
-- **Tipo e impacto são dimensões diferentes.** `workImpact` não decide INC x REQ (§4.4):
+- **Enums em vez de booleanos e `null`**, para tornar combinações contraditórias de `workImpact` não representáveis e evitar interpretações diferentes de `null`/`undefined`/`false` entre TypeScript, JSON e SQLite.
+- `NOT_ASKED` só é válido com `workImpact: BLOCKED`. **O tipo ainda permite a combinação inválida**; a regra é garantida por **validação de domínio obrigatória** (ex.: Zod `.superRefine`). Evoluir para união discriminada é alternativa registrada, sem decisão.
+- **`UNKNOWN` difere de `NO`.** Podem produzir a mesma prioridade, mas não são a mesma informação: `UNKNOWN` continua gravado e visível no card e no painel do analista.
+- **Tipo e impacto são dimensões diferentes.** `workImpact` não decide INC x REQ:
 
 | Pedido | Tipo | `workImpact` |
 | --- | --- | --- |
@@ -526,13 +559,13 @@ Observação: o README declara explicitamente como value object apenas `ImpactAs
 | Solicitar mouse | REQ | `NONE` |
 | Acesso a sistema necessário para trabalhar hoje | REQ | `BLOCKED` |
 
-- A identificação individual dos afetados está fora de escopo: o protótipo pergunta o **alcance** ("Só eu / Minha equipe / Toda a empresa / Não sei") (§3).
+- A identificação individual dos afetados está fora de escopo: o protótipo pergunta o **alcance** ("Só eu / Minha equipe / Toda a empresa / Não sei") (README §3).
 
 ---
 
 ## 6. Relacionamentos e cardinalidades
 
-Fonte: §4.9, completada por §4.6, §4.7, §6 e §9.
+Fonte: README §6 e README §9, completadas pelos contratos da seção 3.
 
 ```mermaid
 erDiagram
@@ -554,95 +587,113 @@ erDiagram
 
 | Relacionamento | Cardinalidade | Observação | Origem |
 | --- | --- | --- | --- |
-| `Employee` → `Ticket` (solicitante) | 1:N | `Ticket.requesterId` | §4.9 |
-| `Ticket` → `TicketEvent` | 1:N | | §4.9 |
-| `Employee` → `Conversation` | 1:N | `Conversation.ownerEmployeeId` | §4.9 |
-| `Conversation` → `Message` | 1:N | | §4.9 |
-| `Conversation` → `ConversationEvent` | 1:N | Uma por transição | §4.9 |
-| `Conversation` → `DecisionRecord` | 1:N | Um por turno do agent | §4.9 |
-| `Message` → `DecisionRecord` | N:0..1 | Mensagens do agent apontam para a decisão do turno | §4.9 |
-| `Conversation` → `PendingAction` | 1:N | Histórico; **no máximo uma** em `PENDING_CONFIRMATION` | §4.9 |
-| `PendingAction` → `DecisionRecord` | 1:N | `createdByDecisionRecordId` = a que criou; as seguintes apontam via `pendingActionId` | §4.9, §6 |
-| `PendingAction` → `OperationExecution` | 1:0..1 | Só existe execução após confirmação | §4.9 |
-| `Conversation` → `OperationExecution` | 1:N | Toda operação nasce de um atendimento | §4.9 |
-| `OperationExecution` sem `PendingAction` | permitido | Ex.: `TRANSFER_TICKET` originado por handoff | §4.9, §6 |
-| `Conversation` ↔ `Ticket` | N:N | Via `ConversationTicket`, chave composta `(conversationId, ticketId)` única | §4.7, §4.9 |
-| `ConversationTicket` → `ConversationTicketInteraction` | 1:N | | §4.9 |
+| `Employee` → `Ticket` (solicitante) | 1:N | `Ticket.requesterId` | — |
+| `Ticket` → `TicketEvent` | 1:N | | — |
+| `Employee` → `Conversation` | 1:N | `Conversation.ownerEmployeeId` | — |
+| `Conversation` → `Message` | 1:N | | — |
+| `Conversation` → `ConversationEvent` | 1:N | Uma por transição | — |
+| `Conversation` → `DecisionRecord` | 1:N | Um por turno do agent | — |
+| `Message` → `DecisionRecord` | N:0..1 | Mensagens do agent apontam para a decisão do turno | — |
+| `Conversation` → `PendingAction` | 1:N | Histórico; **no máximo uma** em `PENDING_CONFIRMATION` | — |
+| `PendingAction` → `DecisionRecord` | 1:N | `createdByDecisionRecordId` = a que criou; as seguintes apontam via `pendingActionId` | README §6 |
+| `PendingAction` → `OperationExecution` | 1:0..1 | Só existe execução após confirmação | — |
+| `Conversation` → `OperationExecution` | 1:N | Toda operação nasce de um atendimento | — |
+| `OperationExecution` sem `PendingAction` | permitido | Ex.: `TRANSFER_TICKET` originado por handoff | README §6 |
+| `Conversation` ↔ `Ticket` | N:N | Via `ConversationTicket`, chave composta `(conversationId, ticketId)` única | §3.7 |
+| `ConversationTicket` → `ConversationTicketInteraction` | 1:N | | — |
 
-Relacionamentos adicionais derivados de campos dos contratos (sem cardinalidade explícita em §4.9):
+Relacionamentos adicionais derivados de campos dos contratos (sem cardinalidade explícita nos contratos):
 
 | Referência | Campo | Origem |
 | --- | --- | --- |
-| `Ticket` → `Employee` (analista responsável pelo chamado) | `Ticket.assignedTo?` | §4.3 |
-| `Conversation` → `Employee` (analista que atende a conversa) | `Conversation.assignedAnalystId?` | §4.6 |
-| `Message` → `Employee` (autor) | `MessageAuthor.employeeId` | §4.8 |
-| `Message` → recurso referenciado | `MessageAttachment.refId` | §4.8 |
-| `OperationExecution` → `Ticket` | `OperationExecution.ticketId?` | §6 |
-| `ConversationTicketInteraction` → `OperationExecution` | `operationExecutionId?` | §4.7 |
-| `TicketAccessLog` → `Employee` (analista), `Ticket` | `analystId`, `ticketId` | §8 |
-| `DecisionRecord.evidence` → `KnowledgeArticle`, `Ticket` ou regra | `referenceId` | §6 |
+| `Ticket` → `Employee` (analista responsável pelo chamado) | `Ticket.assignedTo?` | §3.2 |
+| `Conversation` → `Employee` (analista que atende a conversa) | `Conversation.assignedAnalystId?` | §3.5 |
+| `Message` → `Employee` (autor) | `MessageAuthor.employeeId` | §3.8 |
+| `Message` → recurso referenciado | `MessageAttachment.refId` | §3.8 |
+| `OperationExecution` → `Ticket` | `OperationExecution.ticketId?` | README §6 |
+| `ConversationTicketInteraction` → `OperationExecution` | `operationExecutionId?` | §3.7 |
+| `TicketAccessLog` → `Employee` (analista), `Ticket` | `analystId`, `ticketId` | README §8 |
+| `DecisionRecord.evidence` → `KnowledgeArticle`, `Ticket` ou regra | `referenceId` | README §6 |
 
 ---
 
 ## 7. Invariantes
 
-Fonte: §4.10 (numeração preservada), complementada por regras explícitas de §7, §8 e §9. Cada item indica o rótulo de origem quando o README o dá.
+Numeração preservada da lista oficial de invariantes, complementada por regras explícitas de README §7, README §8, README §9. Cada item indica o rótulo de origem quando a fonte o dá.
 
-### 7.1 Invariantes oficiais (§4.10)
+### 7.1 Invariantes oficiais
 
 | # | Invariante | Rótulo / origem complementar |
 | --- | --- | --- |
-| 1 | Um funcionário **nunca** consulta chamados de outro funcionário. | **[PRD]** privacidade (§2); §8 |
-| 2 | Um analista pode consultar chamados pelo console, e **todo acesso gera `TicketAccessLog`**. | **[Premissa]** de interpretação da privacidade como proteção entre funcionários (§8); ADR-004 |
-| 3 | O LLM nunca escolhe a prioridade nem o prazo; ambos vêm do domínio. | **[ADR]** ADR-001, ADR-007; §4.3, §6 |
-| 4 | Uma classificação sem informações suficientes retorna `NEEDS_CLARIFICATION`. | **[ADR]** ADR-007; §4.5 |
-| 5 | Nenhuma escrita no ticket-service sem `PendingAction` confirmada, exceto `TRANSFER_TICKET` dentro de um handoff efetivado pelo backend. | **[ADR]** ADR-001; §6 |
-| 6 | Uma confirmação só vale para o **ID e a versão atuais** da ação pendente. | §7C |
-| 7 | No máximo **uma** ação em `PENDING_CONFIRMATION` por conversa. | §4.9 |
-| 8 | Um handoff efetivado **cancela** a ação pendente com motivo `HANDOFF`. | §7C, §9 |
-| 9 | Nenhuma ação `CANCELLED` ou `REJECTED` pode ser confirmada. | §7C |
-| 10 | Toda operação que possa sofrer retry tem **identidade própria persistida antes da execução**. | **[ADR]** ADR-005; §9 |
-| 11 | **Nunca** se executa uma nova operação com outra chave enquanto o resultado da anterior for desconhecido. | ADR-005; §9 |
-| 12 | Nenhuma nova escrita começa na conversa enquanto houver `OperationExecution` não terminal. | §9 (tabela de concorrência) |
-| 13 | Uma conversa **não pode ser encerrada** com `OperationExecution` em `PROCESSING` ou `OUTCOME_UNKNOWN`. | §7A, §9 |
-| 14 | O agent só é executado em conversas `AI_ACTIVE`. | **[PRD]** "Agent não responde enquanto a conversa está com analista" (§2); §7A |
-| 15 | `CLOSED` é terminal. | §3 ("Reabrir conversa encerrada" fora), §7A |
-| 16 | `commitmentRisk: NOT_ASKED` só existe com `workImpact: BLOCKED`. | §4.4; garantida por validação de domínio |
+| 1 | Um funcionário **nunca** consulta chamados de outro funcionário. | **[PRD]** privacidade (README §2); README §8 |
+| 2 | Um analista pode consultar chamados pelo console, e **todo acesso gera `TicketAccessLog`**. | **[Premissa]** de interpretação da privacidade como proteção entre funcionários (README §8); ADR-004 |
+| 3 | O LLM nunca escolhe a prioridade nem o prazo; ambos vêm do domínio. | **[ADR]** ADR-001, ADR-007; §3.2, §3.3, README §6 |
+| 4 | Uma classificação sem informações suficientes retorna `NEEDS_CLARIFICATION`. | **[ADR]** ADR-007; §4 |
+| 5 | Operações de criação, atualização e reabertura de chamados **originadas por solicitações do funcionário** exigem uma `PendingAction` confirmada. `TRANSFER_TICKET` é uma exceção executada pelo backend como parte de um handoff autorizado. Operações originadas pelo **console do analista** seguem autorização própria pelo papel `ANALYST`, com auditoria (tabela abaixo). | **[ADR]** ADR-001; README §6 |
+| 6 | Uma confirmação só vale para o **ID e a versão atuais** da ação pendente. | README §7C |
+| 7 | No máximo **uma** ação em `PENDING_CONFIRMATION` por conversa. | §6 |
+| 8 | Um handoff efetivado **cancela** a ação pendente com motivo `HANDOFF`. | README §7C, README §9 |
+| 9 | Nenhuma ação `CANCELLED` ou `REJECTED` pode ser confirmada. | README §7C |
+| 10 | Toda operação que possa sofrer retry tem **identidade própria persistida antes da execução**. | **[ADR]** ADR-005; README §9 |
+| 11 | Enquanto o resultado de uma operação estiver desconhecido, qualquer tentativa de concluir **aquela mesma operação lógica** reutiliza o mesmo `OperationExecution.id`. Uma nova operação não pode ser criada para contornar um resultado desconhecido. | ADR-005; README §9 |
+| 12 | Nenhuma nova `PendingAction` de escrita pode ser iniciada enquanto existir uma `OperationExecution` não terminal na conversa. | README §9 (tabela de concorrência) |
+| 13 | Uma conversa **não pode ser encerrada** com `OperationExecution` em `PROCESSING` ou `OUTCOME_UNKNOWN`. | README §7A, README §9 |
+| 14 | O agent só é executado em conversas `AI_ACTIVE`. | **[PRD]** "Agent não responde enquanto a conversa está com analista" (README §2); README §7A |
+| 15 | `CLOSED` é terminal. | README §3 ("Reabrir conversa encerrada" fora), README §7A |
+| 16 | `commitmentRisk: NOT_ASKED` só existe com `workImpact: BLOCKED`. | §3.4, §5.1; garantida por validação de domínio |
 
-Observação sobre a invariante 11 e 12 em conjunto com o handoff: ver seção 12 (Contradições encontradas), item C1.
+Origem das escritas e autorização correspondente:
 
-### 7.2 Regras de estrutura e consistência explícitas no README
+| Origem | Autorização |
+| --- | --- |
+| Solicitação do funcionário | `PendingAction` confirmada |
+| Handoff pelo backend | Política de transferência |
+| Console do analista | Papel `ANALYST` + autorização do serviço |
+
+`ASSIGN_TICKET` continua PENDENTE (Bloco 7) e **não entra em `OperationType`** agora.
+
+Sobre as invariantes 11 e 12 em conjunto com o handoff, ver §8.6. A exceção do `TRANSFER_TICKET` ali descrita vale só para ele; a invariante 12 continua impedindo nova `PendingAction` de escrita.
+
+### 7.2 Regras de estrutura e consistência do domínio
 
 | Regra | Origem |
 | --- | --- |
-| `Conversation.assignedAnalystId` presente somente em `ANALYST_ACTIVE` | §4.6 |
-| `Conversation.resolutionSource` presente somente em `CLOSED` | §4.6 |
-| `ConversationEvent.reasonCode` obrigatório em `RETURNED_TO_AGENT` | §4.6 |
-| Toda transição da §7A grava um `ConversationEvent` | §4.6, §7A |
-| `(conversationId, ticketId)` é único em `ConversationTicket`; `linkedAt` nunca é atualizado | §4.7 |
-| Associação conversa–chamado nasce na primeira interação efetiva; listar resultados não associa | §4.7 |
-| Registro de interação é idempotente por `operationExecutionId` | §4.7 |
-| `requesterId` vem da sessão, nunca do rascunho; `assignedTo` não é escolhido na abertura | §4.3 |
-| `Ticket.assignedTo` não é preenchido automaticamente no handoff nem ao assumir a conversa | §4.3, §9 |
-| `Ticket.type` é a fonte da verdade do tipo; o prefixo do `id` é só apresentação | §4.3 |
-| "Vencido" é calculado, nunca persistido como status | §4.3 |
-| Atualização acrescenta informação; não substitui silenciosamente a descrição original | §4.3 |
-| `expectedTicketVersion` divergente da versão atual rejeita a operação como desatualizada | §4.3 |
-| `OperationExecution.id` é a chave de idempotência, gerado e persistido antes da chamada; tentativas reutilizam o mesmo `id` | §6, §9 |
-| Ordem no ticket-service: (1) consultar chave; (2) se concluída, devolver resultado original; (3) verificar `expectedTicketVersion`; (4) executar; (5) persistir resultado | §9, ADR-005 |
-| Falta de resposta não é `FAILED`; sem resultado após as tentativas permanece em `OUTCOME_UNKNOWN` | §7D |
-| Falha definitiva: sem retry automático; corrigir e tentar de novo é nova `PendingAction` e nova `OperationExecution` | §7D |
-| Confirmação com versão antiga é rejeitada; a UI mostra a versão atual | §7C |
-| Se a conversa voltar ao agent após handoff, ele cria outra ação, com novo ID e versão 1 | §7C |
-| Handoff cancela a ação na mesma transação local que muda a conversa para `WAITING_ANALYST` | §7C, §9 |
-| Assumir `WAITING_ANALYST → ANALYST_ACTIVE` é atômico: dois analistas não assumem a mesma conversa | §7A |
-| Backend verifica o estado antes de cada execução do agent; fora de `AI_ACTIVE` o LLM nem é chamado | §7A |
-| Devolver ao agent limpa o contexto da interação (`NONE` / `IDLE`) | §4.6, §7A |
-| `Message` guarda referências aos cards, não cópias | §4.8 |
-| Encerramento por confirmação do funcionário não usa `PendingAction` nem `OperationExecution` | §6 |
-| `PriorityReasonCode` e `PolicyReasonCode` são catálogos distintos | §4.11 |
+| `Conversation.assignedAnalystId` presente somente em `ANALYST_ACTIVE` | §3.5 |
+| `Conversation.resolutionSource` presente somente em `CLOSED` | §3.5 |
+| `ConversationEvent.reasonCode` obrigatório em `RETURNED_TO_AGENT` | §3.6 |
+| Toda transição da conversa (§8.1) grava um `ConversationEvent` | §3.6, §8.1, README §7A |
+| `(conversationId, ticketId)` é único em `ConversationTicket`; `linkedAt` nunca é atualizado | §3.7 |
+| Associação conversa–chamado nasce na primeira interação efetiva; listar resultados não associa | §3.7 |
+| Registro de interação é idempotente por `operationExecutionId` | §3.7 |
+| `requesterId` vem da sessão, nunca do rascunho; `assignedTo` não é escolhido na abertura | §3.2 |
+| `Ticket.assignedTo` não é preenchido automaticamente no handoff nem ao assumir a conversa | §3.2, README §9 |
+| `Ticket.type` é a fonte da verdade do tipo; o prefixo do `id` é só apresentação | §3.2 |
+| "Vencido" é calculado, nunca persistido como status | §3.2 |
+| Atualização acrescenta informação; não substitui silenciosamente a descrição original | §3.2 |
+| `expectedTicketVersion` divergente da versão atual rejeita a operação como desatualizada | §3.3 |
+| `OperationExecution.id` é a chave de idempotência, gerado e persistido antes da chamada; tentativas reutilizam o mesmo `id` | README §6, README §9 |
+| Ordem no ticket-service: (1) consultar chave; (2) se concluída, devolver resultado original; (3) verificar `expectedTicketVersion`; (4) executar; (5) persistir resultado | README §9, ADR-005 |
+| Falta de resposta não é `FAILED`; sem resultado após as tentativas permanece em `OUTCOME_UNKNOWN` | README §7D |
+| Falha definitiva: sem retry automático; corrigir e tentar de novo é nova `PendingAction` e nova `OperationExecution` | README §7D |
+| Confirmação com versão antiga é rejeitada; a UI mostra a versão atual | README §7C |
+| Se a conversa voltar ao agent após handoff, ele cria outra ação, com novo ID e versão 1 | README §7C |
+| Handoff cancela a ação na mesma transação local que muda a conversa para `WAITING_ANALYST` | README §7C, README §9 |
+| Assumir `WAITING_ANALYST → ANALYST_ACTIVE` é atômico: dois analistas não assumem a mesma conversa | README §7A |
+| Backend verifica o estado antes de cada execução do agent; fora de `AI_ACTIVE` o LLM nem é chamado | README §7A |
+| Devolver ao agent limpa o contexto da interação (`NONE` / `IDLE`) | §3.5, README §7A |
+| `Message` guarda referências aos cards, não cópias | §3.8 |
+| Encerramento por confirmação do funcionário não usa `PendingAction` nem `OperationExecution` | README §6 |
+| `PriorityReasonCode` e `PolicyReasonCode` são catálogos distintos | §3.15 |
+| `DecisionRecord.pendingActionVersion` presente junto com `pendingActionId`, ou ausente junto com ele | §3.12 |
+| `ConversationEvent.summary` e `ConversationEvent.decisionRecordId` obrigatórios em `HANDOFF`; o motivo do handoff é o `PolicyReasonCode` da decisão apontada | §3.6 |
+| `Conversation.assignedAnalystId` é limpo ao sair de `ANALYST_ACTIVE` (devolver ou encerrar) | §3.5, §8.1 |
+| Qualquer encerramento com ação pendente cancela a ação com `CONVERSATION_CLOSED`, na mesma transação local que encerra a conversa | §3.13, §8.1 |
+| Handoff sem chamado em foco transfere só a conversa: sem `TRANSFER_TICKET` e sem `HANDED_OFF`, mesmo com outros chamados vinculados | §8.7 |
+| Funções puras de domínio do Bloco 2 (incl. `classifyPriority`) vivem na camada de domínio do ticket-service, sem cópia no web | §4 |
+| `ConversationEvent.summary` é o único resumo do handoff; o `TRANSFER_TICKET` envia uma cópia ao ticket-service, registrada em `TicketEvent.summary` no evento `TRANSFERRED`; `ConversationEvent.notes` guarda as observações do analista ao devolver a conversa, quando houver | §3.6, §3.9 |
+| `TRANSFER_TICKET` só é criado quando não existir operação não terminal para o mesmo chamado; operação não terminal de outro chamado não o bloqueia | §8.6 |
 
-### 7.3 Segurança e privacidade como regras do domínio (§8)
+### 7.3 Segurança e privacidade como regras do domínio (README §8)
 
 | Papel | Acesso a chamados | Rótulo |
 | --- | --- | --- |
@@ -650,18 +701,19 @@ Observação sobre a invariante 11 e 12 em conjunto com o handoff: ver seção 1
 | Agent | Somente os do funcionário autenticado na sessão | **[Contrato]** |
 | `ANALYST` | Chamados de funcionários pelo console, **com auditoria** | **[Premissa]** de interpretação |
 
-- Identidade vem da sessão. As tools não têm parâmetro `userId`; o backend injeta o usuário autenticado (§8).
-- O ticket-service valida o solicitante em toda leitura e escrita de funcionário (defesa em profundidade) (§8).
-- Autorização por papel: funcionário não acessa o console; só `ANALYST` assume, devolve ou encerra conversas (§8).
-- Escopo: só TI; RH, financeiro e facilities são redirecionados **[PRD]** (§2).
+- Identidade vem da sessão. As tools não têm parâmetro `userId`; o backend injeta o usuário autenticado (README §8).
+- O ticket-service valida o solicitante em toda leitura e escrita de funcionário (defesa em profundidade) (README §8).
+- Autorização por papel: funcionário não acessa o console; só `ANALYST` assume, devolve ou encerra conversas (README §8).
+- Escopo: só TI; RH, financeiro e facilities são redirecionados **[PRD]** (README §2).
+- **Auditoria de escritas do analista:** toda mutação de chamado feita por analista gera `TicketEvent` com `actor.type: "ANALYST"`. Leituras continuam auditadas por `TicketAccessLog`. A autorização pelo papel `ANALYST` segue PENDENTE (Bloco 7).
 
 ---
 
 ## 8. Ciclos de vida e estados
 
-Quatro ciclos independentes (§7, ADR-006).
+Quatro ciclos independentes (README §7, ADR-006).
 
-### 8.1 Conversa (§7A)
+### 8.1 Conversa (README §7A)
 
 | Estado | Agent responde? |
 | --- | --- |
@@ -694,19 +746,22 @@ stateDiagram-v2
 
 Regras do ciclo:
 
-- Transferência quando o funcionário pede, em casos críticos, chamados vencidos ou quando o agent não tem segurança; leva resumo do caso **[PRD]** (§2).
-- **Encerramento bloqueado** enquanto houver `OperationExecution` em `PROCESSING` ou `OUTCOME_UNKNOWN` (§7A, §9).
-- **`CLOSED` é terminal.** Ao voltar outro dia (história 6), o funcionário inicia uma nova conversa; o agent tem acesso aos chamados dele e ao histórico persistido (§7A).
-- Encerramento por inatividade: fora do MVP. PENDENTE (Bloco 6) (§7A, §12 #15).
-- O README não mostra transição `WAITING_ANALYST → WAITING_ANALYST` nem `ANALYST_ACTIVE → ANALYST_ACTIVE`. Nenhuma transição fora da tabela acima existe.
+- Transferência quando o funcionário pede, em casos críticos, chamados vencidos ou quando o agent não tem segurança; leva resumo do caso **[PRD]** (README §2).
+- **Encerramento bloqueado** enquanto houver `OperationExecution` em `PROCESSING` ou `OUTCOME_UNKNOWN` (README §7A, README §9).
+- Qualquer encerramento (`AI_ACTIVE → CLOSED`, `WAITING_ANALYST → CLOSED`, `ANALYST_ACTIVE → CLOSED`) com `PendingAction` em `PENDING_CONFIRMATION` cancela a ação com `CONVERSATION_CLOSED`, na mesma transação local que encerra a conversa.
+- Ao sair de `ANALYST_ACTIVE` (`→ AI_ACTIVE` ou `→ CLOSED`), `Conversation.assignedAnalystId` é limpo; quem atendeu permanece registrado nos `ConversationEvent` (`ANALYST_ASSIGNED`, `RETURNED_TO_AGENT`, `CLOSED`).
+- Na transição `AI_ACTIVE → WAITING_ANALYST` a conversa muda **imediatamente**, mesmo com `OperationExecution` não terminal (ver 8.6). O `ConversationEvent` `HANDOFF` carrega `summary` e `decisionRecordId` (seção 3.6).
+- **`CLOSED` é terminal.** Ao voltar outro dia (história 6), o funcionário inicia uma nova conversa; o agent tem acesso aos chamados dele e ao histórico persistido (README §7A).
+- Encerramento por inatividade: fora do MVP. PENDENTE (Bloco 6) (README §7A, README §12 #15).
+- As únicas transições definidas são as da tabela acima; nenhuma outra existe (em particular, não há `WAITING_ANALYST → WAITING_ANALYST` nem `ANALYST_ACTIVE → ANALYST_ACTIVE`).
 
-### 8.2 Interação (§7B)
+### 8.2 Interação (README §7B)
 
 - Estrutura em `InteractionContext` (§3.5), **persistida** na `Conversation`.
 - **Não muda** o controle da conversa. O histórico persistido é a fonte da verdade; a memória do LLM não é.
-- Valores de `flow` e `stage` estão definidos; o README **não define** as transições válidas entre pares `(flow, stage)`. Ver seção 11.2.
+- Valores de `flow` e `stage` estão definidos; as transições válidas entre pares `(flow, stage)` estão **PENDENTES em `03-agent-flow.md` (Bloco 1)** (L2). Ver seção 11.2.
 
-### 8.3 Ação pendente (§7C)
+### 8.3 Ação pendente (README §7C)
 
 | Estado | Significado | Terminal? |
 | --- | --- | --- |
@@ -724,9 +779,9 @@ stateDiagram-v2
     PENDING_CONFIRMATION --> CANCELLED: handoff / conversa encerrada
 ```
 
-- PENDENTE (Bloco 5): `EXPIRED` e a validade do rascunho; comportamento de nova proposta com outra pendente aberta (decisão inicial do README: nova proposta exige concluir ou cancelar a anterior) (§7C, §12 #12).
+- PENDENTE (Bloco 5): `EXPIRED` e a validade do rascunho; comportamento de nova proposta com outra pendente aberta (decisão inicial do README: nova proposta exige concluir ou cancelar a anterior) (README §7C, README §12 #12).
 
-### 8.4 Execução de operação (§7D)
+### 8.4 Execução de operação (README §7D)
 
 | Estado | Significado | Terminal? |
 | --- | --- | --- |
@@ -747,60 +802,70 @@ stateDiagram-v2
     OUTCOME_UNKNOWN --> PROCESSING: retry seguro com mesmo ID
 ```
 
-- Reconciliação: repetir a operação com o mesmo `id` já reconcilia (se executada, o serviço devolve o resultado guardado; se não, executa) (§9). PENDENTE (Bloco 3): endpoint específico de consulta pela chave (§9, §12 #7).
-- PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos, recuperação após reinício (§7D, §12 #6).
+- Reconciliação: repetir a operação com o mesmo `id` já reconcilia (se executada, o serviço devolve o resultado guardado; se não, executa) (README §9). PENDENTE (Bloco 3): endpoint específico de consulta pela chave (README §9, README §12 #7).
+- PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos, recuperação após reinício (README §7D, README §12 #6).
 
-### 8.5 Ticket (§4.3)
+### 8.5 Ticket
 
-- Ciclo de vida de `Ticket.status`: **PENDENTE (Bloco 2)**, máquina de estados proposta como **[Premissa]** (§4.3, §12 #1). Este documento não define estados nem transições.
-- `Ticket.version` é incrementada pelo ticket-service a cada alteração (§4.3).
-- Reabertura permitida para chamado resolvido há até 7 dias **[PRD]** (§2).
+- Ciclo de vida de `Ticket.status`: **PENDENTE (Bloco 2)**, máquina de estados proposta como **[Premissa]** (README §12 #1). Este documento não define estados nem transições.
+- `Ticket.version` é incrementada pelo ticket-service a cada alteração.
+- Reabertura permitida para chamado resolvido há até 7 dias **[PRD]** (README §2).
 
-### 8.6 Concorrência entre ciclos (§9)
+### 8.6 Concorrência entre ciclos (README §9)
 
 | Situação | Comportamento |
 | --- | --- |
 | `PendingAction` não confirmada + handoff | Cancela a ação (`HANDOFF`) |
-| `OperationExecution` em `PROCESSING` + handoff | Handoff permitido; a operação continua; o analista é informado |
-| `OperationExecution` em `OUTCOME_UNKNOWN` + handoff | Handoff permitido; a reconciliação continua |
+| `OperationExecution` em `PROCESSING` + handoff | Handoff permitido; a operação continua; o analista é informado. A conversa vai imediatamente a `WAITING_ANALYST`; se a operação for **para o mesmo chamado**, o `TRANSFER_TICKET` aguarda sua conclusão |
+| `OperationExecution` em `OUTCOME_UNKNOWN` + handoff | Handoff permitido; a reconciliação continua. Idem: o `TRANSFER_TICKET` do mesmo chamado aguarda a reconciliação |
 | `OperationExecution` não terminal + encerramento | **Encerramento bloqueado** |
-| `OperationExecution` não terminal + nova proposta de escrita | Bloqueada até a operação terminar |
+| `OperationExecution` não terminal + nova proposta de escrita | Nenhuma nova `PendingAction` de escrita pode ser iniciada (invariante 12) até a operação terminar |
 
-Depois da confirmação já existe autorização: uma operação remota não é cancelada porque o funcionário pediu um analista (§9).
+Depois da confirmação já existe autorização: uma operação remota não é cancelada porque o funcionário pediu um analista (README §9).
 
-### 8.7 Transferir conversa x transferir chamado (§9)
+**Handoff com operação não terminal:**
+
+- A conversa muda **imediatamente** para `WAITING_ANALYST`.
+- O `TRANSFER_TICKET` só é criado quando **não existir operação não terminal para o mesmo chamado**:
+  - operação anterior do mesmo chamado em `SUCCEEDED` ou `FAILED`: prosseguir, com chave própria;
+  - operação anterior do mesmo chamado em `PROCESSING`: aguardar a conclusão;
+  - operação anterior do mesmo chamado em `OUTCOME_UNKNOWN`: aguardar a reconciliação. A transferência **não usa outra chave** para repetir a operação anterior (invariante 11).
+- Operação não terminal de **outro** chamado não bloqueia a criação do `TRANSFER_TICKET` do chamado em foco.
+- Essa exceção vale só para o `TRANSFER_TICKET`: a invariante 12 continua impedindo nova `PendingAction` de escrita enquanto houver operação não terminal na conversa.
+- O `TRANSFER_TICKET` ainda não criado **não** é representado como `OperationExecution` em espera (o ciclo 8.4 não tem estado "aguardando").
+- O analista é informado das operações em andamento.
+- Bloquear novas propostas (invariante 12) **não bloqueia** a transferência da conversa.
+- PENDENTE (Bloco 7): mecanismo de sincronização e o que acontece se a reconciliação não resolver (conversa transferida, chamado não). Ver seção 12, C7.
+
+### 8.7 Transferir conversa x transferir chamado (README §9)
 
 - **Transferir conversa** (web): muda para `WAITING_ANALYST`, pausa o agent e cancela a ação pendente, numa transação local; registra `ConversationEvent` `HANDOFF`.
-- **Transferir chamado** (ticket-service): `OperationExecution` do tipo `TRANSFER_TICKET`, com resumo, sem `PendingAction`. Altera o status do chamado; **não** preenche `assignedTo` (o chamado vai para a fila).
+- **Transferir chamado** (ticket-service): `OperationExecution` do tipo `TRANSFER_TICKET`, com cópia de `ConversationEvent.summary` (§3.6), sem `PendingAction`. Altera o status do chamado; **não** preenche `assignedTo` (o chamado vai para a fila).
 - **Assumir a conversa** preenche `Conversation.assignedAnalystId`, **não** `Ticket.assignedTo`. Atribuir o chamado a um analista é operação explícita do ticket-service.
-- O caso de uso de transferir conversa **orquestra** a transferência do chamado quando há chamado vinculado.
+- O caso de uso de transferir conversa **orquestra** a transferência do chamado quando há chamado em foco.
+- **Chamado em foco** = `InteractionContext.targetTicketId` no instante do handoff. O alvo precisa ser um chamado válido e acessível ao funcionário naquele momento. Existir um `ConversationTicket` não significa, por si só, que o chamado está em foco.
+- Handoff **sem chamado em foco** transfere **só a conversa**: sem `TRANSFER_TICKET` e sem `HANDED_OFF`, mesmo com outros chamados vinculados.
+- Se há operação não terminal para o mesmo chamado, o `TRANSFER_TICKET` aguarda (§8.6).
 - **Não se assume atomicidade** entre os dois serviços.
 
-### 8.8 Encerramento pelo funcionário (§6)
+### 8.8 Encerramento pelo funcionário (README §6)
 
 Não usa `PendingAction` nem `OperationExecution` (não há escrita no ticket-service). A decisão registra `REQUEST_RESOLUTION_CONFIRMATION`; a UI mostra "Sim, resolvido / Ainda não"; o endpoint valida o estado e encerra após o clique. O `ConversationEvent` registra o funcionário como ator; `resolutionSource: AGENT`.
 
 ---
 
-## 9. Reavaliação das 13 lacunas da rodada anterior
+## 9. Lacunas herdadas ainda abertas
 
-Cada lacuna foi reverificada contra o README atual (v2.2).
+Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numeração original (#) é preservada; as demais estão resolvidas.
 
-| # | Lacuna anterior | Situação no README atual | Tratamento neste documento |
+| # | Lacuna | Resíduo aberto | Tratamento |
 | --- | --- | --- | --- |
-| 1 | `TicketDraft` sem campos e sem chamado-alvo em UPDATE/REOPEN | **Resolvida.** União discriminada com `ticketId`, `expectedTicketVersion`, `additionalInformation`, `reason` (§4.3) | Seção 3.3 |
-| 2 | `DecisionRecord` x `PendingAction` quando a versão muda | **Parcialmente resolvida.** `createdByDecisionRecordId`, `DecisionRecord.pendingActionId` ("criada OU alterada") e cardinalidade 1:N (§4.9, §6). O README não registra qual `version` cada decisão produziu | Seção 3.12, 3.13. Resíduo em 11.2 (L1) |
-| 3 | `commitmentAtRiskToday` quando `BLOCKED` dispensa a pergunta | **Resolvida.** `CommitmentRisk` enum com `NOT_ASKED`, restrito a `BLOCKED` (§4.4, §4.10 #16) | Seção 3.4, 5.1 |
-| 4 | `classifyPriority` com `BLOCKED` + `affectedScope` ausente, e `UNKNOWN` + `BLOCKED` | **Resolvida.** Regras 1 e 4 (§4.5) | Seção 4 |
-| 5 | Estrutura de `InteractionContext` | **Resolvida** (§4.6). Resíduo: transições `(flow, stage)` não definidas | Seção 3.5. Resíduo em 11.2 (L2) |
-| 6 | Onde registrar a devolução ao agent | **Resolvida.** `ConversationEvent` `RETURNED_TO_AGENT` com `reasonCode` (§4.6, §7A) | Seção 3.6, 8.1 |
-| 7 | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle` | **Resolvida** (§4.8). Resíduos: lista final de tipos de `TicketEvent` (Bloco 2); snapshot de `QUICK_REPLIES` (Bloco 6) | Seções 3.8, 3.9, 3.11 |
-| 8 | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | **Resolvida.** Sem `PendingAction`/`OperationExecution`; `REQUEST_RESOLUTION_CONFIRMATION` (§6, §7A). Resíduo: como a confirmação é representada na `Message` | Seção 8.8. Resíduo em 11.2 (L7) |
-| 9 | Vínculo `OperationExecution`–conversa e momento das interações | **Resolvida.** `OperationExecution.conversationId`; interações após `SUCCEEDED`, idempotentes (§4.7, §6) | Seções 3.7, 3.14 |
-| 10 | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo` | **Resolvida** quanto ao efeito (não preenche) (§9). `ASSIGN_TICKET` fora de `OperationType`: PENDENTE (Bloco 7) | Seção 8.7. PENDENTE (Bloco 7) |
-| 11 | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN` | **Resolvida no diagrama** (retry e saídas, §7D). Parâmetros: PENDENTE (Bloco 3) | Seção 8.4 |
-| 12 | Execução em andamento quando a conversa muda de estado | **Resolvida** (tabela de concorrência, §9). Contradição residual com invariantes 11 e 12: ver C1 | Seção 8.6, 12 |
-| 13 | Catálogos de códigos string | **Resolvida em grande parte** (§4.11). Resíduos: `appliedRules` (Bloco 4); `TicketStatus` (Bloco 2); mapeamento `PolicyOutcome` x `PolicyReasonCode` não definido | Seção 3.15. Resíduos em 11.2 (L5, L6) |
+| 5 | Estrutura de `InteractionContext` | Transições válidas entre pares `(flow, stage)` não definidas (L2) | §3.5, §8.2. PENDENTE (`03-agent-flow.md`, Bloco 1) |
+| 7 | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle` | Lista final de tipos de `TicketEvent` (Bloco 2); snapshot de `QUICK_REPLIES` (Bloco 6) | §3.8, §3.9 |
+| 8 | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7) | §8.8. PENDENTE (Bloco 6) |
+| 10 | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo` | `ASSIGN_TICKET` fora de `OperationType` | §8.7. PENDENTE (Bloco 7) |
+| 11 | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN` | Parâmetros de timeout, backoff e tentativas | §8.4. PENDENTE (Bloco 3) |
+| 13 | Catálogos de códigos string | `appliedRules` (Bloco 4); `TicketStatus` (Bloco 2); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4) | §3.15 |
 
 ---
 
@@ -810,110 +875,178 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 
 | Pendência | Bloco | Origem |
 | --- | --- | --- |
-| PENDENTE (Bloco 2): `TicketStatus` e transições válidas | 2 | §4.3, §12 #1 |
-| PENDENTE (Bloco 2): critério de "mesmo problema" (duplicidade) | 2 | §12 #2 |
-| PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) | 2 | §4.3, §12 #3 |
-| PENDENTE (Bloco 2): lista final de tipos de `TicketEvent` | 2 | §4.8, §12 #4 |
-| PENDENTE (Bloco 3): ORM e driver do SQLite | 3 | §5, §12 #5 |
-| PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício | 3 | §7D, §12 #6 |
-| PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência | 3 | §9, §12 #7 |
-| PENDENTE (Bloco 4): modelo LLM | 4 | §12 #8 |
-| PENDENTE (Bloco 4): critério de "baixa confiança" para transferir | 4 | §12 #9 |
-| PENDENTE (Bloco 4): catálogo de `appliedRules` | 4 | §4.11, §12 #10 |
-| PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial) | 5 | §12 #11 |
-| PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta | 5 | §7C, §12 #12 |
-| PENDENTE (Bloco 6): limite de 30 mensagens (do usuário ou totais; por conversa ou por login) | 6 | §12 #13 |
-| PENDENTE (Bloco 6): onde fica o snapshot das opções de `QUICK_REPLIES` | 6 | §4.8, §12 #14 |
-| PENDENTE (Bloco 6): encerramento por inatividade (fora do MVP) | 6 | §7A, §12 #15 |
-| PENDENTE (Bloco 7): operação `ASSIGN_TICKET` ausente de `OperationType` embora `TicketEvent` preveja `ASSIGNED` | 7 | §9, §12 #16 |
-| PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console | 7 | §9, §12 #16 |
+| PENDENTE (Bloco 2): `TicketStatus` e transições válidas | 2 | §3.2, README §12 #1 |
+| PENDENTE (Bloco 2): critério de "mesmo problema" (duplicidade) | 2 | README §12 #2 |
+| PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) | 2 | §3.2, README §12 #3 |
+| PENDENTE (Bloco 2): lista final de tipos de `TicketEvent` | 2 | §3.9, README §12 #4 |
+| PENDENTE (Bloco 3): ORM e driver do SQLite | 3 | README §5, README §12 #5 |
+| PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício | 3 | README §7D, README §12 #6 |
+| PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência | 3 | README §9, README §12 #7 |
+| PENDENTE (Bloco 4): modelo LLM | 4 | README §12 #8 |
+| PENDENTE (Bloco 4): critério de "baixa confiança" para transferir | 4 | README §12 #9 |
+| PENDENTE (Bloco 4): catálogo de `appliedRules` | 4 | §3.15, README §12 #10 |
+| PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial) | 5 | README §12 #11 |
+| PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta | 5 | README §7C, README §12 #12 |
+| PENDENTE (Bloco 6): limite de 30 mensagens (do usuário ou totais; por conversa ou por login) | 6 | README §12 #13 |
+| PENDENTE (Bloco 6): onde fica o snapshot das opções de `QUICK_REPLIES` | 6 | §3.8, README §12 #14 |
+| PENDENTE (Bloco 6): encerramento por inatividade (fora do MVP) | 6 | README §7A, README §12 #15 |
+| PENDENTE (Bloco 7): operação `ASSIGN_TICKET` ausente de `OperationType` embora `TicketEvent` preveja `ASSIGNED` (não entra em `OperationType` agora) | 7 | README §9, README §12 #16, §7.1 |
+| PENDENTE (Bloco 7): o que acontece se a reconciliação do `TRANSFER_TICKET` não resolver (conversa transferida, chamado não); mecanismo de sincronização | 7 | §8.6 (C7) |
+| PENDENTE (Bloco 7): autorização pelo papel `ANALYST` nas escritas feitas pelo console | 7 | §7.3 |
+| PENDENTE (`03-agent-flow.md`, Bloco 1): transições entre `flow` e `stage` do `InteractionContext` (L2) | 1 | §8.2 |
+| PENDENTE (Bloco 4): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5) | 4 | §3.15 |
+| PENDENTE (Bloco 6): representação de "Sim, resolvido / Ainda não" na `Message` (L7) | 6 | §3.8 |
+| PENDENTE (Bloco 2): catálogo de campos de `TicketEvent.changes` (L12) | 2 | §3.9 |
+| PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console | 7 | README §9, README §12 #16 |
 
 ---
 
-## 11. Lacunas sem bloco definido
+## 11. Lacunas identificadas na derivação e ainda abertas
 
-### 11.1 Critério
+### 11.1 Introdução
 
-Itens abaixo são ausências **observadas ao derivar o modelo** para as quais o README não indica bloco. Não foram preenchidas por suposição e não alteram nenhum contrato acima. Devem ser levadas à revisão do README.
+Os itens abaixo são ausências **observadas ao derivar o modelo**, que não tinham bloco de resolução na derivação inicial e foram encaminhadas: L2, L5, L7 e L12 hoje têm bloco ou artefato indicado na coluna Situação. Mantêm-se apenas as lacunas ainda abertas; os identificadores L1–L12 são preservados (as ausentes daqui estão resolvidas).
 
 ### 11.2 Lista
 
-| ID | Lacuna | Onde aparece |
-| --- | --- | --- |
-| L1 | `DecisionRecord` só aponta `pendingActionId`; o README não registra qual `version` da `PendingAction` cada decisão produziu. | §6, §4.9 |
-| L2 | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`). | §4.6, §7B |
-| L3 | Onde fica armazenado o **resumo do caso** que acompanha o handoff e o `TRANSFER_TICKET`. `Conversation` e `OperationExecution` não têm campo para ele; `ConversationEvent.notes` é livre e não é declarado como esse resumo. O README também fala em "resumo do analista" (preservado ao devolver). | §2, §4.6, §7C, §9 |
-| L4 | `TicketAccessLog`: não há contrato completo (sem `id`; só os campos citados em §8). | §4.1, §8 |
-| L5 | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | §6, §4.11 |
-| L6 | `ConversationEvent` do tipo `HANDOFF` não tem catálogo de motivo: `ConversationEventReason` cobre a devolução; o motivo do handoff aparece em `PolicyReasonCode` no `DecisionRecord`. O vínculo entre os dois não é descrito. | §4.6, §4.11 |
-| L7 | Como a pergunta "Sim, resolvido / Ainda não" é representada na `Message` (`QUICK_REPLIES`? outro anexo?). | §6, §4.8 |
-| L8 | `Intent` não contém `REOPEN_TICKET`, embora `InteractionFlow`, `PendingActionType` e `OperationType` contenham. Não está dito qual `Intent` corresponde à reabertura. | §6, §4.6 |
-| L9 | `Conversation.assignedAnalystId` "presente somente em `ANALYST_ACTIVE`": o README não diz se é limpo ao devolver/encerrar; o analista que encerrou fica no `ConversationEvent` (`actorId`). | §4.6 |
-| L10 | Cancelamento de `PendingAction` com `CONVERSATION_CLOSED`: o README não explicita quando ocorre (encerramento exige, em `AI_ACTIVE`, confirmação do funcionário; não está dito se uma ação pendente pode coexistir com esse encerramento). | §6, §7C |
-| L11 | `HANDED_OFF` quando o handoff ocorre sem chamado vinculado à conversa: o README diz que o caso de uso orquestra a transferência "quando há chamado vinculado", sem descrever o caso contrário além disso. | §4.7, §9 |
-| L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`. | §4.8, §4.11 |
+| ID | Lacuna | Onde aparece | Situação |
+| --- | --- | --- | --- |
+| L2 | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`). | §3.5, README §7B | **PENDENTE** (`03-agent-flow.md`, Bloco 1) |
+| L5 | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PENDENTE** (Bloco 4) |
+| L7 | Como a pergunta "Sim, resolvido / Ainda não" é representada na `Message` (`QUICK_REPLIES`? outro anexo?). | README §6, §3.8 | **PENDENTE** (Bloco 6) |
+| L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`. | §3.9, §3.15 | **PENDENTE** (Bloco 2) |
 
 ---
 
 ## 12. Contradições encontradas
 
-Registradas sem resolução, conforme instrução. Cada item cita os dois trechos.
+Registro das contradições identificadas ao derivar o modelo. C1–C6 estão **RESOLVIDAS**; C7 está **PENDENTE (Bloco 7)**. A numeração C1–C7 é preservada.
 
 ### C1. Invariantes 11 e 12 x handoff com operação em andamento
 
-- **Trecho A (§4.10 #12):** "Nenhuma nova escrita começa na conversa enquanto houver `OperationExecution` não terminal." **E #11:** "Nunca se executa uma nova operação com outra chave enquanto o resultado da anterior for desconhecido."
-- **Trecho B (§9, tabela de concorrência):** "`OperationExecution` em `PROCESSING` + handoff: Handoff permitido"; "`OperationExecution` em `OUTCOME_UNKNOWN` + handoff: Handoff permitido". **E §9, "Transferir conversa x transferir chamado":** o handoff orquestra a transferência do chamado como `OperationExecution` `TRANSFER_TICKET`, que é uma escrita no ticket-service com chave própria.
-- **Tensão:** se o handoff dispara `TRANSFER_TICKET` (nova `OperationExecution`, nova chave) enquanto outra está em `PROCESSING` ou `OUTCOME_UNKNOWN`, isso aparenta violar #11 e #12. O README não diz se `TRANSFER_TICKET` é exceção a #11/#12 (a exceção expressa em #5 refere-se a `PendingAction`, não a #11/#12), nem se o `TRANSFER_TICKET` é adiado.
+**Situação: RESOLVIDA.** Invariantes 11 e 12 reescritas (§7.1); regra do handoff com operação não terminal em §8.6. O mecanismo de sincronização segue PENDENTE (Bloco 7); ver C7.
+
+- **Trecho A (invariantes 12 e 11, texto anterior):** "Nenhuma nova escrita começa na conversa enquanto houver `OperationExecution` não terminal." E: "Nunca se executa uma nova operação com outra chave enquanto o resultado da anterior for desconhecido."
+- **Trecho B (README §9, tabela de concorrência):** "`OperationExecution` em `PROCESSING` + handoff: Handoff permitido"; "`OperationExecution` em `OUTCOME_UNKNOWN` + handoff: Handoff permitido". E, em "Transferir conversa x transferir chamado": o handoff orquestra a transferência do chamado como `OperationExecution` `TRANSFER_TICKET`, uma escrita no ticket-service com chave própria.
+- **Tensão:** se o handoff dispara `TRANSFER_TICKET` (nova `OperationExecution`, nova chave) enquanto outra está em `PROCESSING` ou `OUTCOME_UNKNOWN`, isso aparentava violar as invariantes 11 e 12.
 
 ### C2. Fonte da verdade do rascunho em handoff
 
-- **Trecho A (§4.6):** "A `PendingAction` é a fonte da verdade do rascunho apresentado."
-- **Trecho B (§7C):** "Handoff cancela a ação (`reason: HANDOFF`)... O rascunho vai no resumo do analista."
-- **Tensão:** o rascunho passa a constar no resumo do analista, mas o README não define onde o resumo é guardado (ver L3). Não é contradição de regras, mas de fontes: após `CANCELLED`, a `PendingAction` continua existindo como histórico (§4.9) e o resumo também carrega o rascunho. Registra-se para revisão.
+**Situação: RESOLVIDA.** A `PendingAction` mantém o rascunho estruturado (fonte da verdade, mesmo cancelada); `ConversationEvent.summary` é apenas a fotografia apresentada ao analista (§3.6).
+
+- **Trecho A:** "A `PendingAction` é a fonte da verdade do rascunho apresentado."
+- **Trecho B (README §7C):** "Handoff cancela a ação (`reason: HANDOFF`)... O rascunho vai no resumo do analista."
+- **Tensão:** o rascunho passava a constar também no resumo; após `CANCELLED`, a `PendingAction` continua existindo como histórico. Contradição de fontes, não de regras.
 
 ### C3. "Escrita sem `PendingAction`" x escrita fora do ticket-service
 
-- **Trecho A (§4.10 #5):** "Nenhuma escrita no ticket-service sem `PendingAction` confirmada, exceto `TRANSFER_TICKET`..."
-- **Trecho B (§9):** "Atribuir o chamado a um analista é uma operação explícita do ticket-service" (`ASSIGN_TICKET`), PENDENTE (Bloco 7), e `TicketEvent` já prevê `ASSIGNED`.
-- **Tensão:** `ASSIGN_TICKET` seria uma escrita no ticket-service originada por analista. A invariante #5 só admite a exceção `TRANSFER_TICKET`. O README não diz se a atribuição pelo analista exige `PendingAction` (que é autorização do funcionário) ou é outra exceção. Fica dependente do Bloco 7.
+**Situação: RESOLVIDA.** Invariante 5 reescrita com a tabela de origem x autorização (§7.1). `ASSIGN_TICKET` segue PENDENTE (Bloco 7) e fora de `OperationType`.
+
+- **Trecho A (invariante 5, texto anterior):** "Nenhuma escrita no ticket-service sem `PendingAction` confirmada, exceto `TRANSFER_TICKET`..."
+- **Trecho B (README §9):** "Atribuir o chamado a um analista é uma operação explícita do ticket-service" (`ASSIGN_TICKET`), PENDENTE (Bloco 7), e `TicketEvent` já prevê `ASSIGNED`.
+- **Tensão:** `ASSIGN_TICKET` seria uma escrita originada por analista, e a invariante só admitia a exceção `TRANSFER_TICKET`.
 
 ### C4. Rótulo do dono da regra de prioridade
 
-- **Trecho A (§4.5):** "`classifyPriority` é uma regra do **ticket-service**. O web não tem cópia dela."
-- **Trecho B (§10, Unitário e §13 Bloco 2):** "Regras do Anexo A com TDD (funções puras)... sem dependências além do test runner", sem informar em qual app vivem.
-- **Tensão:** leve; as funções puras do Bloco 2 são compatíveis com viver no ticket-service, mas o README não afirma isso. Registrado apenas para confirmação; não afeta o modelo.
+**Situação: RESOLVIDA.** As funções puras do Bloco 2, incluindo `classifyPriority`, pertencem à camada de domínio do ticket-service (§4).
+
+- **Trecho A:** "`classifyPriority` é uma regra do **ticket-service**. O web não tem cópia dela."
+- **Trecho B (README §10, Unitário e README §13, Bloco 2):** "Regras do Anexo A com TDD (funções puras)... sem dependências além do test runner", sem informar em qual app vivem.
+- **Tensão:** leve; as funções puras eram compatíveis com viver no ticket-service, mas o README não o afirmava.
+
+### C5. "Chamado vinculado" x "chamado em foco" no handoff
+
+**Situação: RESOLVIDA.**
+
+- **Tensão original:** "vinculado" (existe `ConversationTicket`) e "em foco" não eram o mesmo conceito, e o handoff era descrito ora por um, ora por outro.
+- **Decisão adotada:** chamado em foco = `InteractionContext.targetTicketId` no instante do handoff. O alvo precisa ser um chamado válido e acessível ao funcionário naquele momento. Existir um `ConversationTicket` não significa, por si só, que o chamado está em foco. Sem chamado em foco: não criar `TRANSFER_TICKET` nem registrar `HANDED_OFF`, mesmo com outros chamados vinculados (§8.7).
+
+### C6. Resumo do `TRANSFER_TICKET` e "resumo do analista"
+
+**Situação: RESOLVIDA.**
+
+- **Tensão original:** o resumo do `TRANSFER_TICKET` era o mesmo `ConversationEvent.summary`, uma cópia ou outro conteúdo? E o "resumo do analista" preservado ao devolver a conversa?
+- **Decisão adotada:** `ConversationEvent.summary` é a fotografia do caso no handoff (único resumo do handoff). O `TRANSFER_TICKET` envia uma cópia desse texto ao ticket-service (fronteira entre serviços); a cópia é registrada em `TicketEvent.summary`, no evento `TRANSFERRED`. `ConversationEvent.notes` guarda as observações do analista ao devolver a conversa (`RETURNED_TO_AGENT`), quando houver; não é uma segunda versão do resumo do handoff (§3.6).
+
+### C7. `TRANSFER_TICKET` que aguarda x operação não terminal
+
+**Situação: PENDENTE (Bloco 7).** A direção está registrada em §8.6; o mecanismo não.
+
+- **Direção registrada:** o `TRANSFER_TICKET` só é criado quando não existir operação não terminal para o mesmo chamado. Operação anterior do mesmo chamado em `SUCCEEDED` ou `FAILED`: prosseguir, com chave própria. Em `OUTCOME_UNKNOWN`: aguardar a reconciliação. Operação não terminal de outro chamado não bloqueia a criação do `TRANSFER_TICKET` do chamado em foco; essa exceção vale só para o `TRANSFER_TICKET` (a invariante 12 continua valendo para novas `PendingAction` de escrita). O `TRANSFER_TICKET` ainda não criado não é representado como `OperationExecution` em espera.
+- **PENDENTE (Bloco 7):** o que acontece se a reconciliação não resolver (conversa transferida, chamado não); mecanismo de sincronização.
 
 ---
 
-## 13. Rastreabilidade: Domain Model x README
+## 13. Rastreabilidade: Domain Model x fontes
 
-| Seção deste documento | Seções de origem no README |
+Fontes: seções do `README.md` (prefixo "README"), PRD e ADRs. "—" indica modelo definido neste documento, sem seção equivalente no README atual (origem histórica na seção 14).
+
+| Seção deste documento | Fontes |
 | --- | --- |
-| 1 Visão geral | §1, §4.1, §5, §6, §7, ADR-001, ADR-006 |
-| 2 Entidades e responsabilidades | §4.1, §7D |
-| 3.1 Employee | §4.2, §3, §8 |
-| 3.2 Ticket | §2, §4.3, §9, §12 #1-#4 |
-| 3.3 TicketDraft | §4.3, §2 |
-| 3.4 ImpactAssessment | §4.4 |
-| 3.5 Conversation, InteractionContext | §4.6, §7B |
-| 3.6 ConversationEvent | §4.6, §7A |
-| 3.7 ConversationTicket, Interaction | §4.7 |
-| 3.8 Message | §4.8, §12 #14 |
-| 3.9 TicketEvent | §4.8, §12 #4 |
-| 3.10 TicketAccessLog | §4.1, §8 |
-| 3.11 KnowledgeArticle | §4.8, §10, ADR-003 |
-| 3.12 DecisionRecord | §6, §4.11 |
-| 3.13 PendingAction | §6, §4.3, §7C |
-| 3.14 OperationExecution | §6, §7D, §9 |
-| 3.15 Catálogos | §4.11 |
-| 4 classifyPriority | §4.5, ADR-007 |
-| 5 Value Objects | §4.3, §4.4, §4.5, §4.6, §4.8 |
-| 6 Relacionamentos | §4.9, §4.6, §4.7, §6, §8 |
-| 7 Invariantes | §4.10, §4.6, §4.7, §7, §8, §9 |
-| 8 Ciclos de vida | §7A-D, §9, §6 |
-| 9 Reavaliação das 13 lacunas | §4, §6, §7, §9, §16 (v2.2) |
-| 10 Pendências com bloco | §12, §4.3, §4.8, §4.11, §7, §9 |
-| 11 Lacunas sem bloco | derivadas da leitura de §4, §6, §7, §8, §9 |
-| 12 Contradições | §4.6, §4.10, §6, §7C, §9 |
+| 1 Visão geral | README §1, README §5, README §6, README §7, ADR-001, ADR-006 |
+| 2 Entidades e responsabilidades | README §7D |
+| 3.1 Employee | README §3, README §8 |
+| 3.2 Ticket | README §2, README §9, README §12 #1 a #4 |
+| 3.3 TicketDraft | README §2 |
+| 3.4 ImpactAssessment | — |
+| 3.5 Conversation, InteractionContext | README §7B |
+| 3.6 ConversationEvent | README §7A |
+| 3.7 ConversationTicket, Interaction | — |
+| 3.8 Message | README §12 #14 |
+| 3.9 TicketEvent | README §12 #4 |
+| 3.10 TicketAccessLog | README §8 |
+| 3.11 KnowledgeArticle | README §10, ADR-003 |
+| 3.12 DecisionRecord | README §6 |
+| 3.13 PendingAction | README §6, README §7C |
+| 3.14 OperationExecution | README §6, README §7D, README §9 |
+| 3.15 Catálogos | — |
+| 4 classifyPriority | ADR-007 |
+| 5 Value Objects | — |
+| 6 Relacionamentos | README §6, README §8 |
+| 7 Invariantes | README §7, README §8, README §9 |
+| 8 Ciclos de vida | README §7A a §7D, README §9, README §6 |
+| 9 Lacunas herdadas ainda abertas | README §6, README §7, README §9 |
+| 10 Pendências com bloco | README §12, README §7, README §9 |
+| 11 Lacunas identificadas na derivação | derivadas da leitura de README §6, §7, §8, §9 |
+| 12 Contradições | README §6, README §7C, README §9 |
+| 14 Histórico de versões | README §16 |
 
-Itens do README **não** cobertos por este modelo, por pertencerem a outros artefatos: arquitetura de apps e stack (§5), avaliação (§10), ADRs completos (§11), plano e método (§13, §14), seções do README final (§15), histórico (§16).
+Itens do README **não** cobertos por este modelo, por pertencerem a outros artefatos: arquitetura de apps e stack (README §5), avaliação (README §10), ADRs completos (README §11), plano e método (README §13, README §14), seções do README final (README §15), histórico (README §16).
+
+---
+
+## 14. Histórico de versões
+
+| Versão | Base | Descrição |
+| --- | --- | --- |
+| v1 | `README.md` v2.2 (seções 4, 6, 7, 8 e 9 do README) | Derivação inicial do domain model. Contradições C1-C4 e lacunas L1-L12 registradas sem resolução. |
+| v2 | Antiga README §4.2 (decisões aprovadas após a revisão da v1) | Incorporadas **exclusivamente** as decisões dessa seção (abaixo). Numeração de invariantes, lacunas e contradições preservada. Novas contradições C5-C7 registradas sem resolução. |
+| v2.1 | Antiga README §4.2, aprovada na revisão da v2 | Resolvidas as lacunas C5 e C6 (e o resíduo de L3); C7 registrada como PENDENTE (Bloco 7), com a direção definida; auditoria de escritas do analista (§7.3); revisão editorial. |
+
+As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2 para a v2.1
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| C5 | 3.5, 3.7, 7.2, 8.7, 12 | Chamado em foco definido; sem chamado em foco, sem `TRANSFER_TICKET` nem `HANDED_OFF`; C5 RESOLVIDA |
+| C6 | 3.5, 3.6, 3.9, 3.14, 7.2, 8.7, 12 | `summary` único do handoff; cópia no `TicketEvent.summary` (`TRANSFERRED`); `notes` só na devolução; C6 RESOLVIDA |
+| C7 | 7.2, 8.6, 10, 12 | Direção registrada; mecanismo PENDENTE (Bloco 7) |
+| Auditoria de escritas do analista | 7.3, 3.9, 10 | `TicketEvent` com `actor.type: "ANALYST"`; autorização pelo papel `ANALYST` PENDENTE (Bloco 7) |
+| Editorial | todas | Hierarquia das fontes, convenção de referências, marcas `[v2 / ...]` e textos da v1 removidos, seções 9 e 11 reduzidas às lacunas abertas |
+
+### Alterações da v1 para a v2
+
+| Decisão | Seção(ões) alterada(s) | Efeito |
+| --- | --- | --- |
+| C1 | 7.1 (inv. 11 e 12), 8.6, 10, 12 (C1) | Invariantes reescritas; handoff com operação não terminal definido; C1 resolvida |
+| C2 / L3 / L6 | 3.6, 3.13, 7.2, 12 (C2) | `ConversationEvent.summary` e `decisionRecordId` (obrigatórios em `HANDOFF`); C2, L3 e L6 resolvidas |
+| C3 | 7.1 (inv. 5 e tabela de origem), 10, 12 (C3) | Invariante 5 reescrita; `ASSIGN_TICKET` PENDENTE (Bloco 7); C3 resolvida |
+| C4 | 4, 7.2, 12 (C4) | Dono das funções puras: camada de domínio do ticket-service; C4 resolvida |
+| L1 | 3.12, 7.2 | `DecisionRecord.pendingActionVersion?` |
+| L4 | 3.10 | `TicketAccessLog.id` |
+| L8 | 3.12 | `Intent` ganha `REOPEN_TICKET` |
+| L9 | 3.5, 7.2, 8.1 | `assignedAnalystId` limpo ao sair de `ANALYST_ACTIVE` |
+| L10 | 3.13, 7.2, 8.1 | Qualquer encerramento com ação pendente cancela com `CONVERSATION_CLOSED` |
+| L11 | 3.7, 7.2, 8.7 | Handoff sem chamado em foco transfere só a conversa |
+| L2, L5, L7, L12 | 8.2, 10, 11.2 | Marcadas PENDENTE (Bloco 1 `03-agent-flow.md`; Bloco 4; Bloco 6; Bloco 2) |
