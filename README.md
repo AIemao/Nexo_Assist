@@ -557,6 +557,16 @@ O `01-domain-model.md` muda só por **inconsistência comprovada** ou por **deci
 5. **Toda implementação volta para revisão**: código, arquitetura, testes e aderência ao acordado.
 6. **Saber parar de especificar.** Revisões de artefatos geram correções pontuais, não novas rodadas de refinamento.
 
+### Fluxo de git
+
+GitHub Flow, com o Claude (chat) conduzindo os momentos de cada passo:
+
+1. **Branch curta por artefato ou fatia**, criada a partir da `main` atualizada: `tipo/assunto` (ex.: `docs/agent-flow`, `feat/priority-classification`).
+2. **Commits pequenos durante a branch**, em Conventional Commits (`docs:`, `feat:`, `test:`, `refactor:`, `chore:`, `fix:`). No código, o teste vem em commit próprio, antes da implementação.
+3. **Fim do refinamento da branch** = artefato aprovado na revisão. Só então: publicar a branch e abrir o PR.
+4. **PR com descrição curta:** o que mudou, decisões tomadas, como conferir. Merge (não squash), para preservar a história dos commits; apagar a branch.
+5. **Voltar para a `main`** e `git pull` antes da próxima branch.
+
 ### Hábitos
 
 - **Commit no fim de cada bloco** (e de cada artefato aprovado), com mensagem que conta a decisão.
@@ -601,3 +611,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.2   | Respostas às 13 dúvidas restantes: `TicketDraft` discriminado; `Ticket.version`; idempotência antes da versão; `CommitmentRisk`; "Não sei" + bloqueado = Alta; `ConversationEvent`; `Message` com decisão e anexos; regras de concorrência; catálogos tipados. Ajustes de revisão: `classifyPriority` no ticket-service; `UNKNOWN` ≠ `NO`; `NOT_ASKED` por validação                                                                                                                                                                                      |
 | v2.3   | Revisão do domain model v1. **Hierarquia documental:** `01-domain-model.md` vira a fonte da verdade do domínio; §4, §6 e §7 deste README viram resumo com referência. Decisões C1 (invariantes 11 e 12; handoff imediato com `TRANSFER_TICKET` aguardando), C2/L3/L6 (resumo e decisão no `ConversationEvent` `HANDOFF`), C3 (autorização por origem da escrita), C4 (regras puras no domínio do ticket-service) e lacunas L1, L4, L8–L11 — listadas na §4.2 até a incorporação. L2, L5, L7, L12 adiadas. `02-state-model.md` absorvido pelo domain model |
 | v2.4   | `01-domain-model.md` **v2.1 aprovado e congelado** (C5: chamado em foco; C6: resumo único do handoff; C7: direção da sincronização, mecanismo no Bloco 7; auditoria de escritas do analista via `TicketEvent`). Antiga §4.2 removida, já incorporada ao domain model. Regra de congelamento registrada. Ajustes de revisão: auditoria do analista separada em consultas × mutações; questão 17 inclui autorização das escritas do console; cenário de handoff com operação em andamento alinhado a C7                                                     |
+| v2.5   | Fluxo de git registrado no método de trabalho (§14); `.gitignore` criado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
