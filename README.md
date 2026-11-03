@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.8):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1 concluídos (`docs/evaluation/`). Próximo: Bloco 2 — domínio do ticket-service com TDD.
+**Status (README v2.9):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1 concluídos (`docs/evaluation/`). Próximo: Bloco 2 — domínio do ticket-service com TDD.
 
 ## Referências
 
@@ -210,11 +210,16 @@ nexo-assist/
 ├── apps/
 │   ├── web/              # Next.js: UI + BFF + agent + módulo de conhecimento
 │   └── ticket-service/   # Serviço simulado; domínio e dados de chamados
+│       ├── src/domain/   # Camada de domínio das regras de chamado
+│       └── test/         # Testes (Vitest)
 ├── docs/
 │   ├── architecture/     # 01-domain-model.md, 03-agent-flow.md, …
 │   ├── decisions/        # ADRs
 │   └── evaluation/       # cenários e estratégia de avaliação
+├── .github/workflows/    # CI (GitHub Actions)
 ├── .env.example
+├── .gitattributes
+├── .nvmrc                # Versão do Node
 └── README.md
 ```
 
@@ -236,7 +241,9 @@ nexo-assist/
 | Validação              | Zod                              | Decidido                         |
 | Persistência local     | SQLite                           | Decidido · ORM/driver no Bloco 3 |
 | Persistência no deploy | Volume persistente ou PostgreSQL | No bloco de deploy               |
-| Testes                 | Vitest                           | Proposto                         |
+| Testes                 | Vitest                           | Decidido                         |
+| Monorepo               | npm workspaces                   | Decidido                         |
+| Runtime                | Node 24 LTS, ESM                 | Decidido                         |
 | Modelo LLM             | —                                | Bloco 4                          |
 
 ---
@@ -619,3 +626,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.6   | Sincronização com `03-agent-flow.md` v1.1 (e `01-domain-model.md` v2.2): §12 #1 (L2) marcada RESOLVIDA, sem renumerar; §12 #3 corrigida (o ticket-service identifica candidatos a duplicidade; o LLM interpreta a resposta, mas não decide; a resposta do funcionário não autoriza criar duplicata); §7B aponta `03-agent-flow.md` como resolução de L2; §13 marca o Agent Flow como concluído no Bloco 1                                                                                                                                                 |
 | v2.7   | ADRs 001–007 publicados em `docs/decisions/`; índice de ADRs criado; §11, §13 e status do projeto atualizados                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | v2.8   | Cenários de avaliação v1 publicados em `docs/evaluation/` (20 cenários, fixtures, matriz de cobertura); §10, §13 e status atualizados; Bloco 1 concluído |
+| v2.9   | Setup do ticket-service: npm workspaces, TypeScript strict, Vitest e CI com GitHub Actions; §5 (stack e estrutura) e status atualizados |
