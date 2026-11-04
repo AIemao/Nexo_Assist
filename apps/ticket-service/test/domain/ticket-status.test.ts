@@ -5,13 +5,18 @@ import { canReopen, isOpenTicket } from "../../src/domain/ticket-status.js";
 import type { TicketStatus } from "../../src/domain/index.js";
 
 describe("isOpenTicket", () => {
-    it.each<[TicketStatus, boolean]>([
-        ["WAITING_ANALYST", true],
-        ["APPROVED", true],
-        ["RESOLVED", false],
-    ])("%s → %s", (status, esperado) => {
-        expect(isOpenTicket(status)).toBe(esperado);
-    });
+    const esperadoPorStatus = {
+        WAITING_ANALYST: true,
+        APPROVED: true,
+        RESOLVED: false,
+    } satisfies Record<TicketStatus, boolean>;
+
+    it.each(Object.entries(esperadoPorStatus) as [TicketStatus, boolean][])(
+        "%s → %s",
+        (status, esperado) => {
+            expect(isOpenTicket(status)).toBe(esperado);
+        },
+    );
 });
 
 describe("canReopen", () => {
