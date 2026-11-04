@@ -10,3 +10,5 @@ export type { Priority, PriorityClassification } from "./priority.js";
 export { classifyPriority } from "./classify-priority.js";
 export type { ImpactValidation } from "./validate-impact-assessment.js";
 export { validateImpactAssessment } from "./validate-impact-assessment.js";
+export type { TicketStatus } from "./ticket-status.js";
+export { canReopen, isOpenTicket } from "./ticket-status.js";
