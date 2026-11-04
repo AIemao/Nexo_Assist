@@ -1,10 +1,10 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1 · **Data:** 2026-11-02 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.1 · **Data:** 2026-11-02 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste, seed nem contratos novos.
 
-**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.2), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.2), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
+**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.5), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.3), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
 
 ---
 
@@ -30,7 +30,7 @@ Todas **sem dados reais**. **Materializar no seed (Bloco 3).** Os nomes abaixo s
 | `EMP-A` | Funcionário do seed; é quem conversa nos cenários, salvo indicação |
 | `EMP-B` | Outro funcionário do seed; dono de `TKT-B1` |
 | `ANALYST-1` | Analista do seed (console) |
-| `TKT-A1` | Chamado **aberto** de `EMP-A`: notebook lento |
+| `TKT-A1` | Chamado **aberto** de `EMP-A`: notebook lento (`type` INC, `category` HARDWARE; [PRD] Anexo B, INC-20311 "Notebook lento"; é candidato a duplicidade nos relatos de SC-07 e SC-18) |
 | `TKT-A2` | Chamado de `EMP-A`: senha do SAP, **resolvido há 4 dias** (dentro da janela de reabertura de 7 dias, DM §8.5) |
 | `TKT-B1` | Chamado de `EMP-B` |
 | `TKT-X` | Identificador que **não existe** no ticket-service |
@@ -141,7 +141,7 @@ Notas gerais:
 - **Entrada:** turno 1: relata notebook lento. Turnos seguintes: respostas de coleta por campo; ao ser perguntado sobre o chamado existente: "é o mesmo problema e quero complementar"; depois, a informação adicional.
 - **Esperado (README §10):** propõe atualizar, não duplicar.
 - **Interpretação:** turno 1: `CREATE_TICKET`. A resposta sobre o candidato é dado de coleta e **não gera `Intent` nova** (AF D23). Depois do redirecionamento, o fluxo é `UPDATE_TICKET`.
-- **Política:** o ticket-service identifica `TKT-A1` como candidato em `READY_TO_PROPOSE` (AF D13); `outcome: ASK` sobre o candidato; ao completar a atualização, `outcome: PROPOSE_ACTION`. `reasonCode`: `PENDENTE (Bloco 4, L5)`. O critério que faz `TKT-A1` ser candidato é `PENDENTE (Bloco 2)`; a fixture é construída para satisfazê-lo.
+- **Política:** o ticket-service identifica `TKT-A1` como candidato em `READY_TO_PROPOSE` (AF D13); `outcome: ASK` sobre o candidato; ao completar a atualização, `outcome: PROPOSE_ACTION`. `reasonCode`: `PENDENTE (Bloco 4, L5)`. O critério de candidato está no DM v2.5 §8.5.1 (mesmo solicitante, tipo e categoria, chamado aberto, id fora de `dismissedIds`); `TKT-A1` é construído para satisfazê-lo. O ticket-service só identifica o candidato; quem decide que é o mesmo problema é o funcionário.
 - **Execução:** chamadas: leitura de classificação, prazo e duplicidade no ticket-service (sem efeito colateral), `proposeTicketUpdate`. **Devem existir:** `PendingAction` `UPDATE_TICKET` sobre `TKT-A1`. **Não devem existir:** `PendingAction` `CREATE_TICKET` ativa; `OperationExecution`; chamado novo; alteração de `TKT-A1`.
 - **Métricas:** chamado duplicado, escrita sem confirmação, intenção, tool.
 - **Verificação:** determinística.
@@ -277,7 +277,7 @@ Notas gerais:
 - **Entrada:** `EMP-A` relata um problema que o ticket-service identifica como candidato `TKT-A1`; o agent pergunta; as respostas variam por caso.
 - **Interpretação:** turno inicial: `CREATE_TICKET`. A resposta sobre o candidato é dado de coleta, sem `Intent` nova (AF D23). A `Intent` registrada nos turnos de resposta: `PENDENTE (Bloco 4)`.
 - **Política:** `outcome: ASK` sobre o candidato; `reasonCode`: `PENDENTE (Bloco 4, L5)`.
-- **Caso A — resposta "outro problema".** O fluxo volta a `CREATE_TICKET`/`READY_TO_PROPOSE` e **não repete a verificação daquele candidato**: `TKT-A1` não é perguntado de novo e fica registrado em `collectedData` (formato `PENDENTE`, Bloco 2). A decisão final do ticket-service, caso ele identifique duplicidade confirmada, segue a política do Bloco 2 e **não é presumida aqui**: `PENDENTE (Bloco 2)`. Em qualquer ramo, **nenhum chamado é escrito antes de `PendingAction` confirmada**.
+- **Caso A — resposta "outro problema".** O fluxo volta a `CREATE_TICKET`/`READY_TO_PROPOSE` e **segue para a criação**, sem repetir a verificação daquele candidato: `TKT-A1` entra em `dismissedIds` (incluído pelo backend, não pelo LLM; DM v2.5 §8.5.1) e não é perguntado de novo. O ticket-service não confirma duplicidade. O local de persistência de `dismissedIds` (estado operacional do backend, não dado do funcionário) é `PENDENTE (Bloco 5)`; não se presume `collectedData`. Em qualquer ramo, **nenhum chamado é escrito antes de `PendingAction` confirmada**.
 - **Caso B — resposta "mesmo problema, sem complementar".** Contexto vai a `NONE`/`IDLE`. **Não existem:** `PendingAction`, `OperationExecution`, chamado novo, alteração de `TKT-A1` (versão inalterada). O agent informa que o chamado existente segue aberto.
 - **Métricas:** chamado duplicado, escrita sem confirmação, intenção.
 - **Verificação:** determinística.
@@ -358,7 +358,6 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 
 | Bloco | Pendência | Cenários afetados |
 | --- | --- | --- |
-| 2 | Critério de "mesmo problema" e de candidato a duplicidade; candidato × duplicidade confirmada; formato do registro do candidato em `collectedData` (AF P-B, §10) | SC-07, SC-18 |
 | 2 | `TicketStatus` e janela de reabertura (README §12 #2) | SC-06 |
 | 3 | Seed das fixtures (§2) e mecanismo que liga cada falha simulada (`F-*`) | todos que usam fixtures; SC-14, SC-16, SC-17, SC-20 |
 | 3 | Instrumentação para observar escritas no ticket-service de fora do agent | todos de classe (a) |
@@ -369,6 +368,7 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | 4 | Baseline: modelo e versão de prompt/tools (README §12 #9, ADR-009) | todos |
 | 5 | Bloco do fluxo de atualização e reabertura (README §13 não atribui) | SC-06, SC-07, SC-16 |
 | 5 | Edição do rascunho × nova proposta (AF T11) | SC-08 (caso B) |
+| 5 | Local de persistência de `dismissedIds` (AF P-B, §10). Critério de duplicidade, candidato × duplicidade confirmada e discordância: resolvidos no DM v2.5 §8.5.1 | SC-18 |
 | 5 | Se confirmação e retry geram `DecisionRecord` | SC-17 |
 | 6 | Redação da resposta a id inválido (AF P-C); representação de "Sim, resolvido / Ainda não" (L7) | SC-19, SC-15 |
 | 7 | Mensagem de handoff com `TRANSFER_TICKET` em `FAILED` ou `OUTCOME_UNKNOWN` (AF §7) | SC-20 (caso C) |
@@ -408,8 +408,8 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.2: §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
-- Agent Flow v1.2: D13, D16, D17, D18, D19, D20, D23; §5.4, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
+- Domain Model v2.5: §8.5.1 (duplicidade), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Agent Flow v1.3: D13, D16, D17, D18, D19, D20, D23; §5.4, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
 - ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`).
 
 ## 9. Histórico
@@ -417,3 +417,4 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | Versão | Mudanças |
 | --- | --- |
 | v1 | Estratégia, fixtures, 20 cenários (SC-01 a SC-17 de README §10; SC-18 a SC-20 do Agent Flow), matriz de cobertura, pendências por bloco e tensões. Não altera nenhum outro documento. Ajustes antes do commit: SC-08 passa a incluir "risco de compromisso: não" (sem ele, `classifyPriority` retorna `NEEDS_CLARIFICATION` pela regra 5) e deixa de atribuir o tipo REQ ao ticket-service (DM §3.3); X2 resolvida por decisão (duas proteções de versão distintas) e movida para "Resolvidas na v1" |
+| v1.1 | Sincronização com o DM v2.5 (§8.5.1) e o AF v1.3: SC-07, SC-18 (caso A: "outro problema" segue para a criação) e a tabela de pendências deixam de marcar PENDENTE (Bloco 2) o critério de duplicidade e a discordância funcionário × ticket-service; segue PENDENTE (Bloco 5) o local de persistência de `dismissedIds`, sem presumir `collectedData`. Fixture `TKT-A1` com `type` INC e `category` HARDWARE. Sem novos cenários |

@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.4** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.5** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -133,7 +133,7 @@ Regras e observações:
 - `resolvedAt` está presente sempre que `status = RESOLVED`; é definido pelo ticket-service ao entrar em `RESOLVED` e removido na reabertura. O histórico fica em `TicketEvent`.
 - Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
 
-PENDENTE (Bloco 2): campos de prazo do chamado e calendário de SLA (README §12 #4); critério de "mesmo problema" para duplicidade (README §12 #3).
+PENDENTE (Bloco 2): campos de prazo do chamado e calendário de SLA (README §12 #4). O critério de duplicidade está em §8.5.1.
 
 ### 3.3 TicketDraft (payload da PendingAction)
 
@@ -949,6 +949,28 @@ Ciclo de vida de `Ticket.status` (README §12 #2):
 - PENDENTE (Bloco 7): matriz de transições do analista. Até lá, nenhuma função genérica de transição.
 - `Ticket.version` é incrementada pelo ticket-service a cada alteração.
 
+#### 8.5.1 Duplicidade: candidatos
+
+- **[PRD]** "Chamado aberto sobre o mesmo problema é atualizado, não duplicado" (README §2).
+- **[Premissa]** **Candidato** = chamado com o mesmo `requesterId`, o mesmo `type`, a mesma `category`, `isOpenTicket(status)` e `id` fora de `dismissedIds`. Sem comparação de título ou descrição.
+- **[Premissa]** O critério é estrutural e conservador: identifica candidatos, não comprova duplicidade semântica. Falso positivo custa uma pergunta; chamado com tipo ou categoria divergente pode escapar (falso negativo). A tolerância zero de duplicidade (README §10) é meta de avaliação; o filtro é proteção, não garantia.
+- **Função de domínio** (pura, sem efeito colateral):
+
+  ```ts
+  findDuplicateCandidates(
+    requesterId: string,
+    criteria: { type: TicketType; category: TicketCategory },
+    tickets: readonly Pick<Ticket, "id" | "requesterId" | "type" | "category" | "status" | "updatedAt">[],
+    dismissedIds: ReadonlySet<string>,
+  ): candidatos
+  ```
+
+  - `requesterId` vem da sessão (ADR-004), nunca do rascunho nem do LLM.
+  - Ordem dos candidatos: `updatedAt` decrescente (comparando instantes, não texto), desempate por `id` crescente. Não modifica o array recebido.
+- **[Premissa]** `dismissedIds` é mantido pelo backend durante a verificação de duplicidade da interação atual; não é global nem permanente; mudança de `type` ou `category` reinicia a verificação. O LLM interpreta a resposta do funcionário, mas não controla a lista: quem inclui um id é o backend. `dismissedIds` não autoriza criar nem atualizar chamado; apenas exclui candidatos da busca. A escrita continua exigindo `PendingAction` confirmada.
+- **[Premissa]** **Quem confirma:** o ticket-service só identifica candidatos; o funcionário decide se é o mesmo problema. Não existe "duplicidade confirmada pelo serviço". "Mesmo problema" direciona o fluxo e não autoriza escrita: a atualização exige `PendingAction` confirmada. Todos os candidatos descartados → segue a criação.
+- A busca de resolvidos recentes para reabertura é **separada** da busca de duplicidade (README §12 #12, Bloco 5).
+
 ### 8.6 Concorrência entre ciclos (README §9)
 
 | Situação                                                     | Comportamento                                                                                                                                                                                           |
@@ -1015,7 +1037,6 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                        | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 2): critério de "mesmo problema" (duplicidade)                                                                                          | 2     | README §12 #3                   |
 | PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`)                                      | 2     | §3.2, README §12 #4             |
 | PENDENTE (Bloco 2): lista final de tipos de `TicketEvent`                                                                                               | 2     | §3.9, README §12 #5             |
 | PENDENTE (Bloco 3): ORM e driver do SQLite                                                                                                              | 3     | README §5, README §12 #6        |
@@ -1165,8 +1186,20 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.2   | v2.1; `03-agent-flow.md` v1.1; README §14 (sincronização aprovada)            | Sincronização com `03-agent-flow.md` v1.1, sem nova decisão de domínio: `VIEW_TICKET` em `Intent` (T2); L2 marcada RESOLVIDA; devolução ao agent limpa todo o contexto (T1); `READY_TO_PROPOSE` documentado como transitório (T4); referências a `README §12 #N` auditadas pelo significado (T12). |
 | v2.3   | v2.2; Bloco 2 (`classifyPriority` e `validateImpactAssessment` implementados) | Decisões do Bloco 2: `missingFields` de campo único (coleta progressiva); classificar ≠ validar; `validateImpactAssessment` e o erro `NOT_ASKED_REQUIRES_BLOCKED` substituem o exemplo `.superRefine` na regra do `NOT_ASKED`; referência aos testes em `apps/ticket-service/test/domain/`.        |
 | v2.4   | v2.3; Bloco 2 (`TicketStatus`, reabertura e transferência) | Decisões do Bloco 2: catálogo `TicketStatus` (`WAITING_ANALYST`, `APPROVED`, `RESOLVED`); `resolvedAt`; elegibilidade de reabertura calculada (168 horas corridas); `isOpenTicket` e `canReopen`; `TRANSFER_TICKET` sem mudança de status. Correção da lista de exemplos de status do PRD (inconsistência comprovada). |
+| v2.5   | v2.4; Bloco 2 (duplicidade) | Decisões do Bloco 2: critério estrutural de candidato (mesmo solicitante, tipo e categoria, chamado aberto, fora de `dismissedIds`); `findDuplicateCandidates`; o ticket-service só identifica candidatos e o funcionário decide; `dismissedIds` mantido pelo backend; busca de reabertura separada. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.4 para a v2.5
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Critério de candidato | 8.5.1 | [PRD] atualizar, não duplicar; [Premissa] mesmo `requesterId`, `type`, `category`, `isOpenTicket(status)` e `id` fora de `dismissedIds`; sem comparação de texto; critério conservador (falso negativo possível) |
+| `findDuplicateCandidates` | 8.5.1 | Função de domínio pura; `requesterId` da sessão; ordem por `updatedAt` decrescente (instantes) e `id` crescente; não modifica a entrada |
+| `dismissedIds` | 8.5.1 | Mantido pelo backend na verificação da interação atual; mudança de `type` ou `category` reinicia; não autoriza escrita |
+| Quem confirma | 8.5.1 | O serviço só identifica candidatos; não existe "duplicidade confirmada pelo serviço"; "mesmo problema" direciona o fluxo; todos descartados → segue a criação |
+| Pendências do Bloco 2 | 3.2, 10 | Removidos o critério de duplicidade e a distinção candidato × duplicidade confirmada, com remissão ao §8.5.1 |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.5 |
 
 ### Alterações da v2.3 para a v2.4
 
