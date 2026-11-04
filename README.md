@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.9):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.2 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1 concluídos (`docs/evaluation/`). Próximo: Bloco 2 — domínio do ticket-service com TDD.
+**Status (README v2.10):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.3 aprovado e congelado**. `03-agent-flow.md` **v1.2 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1 concluídos (`docs/evaluation/`). Próximo: Bloco 2 — domínio do ticket-service com TDD.
 
 ## Referências
 
@@ -165,7 +165,7 @@ Painel de decisão · confirmação antes de escrever · privacidade · persist�
 
 ## 4. Modelo de domínio
 
-A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.2, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
+A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.3, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
 
 **Congelado** significa: muda só por **inconsistência comprovada** ou por **decisão atribuída a um bloco** (as pendências da DM §10). Mudanças são aprovadas (§14) e registradas **primeiro** no domain model, antes de qualquer artefato derivado.
 
@@ -498,17 +498,17 @@ Nenhuma bloqueia o início. Cada uma tem o bloco em que será decidida.
 
 Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado e os problemas encontrados ditam o ritmo.
 
-| Bloco | Entrega                                                                                                            | Pronto quando…                                                       |
-| ----- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Bloco | Entrega                                                                                                                             | Pronto quando…                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | 1     | Fase 0: ~~domain model~~ (v2.2 aprovado), ~~agent flow~~ (v1.2 concluído), ~~ADRs 001–007~~ (concluídos), ~~cenários~~ (concluídos) | Consigo explicar o fluxo inteiro sem olhar o documento               |
-| 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura)                | Testes verdes, sem dependências além do test runner                  |
-| 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                                              | Retry após timeout não duplica chamado                               |
-| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                                        | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
-| 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente                                                | Tela 2 de ponta a ponta                                              |
-| 6     | Chat fiel ao protótipo + painel de decisão + encerramento                                                          | Dá para ver o quê, por quê e com que evidência                       |
-| 7     | Fatia 4: transferência, console, assumir/devolver/encerrar, auditoria                                              | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
-| 8     | Fechamento: evals contra baseline, README final, revisão de commits                                                | Avaliador roda com poucos comandos                                   |
-| 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                                                       | —                                                                    |
+| 2     | Domínio do ticket-service com TDD (funções puras: `classifyPriority`, SLA, duplicidade, reabertura)                                 | Testes verdes, sem dependências além do test runner                  |
+| 3     | Ticket-service: API, seed, persistência, idempotência, falha simulada                                                               | Retry após timeout não duplica chamado                               |
+| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`                                                         | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
+| 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente                                                                 | Tela 2 de ponta a ponta                                              |
+| 6     | Chat fiel ao protótipo + painel de decisão + encerramento                                                                           | Dá para ver o quê, por quê e com que evidência                       |
+| 7     | Fatia 4: transferência, console, assumir/devolver/encerrar, auditoria                                                               | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
+| 8     | Fechamento: evals contra baseline, README final, revisão de commits                                                                 | Avaliador roda com poucos comandos                                   |
+| 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                                                                        | —                                                                    |
 
 > O antigo `02-state-model.md` foi absorvido pelo domain model (DM §8). Não criaremos um documento separado de estados, para não duplicar a especificação.
 
@@ -625,5 +625,6 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.5   | Fluxo de git registrado no método de trabalho (§14); `.gitignore` criado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | v2.6   | Sincronização com `03-agent-flow.md` v1.1 (e `01-domain-model.md` v2.2): §12 #1 (L2) marcada RESOLVIDA, sem renumerar; §12 #3 corrigida (o ticket-service identifica candidatos a duplicidade; o LLM interpreta a resposta, mas não decide; a resposta do funcionário não autoriza criar duplicata); §7B aponta `03-agent-flow.md` como resolução de L2; §13 marca o Agent Flow como concluído no Bloco 1                                                                                                                                                 |
 | v2.7   | ADRs 001–007 publicados em `docs/decisions/`; índice de ADRs criado; §11, §13 e status do projeto atualizados                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| v2.8   | Cenários de avaliação v1 publicados em `docs/evaluation/` (20 cenários, fixtures, matriz de cobertura); §10, §13 e status atualizados; Bloco 1 concluído |
-| v2.9   | Setup do ticket-service: npm workspaces, TypeScript strict, Vitest e CI com GitHub Actions; §5 (stack e estrutura) e status atualizados |
+| v2.8   | Cenários de avaliação v1 publicados em `docs/evaluation/` (20 cenários, fixtures, matriz de cobertura); §10, §13 e status atualizados; Bloco 1 concluído                                                                                                                                                                                                                                                                                                                                                                                                  |
+| v2.9   | Setup do ticket-service: npm workspaces, TypeScript strict, Vitest e CI com GitHub Actions; §5 (stack e estrutura) e status atualizados                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| v2.10  | Sincronização com `01-domain-model.md` v2.3 (decisões do Bloco 2: `missingFields` de campo único; classificar ≠ validar; `validateImpactAssessment`)                                                                                                                                                                                                                                                                                                                                                                                                      |
