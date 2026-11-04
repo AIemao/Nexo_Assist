@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.3** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.4** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -100,6 +100,7 @@ type TicketCategory =
   | "EMAIL"
   | "OTHER";
 type Priority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+type TicketStatus = "WAITING_ANALYST" | "APPROVED" | "RESOLVED";
 
 interface Ticket {
   id: string; // gerado pelo ticket-service: "INC-20311", "REQ-10442"
@@ -109,12 +110,13 @@ interface Ticket {
   description: string;
   category: TicketCategory;
   priority: Priority;
-  status: TicketStatus; // PENDENTE (Bloco 2): máquina de estados
+  status: TicketStatus; // ver §8.5
   requesterId: string; // quem abriu — base da privacidade
   impactAssessment: ImpactAssessment; // value object embutido
   assignedTo?: string; // Employee com role ANALYST; não preenchido automaticamente no handoff
   createdAt: string;
   updatedAt: string;
+  resolvedAt?: string; // ISO 8601 com fuso; ver nota abaixo
   // PENDENTE (Bloco 2): prazos (ex.: firstResponseDueAt, nextUpdateDueAt)
 }
 ```
@@ -127,10 +129,11 @@ Regras e observações:
 - **Atualização acrescenta** informação; não substitui silenciosamente a descrição original.
 - `requesterId` vem da sessão, nunca do rascunho; `assignedTo` não é escolhido na abertura.
 - `Ticket.assignedTo` (quem atende o chamado) é distinto de `Conversation.assignedAnalystId` (quem atende a conversa) (§3.5, README §9).
-- A máquina de estados de `TicketStatus` é **[Premissa]** a ser proposta no Bloco 2. O PRD só dá exemplos: Aguardando analista, Em andamento, Aprovado, Resolvido.
+- **[PRD]** O Anexo B apresenta exemplos de status: Aguardando analista, Aprovado e Resolvido. "Em andamento" não consta no PRD. **[Premissa]** O catálogo do MVP contém só esses três; um estado de atendimento do chamado (ex.: `IN_PROGRESS`) pode entrar no Bloco 7, se o console precisar. Catálogo, criação, reabertura e transferência: §8.5.
+- `resolvedAt` está presente sempre que `status = RESOLVED`; é definido pelo ticket-service ao entrar em `RESOLVED` e removido na reabertura. O histórico fica em `TicketEvent`.
 - Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
 
-PENDENTE (Bloco 2): `TicketStatus` e transições válidas (README §12 #2); campos de prazo do chamado e calendário de SLA (README §12 #4); critério de "mesmo problema" para duplicidade (README §12 #3).
+PENDENTE (Bloco 2): campos de prazo do chamado e calendário de SLA (README §12 #4); critério de "mesmo problema" para duplicidade (README §12 #3).
 
 ### 3.3 TicketDraft (payload da PendingAction)
 
@@ -929,9 +932,22 @@ stateDiagram-v2
 
 ### 8.5 Ticket
 
-- Ciclo de vida de `Ticket.status`: **PENDENTE (Bloco 2)**, máquina de estados proposta como **[Premissa]** (README §12 #2). Este documento não define estados nem transições.
+Ciclo de vida de `Ticket.status` (README §12 #2):
+
+- **[Premissa]** Criação (`CREATE_TICKET` em `SUCCEEDED`) → `WAITING_ANALYST`, definido pelo ticket-service.
+- **[Premissa]** `APPROVED` só para `type` `REQ`.
+- **[Premissa]** Não existe status "fechado": `RESOLVED` permanece `RESOLVED`; a elegibilidade de reabertura é **calculada** (mesmo padrão do "vencido").
+- **[PRD]** Reabertura "até 7 dias" (README §2). **[Premissa]** 168 horas corridas, limite incluído: elegível ⇔ `status` `RESOLVED`, `resolvedAt` presente e `now ≤ resolvedAt + 168 h`. `RESOLVED` sem `resolvedAt`, ou com `resolvedAt` ou `now` inválido, resulta em `false` (não elegível).
+- **[Premissa]** Reabertura: `RESOLVED` → `WAITING_ANALYST`, só via `REOPEN_TICKET` confirmado pelo funcionário, com `expectedTicketVersion`. Nenhuma transição direta de `RESOLVED` para outro status.
+- `TRANSFER_TICKET` não altera status nem `assignedTo`; em `SUCCEEDED` registra `TicketEvent` `TRANSFERRED` com a cópia do resumo (C6, §3.6).
+- **[Premissa]** "Aberto" = status diferente de `RESOLVED` (base da duplicidade). Consultar chamados não se limita a abertos; a busca de resolvidos recentes para reabertura é distinta da busca de duplicidade.
+- **Origem das mudanças:** o funcionário solicita criação e reabertura (o ticket-service define o status); o analista muda os demais pelo console, com `TicketEvent` `actor.type: "ANALYST"`. O LLM nunca define status.
+- **Funções de domínio** (predicados, sem efeito colateral):
+  - `isOpenTicket(status: TicketStatus): boolean`
+  - `canReopen(ticket: Pick<Ticket, "status" | "resolvedAt">, now: string): boolean`
+  - Apenas respondem: não reabrem, não alteram estado, não validam confirmação. `now` é parâmetro: o domínio não lê relógio.
+- PENDENTE (Bloco 7): matriz de transições do analista. Até lá, nenhuma função genérica de transição.
 - `Ticket.version` é incrementada pelo ticket-service a cada alteração.
-- Reabertura permitida para chamado resolvido há até 7 dias **[PRD]** (README §2).
 
 ### 8.6 Concorrência entre ciclos (README §9)
 
@@ -962,7 +978,7 @@ Depois da confirmação já existe autorização: uma operação remota não é 
 ### 8.7 Transferir conversa x transferir chamado (README §9)
 
 - **Transferir conversa** (web): muda para `WAITING_ANALYST`, pausa o agent e cancela a ação pendente, numa transação local; registra `ConversationEvent` `HANDOFF`.
-- **Transferir chamado** (ticket-service): `OperationExecution` do tipo `TRANSFER_TICKET`, com cópia de `ConversationEvent.summary` (§3.6), sem `PendingAction`. Altera o status do chamado; **não** preenche `assignedTo` (o chamado vai para a fila).
+- **Transferir chamado** (ticket-service): `OperationExecution` do tipo `TRANSFER_TICKET`, com cópia de `ConversationEvent.summary` (§3.6), sem `PendingAction`. Registra a transferência no chamado (`TicketEvent` `TRANSFERRED` com o resumo), sem alterar status nem responsável (`assignedTo`); o chamado vai para a fila.
 - **Assumir a conversa** preenche `Conversation.assignedAnalystId`, **não** `Ticket.assignedTo`. Atribuir o chamado a um analista é operação explícita do ticket-service.
 - O caso de uso de transferir conversa **orquestra** a transferência do chamado quando há chamado em foco.
 - **Chamado em foco** = `InteractionContext.targetTicketId` no instante do handoff. O alvo precisa ser um chamado válido e acessível ao funcionário naquele momento. Existir um `ConversationTicket` não significa, por si só, que o chamado está em foco.
@@ -986,7 +1002,7 @@ Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numera
 | 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                                  | §8.8. PENDENTE (Bloco 6) |
 | 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                           | §8.7. PENDENTE (Bloco 7) |
 | 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas                                                                       | §8.4. PENDENTE (Bloco 3) |
-| 13  | Catálogos de códigos string                                   | `appliedRules` (Bloco 4); `TicketStatus` (Bloco 2); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4) | §3.15                    |
+| 13  | Catálogos de códigos string                                   | `appliedRules` (Bloco 4); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4); `TicketStatus`: §8.5 | §3.15                    |
 
 A lacuna #5 (estrutura de `InteractionContext`; transições entre pares `(flow, stage)`, L2) foi resolvida por `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
@@ -998,7 +1014,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
-| PENDENTE (Bloco 2): `TicketStatus` e transições válidas                                                                                                 | 2     | §3.2, README §12 #2             |
+| PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                        | 7     | §8.5, README §12 #2             |
 | PENDENTE (Bloco 2): critério de "mesmo problema" (duplicidade)                                                                                          | 2     | README §12 #3                   |
 | PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`)                                      | 2     | §3.2, README §12 #4             |
 | PENDENTE (Bloco 2): lista final de tipos de `TicketEvent`                                                                                               | 2     | §3.9, README §12 #5             |
@@ -1148,8 +1164,21 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.1   | Antiga README §4.2, aprovada na revisão da v2                                 | Resolvidas as lacunas C5 e C6 (e o resíduo de L3); C7 registrada como PENDENTE (Bloco 7), com a direção definida; auditoria de escritas do analista (§7.3); revisão editorial.                                                                                                                     |
 | v2.2   | v2.1; `03-agent-flow.md` v1.1; README §14 (sincronização aprovada)            | Sincronização com `03-agent-flow.md` v1.1, sem nova decisão de domínio: `VIEW_TICKET` em `Intent` (T2); L2 marcada RESOLVIDA; devolução ao agent limpa todo o contexto (T1); `READY_TO_PROPOSE` documentado como transitório (T4); referências a `README §12 #N` auditadas pelo significado (T12). |
 | v2.3   | v2.2; Bloco 2 (`classifyPriority` e `validateImpactAssessment` implementados) | Decisões do Bloco 2: `missingFields` de campo único (coleta progressiva); classificar ≠ validar; `validateImpactAssessment` e o erro `NOT_ASKED_REQUIRES_BLOCKED` substituem o exemplo `.superRefine` na regra do `NOT_ASKED`; referência aos testes em `apps/ticket-service/test/domain/`.        |
+| v2.4   | v2.3; Bloco 2 (`TicketStatus`, reabertura e transferência) | Decisões do Bloco 2: catálogo `TicketStatus` (`WAITING_ANALYST`, `APPROVED`, `RESOLVED`); `resolvedAt`; elegibilidade de reabertura calculada (168 horas corridas); `isOpenTicket` e `canReopen`; `TRANSFER_TICKET` sem mudança de status. Correção da lista de exemplos de status do PRD (inconsistência comprovada). |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.3 para a v2.4
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| `TicketStatus` | 3.2, 8.5, 9, 10 | Catálogo `WAITING_ANALYST`, `APPROVED`, `RESOLVED`; removido das listas de PENDENTE, com remissão ao §8.5; matriz de transições do analista PENDENTE (Bloco 7) |
+| Lista de exemplos do PRD | 3.2 | Correção, inconsistência comprovada: o PRD (Anexo B) exemplifica Aguardando analista, Aprovado e Resolvido; "Em andamento" não consta no PRD |
+| `resolvedAt` | 3.2 | Campo opcional do `Ticket`; presente sempre que `RESOLVED`; removido na reabertura |
+| Ciclo de vida do `Ticket` | 8.5 | Criação, `APPROVED` só para `REQ`, sem status "fechado", reabertura (168 horas corridas, limite incluído) e origem das mudanças |
+| `isOpenTicket` e `canReopen` | 8.5 | Predicados de domínio puros; `now` é parâmetro |
+| `TRANSFER_TICKET` | 8.5, 8.7 | Não altera status nem `assignedTo`; registra `TicketEvent` `TRANSFERRED` (alinha o §8.7, que dizia "altera o status do chamado") |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.4 |
 
 ### Alterações da v2.2 para a v2.3
 
