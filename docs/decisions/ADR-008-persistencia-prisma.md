@@ -57,8 +57,8 @@ O spike rodou na branch `spike/prisma`, depois descartada. O Draft PR foi fechad
 | Evidência | Windows | Linux (CI) |
 | --- | --- | --- |
 | Ambiente | Node 26.13.0, npm 11.20.0 | Node 26.13.0 |
-| `npm ci` | 215 pacotes, aproximadamente 2 minutos | 217 pacotes, 8 segundos |
-| Baseline sem Prisma | — | 42 pacotes, aproximadamente 1 segundo |
+| `npm ci` | 215 pacotes adicionados, aproximadamente 2 minutos | 217 pacotes adicionados, 8 segundos |
+| Baseline sem Prisma | — | 40 pacotes adicionados, aproximadamente 1 segundo |
 | `better-sqlite3` | 12.11.1; binário pré-compilado, sem arquivos de compilação em `build/Release` | **Inferência:** provável binário pré-compilado, sustentada pelos 8 segundos de instalação e pelos testes verdes. A saída dos scripts não foi exibida, portanto não houve confirmação direta. |
 | `EBADENGINE` | Nenhum | Nenhum |
 | Avisos | `prebuild-install@7.1.3` depreciado e três avisos `install-scripts` | Os mesmos três avisos `install-scripts` |
@@ -90,7 +90,7 @@ O spike rodou na branch `spike/prisma`, depois descartada. O Draft PR foi fechad
 - Instalação e execução validadas em Windows e Linux.
 
 **Negativas e custos**
-- Crescimento de aproximadamente 42 para 215/217 pacotes.
+- Crescimento de 40 para 217 pacotes adicionados no CI (métrica `added` do `npm ci`); no Windows, 215 com Prisma.
 - Módulo nativo, com risco controlado pelas condições de versão e de scripts.
 - Versão fixada contra a tag `latest`.
 - Cliente gerado com `@ts-nocheck`.

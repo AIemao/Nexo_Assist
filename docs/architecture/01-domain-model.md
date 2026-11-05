@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.7** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.8** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -117,7 +117,9 @@ interface Ticket {
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string; // ISO 8601 com fuso; ver nota abaixo
-  // PENDENTE (Bloco 3): campos de prazo (ex.: firstResponseDueAt, nextUpdateDueAt); cálculo em §8.5.2
+  firstResponseDueAt: string; // obrigatório; calculado na criação (§8.5.2)
+  nextUpdateDueAt?: string; // Bloco 7
+  serviceDeskUpdatedAt?: string; // Bloco 7
 }
 ```
 
@@ -131,9 +133,9 @@ Regras e observações:
 - `Ticket.assignedTo` (quem atende o chamado) é distinto de `Conversation.assignedAnalystId` (quem atende a conversa) (§3.5, README §9).
 - **[PRD]** O Anexo B apresenta exemplos de status: Aguardando analista, Aprovado e Resolvido. "Em andamento" não consta no PRD. **[Premissa]** O catálogo do MVP contém só esses três; um estado de atendimento do chamado (ex.: `IN_PROGRESS`) pode entrar no Bloco 7, se o console precisar. Catálogo, criação, reabertura e transferência: §8.5.
 - `resolvedAt` está presente sempre que `status = RESOLVED`; é definido pelo ticket-service ao entrar em `RESOLVED` e removido na reabertura. O histórico fica em `TicketEvent`.
-- Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização. Cálculo do prazo: §8.5.2.
-
-PENDENTE (Bloco 3): campos de prazo do chamado e momento de recálculo (README §12 #4). O cálculo de prazo está em §8.5.2; o critério de duplicidade, em §8.5.1.
+- Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
+- **[Premissa]** `nextUpdateDueAt` e `serviceDeskUpdatedAt` são ambos ausentes (sem atualização do service desk) ou ambos presentes; só um presente é inconsistente.
+- Prazo vigente = `nextUpdateDueAt ?? firstResponseDueAt`. Cálculo do `firstResponseDueAt` e recálculo: §8.5.2; critério de duplicidade: §8.5.1.
 
 ### 3.3 TicketDraft (payload da PendingAction)
 
@@ -193,6 +195,8 @@ type ImpactAssessmentDraft = Partial<ImpactAssessment>; // em construção
 ```
 
 Ver §5 (Value Objects) para semântica completa.
+
+- **[Premissa] Persistência do `ImpactAssessment`:** três colunas (`workImpact`, `affectedScope`, `commitmentRisk`), sem JSON e sem valor padrão. Os enums validam cada valor; a consistência entre eles (`NOT_ASKED_REQUIRES_BLOCKED`) continua em `validateImpactAssessment` (§5.1), antes da persistência.
 
 ### 3.5 Conversation e InteractionContext
 
@@ -599,6 +603,33 @@ type PolicyReasonCode = // por que esta ação (política)
 ```
 
 - `PriorityReasonCode` e `PolicyReasonCode` são **catálogos distintos**.
+- Catálogos persistidos (enums no banco e fonte única no domínio): regra em README §5 (Princípios).
+
+### 3.16 IdempotencyRecord (registro técnico do ticket-service)
+
+Registro técnico do ticket-service. **Não é entidade de domínio**: a contagem de entidades (§2) não muda. É distinto de `OperationExecution` (§3.14), que pertence ao web e ao fluxo do agent.
+
+```ts
+interface IdempotencyRecord {
+  key: string; // valor opaco = OperationExecution.id; chave primária; não é FK
+  operationType: TicketOperationType;
+  ticketId: string; // obrigatório
+  result: JsonValue; // snapshot JSON serializável do resultado original
+  createdAt: string;
+}
+```
+
+- **[Premissa]** `JsonValue` representa um valor serializável em JSON. É a representação do resultado persistido, não uma dependência do domínio em Prisma; a conversão para o tipo do ORM é feita no repositório.
+
+- `TicketOperationType` é definido no ticket-service (as operações que ele aceita: criação, atualização, reabertura e transferência), sem depender do `OperationType` do web.
+
+Regras **[Premissa]**:
+
+- **Só operações que produziram efeito sobre um chamado são registradas.** Operação rejeitada (ex.: versão desatualizada) não gera registro; a chave não é consumida e a nova tentativa reavalia a operação (o resultado pode mudar se o estado do chamado mudar).
+- **Resultado original:** com a chave existente, devolve o `result` armazenado, sem consultar o estado atual do chamado.
+- **Ordem:** a chave é verificada antes de `expectedTicketVersion`; a consulta é repetida dentro da transação antes da validação de versão.
+- **Atomicidade:** `Ticket`, `TicketEvent` e `IdempotencyRecord` na mesma transação; se ela falhar, nenhum efeito fica confirmado isoladamente.
+- **Concorrência com a mesma chave:** só uma operação é confirmada. A perdedora, após o rollback integral (por chave duplicada ou por bloqueio de escrita), relê a chave fora da transação que falhou; se o registro vencedor existir, devolve o `result` original, sem erro de duplicidade; se não existir, o conflito segue a política de retry (README §12 #7).
 
 ---
 
@@ -967,6 +998,7 @@ Ciclo de vida de `Ticket.status` (README §12 #2):
 
   - `requesterId` vem da sessão (ADR-004), nunca do rascunho nem do LLM.
   - Ordem dos candidatos: `updatedAt` decrescente (comparando instantes, não texto), desempate por `id` crescente. Não modifica o array recebido.
+
 - **[Premissa]** `dismissedIds` é mantido pelo backend durante a verificação de duplicidade da interação atual; não é global nem permanente; mudança de `type` ou `category` reinicia a verificação. O LLM interpreta a resposta do funcionário, mas não controla a lista: quem inclui um id é o backend. `dismissedIds` não autoriza criar nem atualizar chamado; apenas exclui candidatos da busca. A escrita continua exigindo `PendingAction` confirmada.
 - **[Premissa]** **Quem confirma:** o ticket-service só identifica candidatos; o funcionário decide se é o mesmo problema. Não existe "duplicidade confirmada pelo serviço". "Mesmo problema" direciona o fluxo e não autoriza escrita: a atualização exige `PendingAction` confirmada. Todos os candidatos descartados → segue a criação.
 - A busca de resolvidos recentes para reabertura é **separada** da busca de duplicidade (README §12 #12, Bloco 5).
@@ -985,8 +1017,8 @@ Ciclo de vida de `Ticket.status` (README §12 #2):
   - `isOverdue(dueAt: string, now: string): boolean` → `now > dueAt`, comparando instantes; `now === dueAt` não é vencido.
 - **[Premissa]** Vencido é calculado, nunca gravado como status.
 - **[Premissa]** O prazo seguinte é calculado a partir da última atualização do service desk; informação adicional do funcionário não reinicia o prazo. Quais eventos contam como atualização do service desk: PENDENTE (Bloco 7).
-- **[Premissa]** Mudança de prioridade recalcula o prazo vigente a partir do mesmo início; uma elevação pode tornar o chamado vencido na hora; uma redução pode estender o prazo.
-- Campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) e momento de recálculo: PENDENTE (Bloco 3).
+- **[Premissa]** `firstResponseDueAt = computeDueAt(createdAt, priority)`, calculado na criação; permanece como registro histórico após a primeira resposta. Campos de prazo, consistência entre eles e prazo vigente: §3.2.
+- **[Premissa]** Mudança de prioridade: sem atualização do service desk, recalcula `firstResponseDueAt` a partir de `createdAt`; com atualização, recalcula `nextUpdateDueAt` a partir de `serviceDeskUpdatedAt`. Consequência: uma elevação pode tornar o chamado vencido no mesmo instante; uma redução pode estender o prazo.
 
 ### 8.6 Concorrência entre ciclos (README §9)
 
@@ -1035,12 +1067,12 @@ Não usa `PendingAction` nem `OperationExecution` (não há escrita no ticket-se
 
 Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numeração original (#) é preservada; as demais estão resolvidas.
 
-| #   | Lacuna                                                        | Resíduo aberto                                                                                                    | Tratamento               |
-| --- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| 7   | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle`     | Lista final de tipos de `TicketEvent` (Bloco 2); snapshot de `QUICK_REPLIES` (Bloco 6)                            | §3.8, §3.9               |
-| 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                                  | §8.8. PENDENTE (Bloco 6) |
-| 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                           | §8.7. PENDENTE (Bloco 7) |
-| 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas                                                                       | §8.4. PENDENTE (Bloco 3) |
+| #   | Lacuna                                                        | Resíduo aberto                                                                                                | Tratamento               |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| 7   | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle`     | Lista final de tipos de `TicketEvent` (Bloco 2); snapshot de `QUICK_REPLIES` (Bloco 6)                        | §3.8, §3.9               |
+| 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                              | §8.8. PENDENTE (Bloco 6) |
+| 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                       | §8.7. PENDENTE (Bloco 7) |
+| 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas                                                                   | §8.4. PENDENTE (Bloco 3) |
 | 13  | Catálogos de códigos string                                   | `appliedRules` (Bloco 4); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4); `TicketStatus`: §8.5 | §3.15                    |
 
 A lacuna #5 (estrutura de `InteractionContext`; transições entre pares `(flow, stage)`, L2) foi resolvida por `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
@@ -1053,8 +1085,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
-| PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                        | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 3): campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) e momento de recálculo (cálculo do prazo: §8.5.2) | 3 | §8.5.2, README §12 #4 |
+| PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
 | PENDENTE (Bloco 2): lista final de tipos de `TicketEvent`                                                                                               | 2     | §3.9, README §12 #5             |
 | PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício                                 | 3     | README §7D, README §12 #7       |
 | PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência                                                                                     | 3     | README §9, README §12 #8        |
@@ -1069,7 +1100,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (Bloco 7): operação `ASSIGN_TICKET` ausente de `OperationType` embora `TicketEvent` preveja `ASSIGNED` (não entra em `OperationType` agora)    | 7     | README §9, README §12 #17, §7.1 |
 | PENDENTE (Bloco 7): o que acontece se a reconciliação do `TRANSFER_TICKET` não resolver (conversa transferida, chamado não); mecanismo de sincronização | 7     | §8.6 (C7)                       |
 | PENDENTE (Bloco 7): autorização pelo papel `ANALYST` nas escritas feitas pelo console                                                                   | 7     | §7.3                            |
-| PENDENTE (Bloco 7): quais eventos contam como atualização do service desk para o prazo seguinte (§8.5.2) | 7 | §8.5.2, README §12 #4 |
+| PENDENTE (Bloco 7): quais eventos contam como atualização do service desk para o prazo seguinte (§8.5.2)                                                | 7     | §8.5.2, README §12 #4           |
 | PENDENTE (Bloco 4): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5)                                                                                | 4     | §3.15                           |
 | PENDENTE (Bloco 6): representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                                                     | 6     | §3.8                            |
 | PENDENTE (Bloco 2): catálogo de campos de `TicketEvent.changes` (L12)                                                                                   | 2     | §3.9                            |
@@ -1078,6 +1109,8 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 As transições entre `flow` e `stage` do `InteractionContext` (L2) não constam mais como pendência: estão definidas em `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
 O ORM e o driver do SQLite (README §12 #6) não constam mais como pendência: estão decididos no ADR-008 (infraestrutura de persistência; não altera o domínio).
+
+Os campos de prazo do `Ticket` e o momento de recálculo (README §12 #4) não constam mais como pendência: estão em §3.2 e §8.5.2. Continua PENDENTE (Bloco 7) quais eventos contam como atualização do service desk (linha acima).
 
 ---
 
@@ -1197,61 +1230,74 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 
 ## 14. Histórico de versões
 
-| Versão | Base                                                                          | Descrição                                                                                                                                                                                                                                                                                          |
-| ------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| v1     | `README.md` v2.2 (seções 4, 6, 7, 8 e 9 do README)                            | Derivação inicial do domain model. Contradições C1-C4 e lacunas L1-L12 registradas sem resolução.                                                                                                                                                                                                  |
-| v2     | Antiga README §4.2 (decisões aprovadas após a revisão da v1)                  | Incorporadas **exclusivamente** as decisões dessa seção (abaixo). Numeração de invariantes, lacunas e contradições preservada. Novas contradições C5-C7 registradas sem resolução.                                                                                                                 |
-| v2.1   | Antiga README §4.2, aprovada na revisão da v2                                 | Resolvidas as lacunas C5 e C6 (e o resíduo de L3); C7 registrada como PENDENTE (Bloco 7), com a direção definida; auditoria de escritas do analista (§7.3); revisão editorial.                                                                                                                     |
-| v2.2   | v2.1; `03-agent-flow.md` v1.1; README §14 (sincronização aprovada)            | Sincronização com `03-agent-flow.md` v1.1, sem nova decisão de domínio: `VIEW_TICKET` em `Intent` (T2); L2 marcada RESOLVIDA; devolução ao agent limpa todo o contexto (T1); `READY_TO_PROPOSE` documentado como transitório (T4); referências a `README §12 #N` auditadas pelo significado (T12). |
-| v2.3   | v2.2; Bloco 2 (`classifyPriority` e `validateImpactAssessment` implementados) | Decisões do Bloco 2: `missingFields` de campo único (coleta progressiva); classificar ≠ validar; `validateImpactAssessment` e o erro `NOT_ASKED_REQUIRES_BLOCKED` substituem o exemplo `.superRefine` na regra do `NOT_ASKED`; referência aos testes em `apps/ticket-service/test/domain/`.        |
-| v2.4   | v2.3; Bloco 2 (`TicketStatus`, reabertura e transferência) | Decisões do Bloco 2: catálogo `TicketStatus` (`WAITING_ANALYST`, `APPROVED`, `RESOLVED`); `resolvedAt`; elegibilidade de reabertura calculada (168 horas corridas); `isOpenTicket` e `canReopen`; `TRANSFER_TICKET` sem mudança de status. Correção da lista de exemplos de status do PRD (inconsistência comprovada). |
-| v2.5   | v2.4; Bloco 2 (duplicidade) | Decisões do Bloco 2: critério estrutural de candidato (mesmo solicitante, tipo e categoria, chamado aberto, fora de `dismissedIds`); `findDuplicateCandidates`; o ticket-service só identifica candidatos e o funcionário decide; `dismissedIds` mantido pelo backend; busca de reabertura separada. |
-| v2.6   | v2.5; Bloco 2 (SLA) | Decisões do Bloco 2: cálculo de prazo (§8.5.2): Crítica em tempo corrido; janela útil seg–sex 08:00–18:00; Alta 4, Média 30 e Baixa 50 horas úteis; início fora da janela; fuso UTC−03:00 fixo; `computeDueAt` e `isOverdue`; prazo seguinte a partir da última atualização do service desk; recálculo na mudança de prioridade. |
-| v2.7   | v2.6; ADR-008 (Bloco 3) | Pendência "ORM e driver do SQLite" removida do §10, com remissão ao ADR-008. Decisão de infraestrutura; nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
+| Versão | Base                                                                          | Descrição                                                                                                                                                                                                                                                                                                                              |
+| ------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1     | `README.md` v2.2 (seções 4, 6, 7, 8 e 9 do README)                            | Derivação inicial do domain model. Contradições C1-C4 e lacunas L1-L12 registradas sem resolução.                                                                                                                                                                                                                                      |
+| v2     | Antiga README §4.2 (decisões aprovadas após a revisão da v1)                  | Incorporadas **exclusivamente** as decisões dessa seção (abaixo). Numeração de invariantes, lacunas e contradições preservada. Novas contradições C5-C7 registradas sem resolução.                                                                                                                                                     |
+| v2.1   | Antiga README §4.2, aprovada na revisão da v2                                 | Resolvidas as lacunas C5 e C6 (e o resíduo de L3); C7 registrada como PENDENTE (Bloco 7), com a direção definida; auditoria de escritas do analista (§7.3); revisão editorial.                                                                                                                                                         |
+| v2.2   | v2.1; `03-agent-flow.md` v1.1; README §14 (sincronização aprovada)            | Sincronização com `03-agent-flow.md` v1.1, sem nova decisão de domínio: `VIEW_TICKET` em `Intent` (T2); L2 marcada RESOLVIDA; devolução ao agent limpa todo o contexto (T1); `READY_TO_PROPOSE` documentado como transitório (T4); referências a `README §12 #N` auditadas pelo significado (T12).                                     |
+| v2.3   | v2.2; Bloco 2 (`classifyPriority` e `validateImpactAssessment` implementados) | Decisões do Bloco 2: `missingFields` de campo único (coleta progressiva); classificar ≠ validar; `validateImpactAssessment` e o erro `NOT_ASKED_REQUIRES_BLOCKED` substituem o exemplo `.superRefine` na regra do `NOT_ASKED`; referência aos testes em `apps/ticket-service/test/domain/`.                                            |
+| v2.4   | v2.3; Bloco 2 (`TicketStatus`, reabertura e transferência)                    | Decisões do Bloco 2: catálogo `TicketStatus` (`WAITING_ANALYST`, `APPROVED`, `RESOLVED`); `resolvedAt`; elegibilidade de reabertura calculada (168 horas corridas); `isOpenTicket` e `canReopen`; `TRANSFER_TICKET` sem mudança de status. Correção da lista de exemplos de status do PRD (inconsistência comprovada).                 |
+| v2.5   | v2.4; Bloco 2 (duplicidade)                                                   | Decisões do Bloco 2: critério estrutural de candidato (mesmo solicitante, tipo e categoria, chamado aberto, fora de `dismissedIds`); `findDuplicateCandidates`; o ticket-service só identifica candidatos e o funcionário decide; `dismissedIds` mantido pelo backend; busca de reabertura separada.                                   |
+| v2.6   | v2.5; Bloco 2 (SLA)                                                           | Decisões do Bloco 2: cálculo de prazo (§8.5.2): Crítica em tempo corrido; janela útil seg–sex 08:00–18:00; Alta 4, Média 30 e Baixa 50 horas úteis; início fora da janela; fuso UTC−03:00 fixo; `computeDueAt` e `isOverdue`; prazo seguinte a partir da última atualização do service desk; recálculo na mudança de prioridade.       |
+| v2.7   | v2.6; ADR-008 (Bloco 3)                                                       | Pendência "ORM e driver do SQLite" removida do §10, com remissão ao ADR-008. Decisão de infraestrutura; nenhuma regra, entidade, tipo ou função do domínio foi alterada.                                                                                                                                                               |
+| v2.8   | v2.7; Bloco 3 (mapeamento)                                                    | Decisões de mapeamento do ticket-service: campos de prazo do `Ticket` (`firstResponseDueAt`, `nextUpdateDueAt`, `serviceDeskUpdatedAt`) e regras de recálculo; persistência do `ImpactAssessment` em três colunas; `IdempotencyRecord` (§3.16, registro técnico, não entidade); remissão à regra de catálogos persistidos (README §5). |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
 
+### Alterações da v2.7 para a v2.8
+
+| Item                                | Seção(ões)    | Efeito                                                                                                                                                                                             |
+| ----------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Campos de prazo do `Ticket`         | 3.2, 8.5.2    | `firstResponseDueAt` obrigatório, calculado na criação; `nextUpdateDueAt` e `serviceDeskUpdatedAt` juntos ou ausentes (Bloco 7); prazo vigente = `nextUpdateDueAt ?? firstResponseDueAt`           |
+| Recálculo por mudança de prioridade | 8.5.2         | Sem atualização do service desk: `firstResponseDueAt` a partir de `createdAt`; com atualização: `nextUpdateDueAt` a partir de `serviceDeskUpdatedAt`                                               |
+| Persistência do `ImpactAssessment`  | 3.4           | Três colunas, sem JSON nem valor padrão; consistência em `validateImpactAssessment`, antes da persistência                                                                                         |
+| `IdempotencyRecord`                 | 3.16          | Registro técnico do ticket-service (não é entidade); `TicketOperationType` próprio; só operações com efeito; resultado original; ordem chave → versão; atomicidade; concorrência com a mesma chave |
+| Catálogos persistidos               | 3.15          | Remissão ao README §5 (Princípios)                                                                                                                                                                 |
+| Pendências                          | 3.2, 10       | Removida a pendência dos campos de prazo (Bloco 3); eventos de atualização do service desk continuam PENDENTES (Bloco 7)                                                                           |
+| Cabeçalho e histórico               | cabeçalho, 14 | Versão 2.8                                                                                                                                                                                         |
+
 ### Alterações da v2.6 para a v2.7
 
-| Item | Seção(ões) | Efeito |
-| --- | --- | --- |
-| ORM e driver do SQLite | 10 | Pendência removida, com remissão ao ADR-008 (Prisma ORM 7.10.1 + SQLite) |
-| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.7 |
+| Item                   | Seção(ões)    | Efeito                                                                   |
+| ---------------------- | ------------- | ------------------------------------------------------------------------ |
+| ORM e driver do SQLite | 10            | Pendência removida, com remissão ao ADR-008 (Prisma ORM 7.10.1 + SQLite) |
+| Cabeçalho e histórico  | cabeçalho, 14 | Versão 2.7                                                               |
 
 ### Alterações da v2.5 para a v2.6
 
-| Item | Seção(ões) | Efeito |
-| --- | --- | --- |
-| Prazos do PRD | 8.5.2 | [PRD] tabela do Anexo A; vencido após o prazo |
-| Calendário | 8.5.2 | [Premissa] Crítica em tempo corrido; janela útil seg–sex 08:00 inclusive a 18:00 exclusivo; sem feriados no MVP; Alta 4, Média 30, Baixa 50 horas úteis; início fora da janela na próxima abertura; fim exato da janela = 18:00 do mesmo dia |
-| Fuso | 8.5.2 | [Premissa] UTC−03:00 fixo, sem biblioteca de fuso; risco registrado para horário de verão |
-| `computeDueAt` e `isOverdue` | 8.5.2 | Funções puras, sem relógio; `computeDueAt` devolve UTC (`Z`); `now === dueAt` não é vencido |
-| Reinício e recálculo | 8.5.2 | Prazo seguinte a partir da última atualização do service desk (eventos: PENDENTE, Bloco 7); mudança de prioridade recalcula a partir do mesmo início |
-| Pendências | 3.2, 10 | Removido o calendário de SLA do Bloco 2, com remissão ao §8.5.2; novas: campos de prazo e recálculo (Bloco 3) e eventos de atualização do service desk (Bloco 7) |
-| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.6 |
+| Item                         | Seção(ões)    | Efeito                                                                                                                                                                                                                                       |
+| ---------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prazos do PRD                | 8.5.2         | [PRD] tabela do Anexo A; vencido após o prazo                                                                                                                                                                                                |
+| Calendário                   | 8.5.2         | [Premissa] Crítica em tempo corrido; janela útil seg–sex 08:00 inclusive a 18:00 exclusivo; sem feriados no MVP; Alta 4, Média 30, Baixa 50 horas úteis; início fora da janela na próxima abertura; fim exato da janela = 18:00 do mesmo dia |
+| Fuso                         | 8.5.2         | [Premissa] UTC−03:00 fixo, sem biblioteca de fuso; risco registrado para horário de verão                                                                                                                                                    |
+| `computeDueAt` e `isOverdue` | 8.5.2         | Funções puras, sem relógio; `computeDueAt` devolve UTC (`Z`); `now === dueAt` não é vencido                                                                                                                                                  |
+| Reinício e recálculo         | 8.5.2         | Prazo seguinte a partir da última atualização do service desk (eventos: PENDENTE, Bloco 7); mudança de prioridade recalcula a partir do mesmo início                                                                                         |
+| Pendências                   | 3.2, 10       | Removido o calendário de SLA do Bloco 2, com remissão ao §8.5.2; novas: campos de prazo e recálculo (Bloco 3) e eventos de atualização do service desk (Bloco 7)                                                                             |
+| Cabeçalho e histórico        | cabeçalho, 14 | Versão 2.6                                                                                                                                                                                                                                   |
 
 ### Alterações da v2.4 para a v2.5
 
-| Item | Seção(ões) | Efeito |
-| --- | --- | --- |
-| Critério de candidato | 8.5.1 | [PRD] atualizar, não duplicar; [Premissa] mesmo `requesterId`, `type`, `category`, `isOpenTicket(status)` e `id` fora de `dismissedIds`; sem comparação de texto; critério conservador (falso negativo possível) |
-| `findDuplicateCandidates` | 8.5.1 | Função de domínio pura; `requesterId` da sessão; ordem por `updatedAt` decrescente (instantes) e `id` crescente; não modifica a entrada |
-| `dismissedIds` | 8.5.1 | Mantido pelo backend na verificação da interação atual; mudança de `type` ou `category` reinicia; não autoriza escrita |
-| Quem confirma | 8.5.1 | O serviço só identifica candidatos; não existe "duplicidade confirmada pelo serviço"; "mesmo problema" direciona o fluxo; todos descartados → segue a criação |
-| Pendências do Bloco 2 | 3.2, 10 | Removidos o critério de duplicidade e a distinção candidato × duplicidade confirmada, com remissão ao §8.5.1 |
-| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.5 |
+| Item                      | Seção(ões)    | Efeito                                                                                                                                                                                                           |
+| ------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Critério de candidato     | 8.5.1         | [PRD] atualizar, não duplicar; [Premissa] mesmo `requesterId`, `type`, `category`, `isOpenTicket(status)` e `id` fora de `dismissedIds`; sem comparação de texto; critério conservador (falso negativo possível) |
+| `findDuplicateCandidates` | 8.5.1         | Função de domínio pura; `requesterId` da sessão; ordem por `updatedAt` decrescente (instantes) e `id` crescente; não modifica a entrada                                                                          |
+| `dismissedIds`            | 8.5.1         | Mantido pelo backend na verificação da interação atual; mudança de `type` ou `category` reinicia; não autoriza escrita                                                                                           |
+| Quem confirma             | 8.5.1         | O serviço só identifica candidatos; não existe "duplicidade confirmada pelo serviço"; "mesmo problema" direciona o fluxo; todos descartados → segue a criação                                                    |
+| Pendências do Bloco 2     | 3.2, 10       | Removidos o critério de duplicidade e a distinção candidato × duplicidade confirmada, com remissão ao §8.5.1                                                                                                     |
+| Cabeçalho e histórico     | cabeçalho, 14 | Versão 2.5                                                                                                                                                                                                       |
 
 ### Alterações da v2.3 para a v2.4
 
-| Item | Seção(ões) | Efeito |
-| --- | --- | --- |
-| `TicketStatus` | 3.2, 8.5, 9, 10 | Catálogo `WAITING_ANALYST`, `APPROVED`, `RESOLVED`; removido das listas de PENDENTE, com remissão ao §8.5; matriz de transições do analista PENDENTE (Bloco 7) |
-| Lista de exemplos do PRD | 3.2 | Correção, inconsistência comprovada: o PRD (Anexo B) exemplifica Aguardando analista, Aprovado e Resolvido; "Em andamento" não consta no PRD |
-| `resolvedAt` | 3.2 | Campo opcional do `Ticket`; presente sempre que `RESOLVED`; removido na reabertura |
-| Ciclo de vida do `Ticket` | 8.5 | Criação, `APPROVED` só para `REQ`, sem status "fechado", reabertura (168 horas corridas, limite incluído) e origem das mudanças |
-| `isOpenTicket` e `canReopen` | 8.5 | Predicados de domínio puros; `now` é parâmetro |
-| `TRANSFER_TICKET` | 8.5, 8.7 | Não altera status nem `assignedTo`; registra `TicketEvent` `TRANSFERRED` (alinha o §8.7, que dizia "altera o status do chamado") |
-| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.4 |
+| Item                         | Seção(ões)      | Efeito                                                                                                                                                         |
+| ---------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TicketStatus`               | 3.2, 8.5, 9, 10 | Catálogo `WAITING_ANALYST`, `APPROVED`, `RESOLVED`; removido das listas de PENDENTE, com remissão ao §8.5; matriz de transições do analista PENDENTE (Bloco 7) |
+| Lista de exemplos do PRD     | 3.2             | Correção, inconsistência comprovada: o PRD (Anexo B) exemplifica Aguardando analista, Aprovado e Resolvido; "Em andamento" não consta no PRD                   |
+| `resolvedAt`                 | 3.2             | Campo opcional do `Ticket`; presente sempre que `RESOLVED`; removido na reabertura                                                                             |
+| Ciclo de vida do `Ticket`    | 8.5             | Criação, `APPROVED` só para `REQ`, sem status "fechado", reabertura (168 horas corridas, limite incluído) e origem das mudanças                                |
+| `isOpenTicket` e `canReopen` | 8.5             | Predicados de domínio puros; `now` é parâmetro                                                                                                                 |
+| `TRANSFER_TICKET`            | 8.5, 8.7        | Não altera status nem `assignedTo`; registra `TicketEvent` `TRANSFERRED` (alinha o §8.7, que dizia "altera o status do chamado")                               |
+| Cabeçalho e histórico        | cabeçalho, 14   | Versão 2.4                                                                                                                                                     |
 
 ### Alterações da v2.2 para a v2.3
 
