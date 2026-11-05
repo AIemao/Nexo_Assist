@@ -1,0 +1,10 @@
+// Schema do ticket-service (ADR-008). Os models entram nos próximos commits.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}

@@ -5,3 +5,7 @@ coverage/
 .env
 .env.local
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+apps/ticket-service/src/generated/

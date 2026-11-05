@@ -10,5 +10,10 @@
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.10.1": true,
+    "better-sqlite3@12.11.1": true,
+    "prisma@7.10.1": true
   }
 }
