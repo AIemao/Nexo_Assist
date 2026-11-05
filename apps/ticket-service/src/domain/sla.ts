@@ -6,7 +6,7 @@ import type { Priority } from "./priority.js";
 const OPERATIONAL_OFFSET_MINUTES = -180;
 const WINDOW_OPEN_HOUR = 8;
 const WINDOW_CLOSE_HOUR = 18;
-const BUSINESS_MINUTES_PER_DAY = 600;
+const BUSINESS_MINUTES_PER_DAY = (WINDOW_CLOSE_HOUR - WINDOW_OPEN_HOUR) * 60;
 
 const MS_PER_MINUTE = 60 * 1000;
 
