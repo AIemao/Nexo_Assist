@@ -1,8 +1,12 @@
 {
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*"],
-  "engines": { "node": ">=22" },
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
