@@ -1,4 +1,4 @@
-// Schema do ticket-service (ADR-008). Os models entram nos próximos commits.
+// Schema do ticket-service (ADR-008; DM v2.9 §3.2). Enums na ordem dos arrays do domínio.
 
 generator client {
   provider = "prisma-client"
@@ -7,4 +7,75 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+}
+
+enum TicketType {
+  INC
+  REQ
+}
+
+enum TicketCategory {
+  ACCESS
+  NETWORK_VPN
+  HARDWARE
+  SOFTWARE
+  EMAIL
+  OTHER
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TicketStatus {
+  WAITING_ANALYST
+  APPROVED
+  RESOLVED
+}
+
+enum WorkImpact {
+  BLOCKED
+  DEGRADED_WITH_WORKAROUND
+  NONE
+}
+
+enum AffectedScope {
+  SELF
+  TEAM
+  COMPANY
+  UNKNOWN
+}
+
+enum CommitmentRisk {
+  YES
+  NO
+  UNKNOWN
+  NOT_ASKED
+}
+
+// Sem defaults: id, version, datas e status são fornecidos pelo ticket-service (DM §3.2).
+// requesterId e assignedTo sem relação até o model Employee (migração posterior).
+model Ticket {
+  id                   String         @id
+  version              Int
+  type                 TicketType
+  title                String
+  description          String
+  category             TicketCategory
+  priority             Priority
+  status               TicketStatus
+  requesterId          String
+  workImpact           WorkImpact
+  affectedScope        AffectedScope
+  commitmentRisk       CommitmentRisk
+  assignedTo           String?
+  createdAt            DateTime
+  updatedAt            DateTime
+  resolvedAt           DateTime?
+  firstResponseDueAt   DateTime
+  nextUpdateDueAt      DateTime?
+  serviceDeskUpdatedAt DateTime?
 }
