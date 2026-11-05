@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.8** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.9** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -136,6 +136,15 @@ Regras e observações:
 - Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
 - **[Premissa]** `nextUpdateDueAt` e `serviceDeskUpdatedAt` são ambos ausentes (sem atualização do service desk) ou ambos presentes; só um presente é inconsistente.
 - Prazo vigente = `nextUpdateDueAt ?? firstResponseDueAt`. Cálculo do `firstResponseDueAt` e recálculo: §8.5.2; critério de duplicidade: §8.5.1.
+
+Persistência **[Premissa]**:
+
+- **`id`:** string gerada pelo ticket-service, sem default no schema. O gerador é injetado, e a estratégia é definida na implementação da criação. O formato legível segue os exemplos do PRD (Anexo B; ex.: `INC-20311`), que são exemplos, não regra.
+- **`version`:** começa em 1 na criação, definido pelo ticket-service, sem default no schema.
+- **Datas:** `DateTime` na persistência; o repositório converte string ISO ↔ `Date`. O instante é preservado; o deslocamento original não (volta normalizado em UTC, sufixo `Z`).
+- **`createdAt`, `updatedAt` e `status`:** `createdAt` e `updatedAt` são fornecidos pelo ticket-service com relógio injetado; `status` é fornecido explicitamente pelo ticket-service (valor inicial: §8.5). Nenhum deles tem default no schema.
+- **`requesterId` e `assignedTo`** (quando presente) referenciam `Employee.id`; a FK entra junto com o model `Employee`, em migração posterior.
+- **Regras que o schema não expressa** (prazos juntos ou ausentes; `resolvedAt` se e só se `RESOLVED`; `APPROVED` só para `REQ`) são validadas antes da gravação. Sem `CHECK` no SQLite: restrições manuais se perdem quando o Prisma recria a tabela (experimento no ADR-008). Limitação aceita: escritas SQL fora do Prisma não têm essas garantias, como já ocorre com os enums (README §5).
 
 ### 3.3 TicketDraft (payload da PendingAction)
 
@@ -1242,8 +1251,21 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.6   | v2.5; Bloco 2 (SLA)                                                           | Decisões do Bloco 2: cálculo de prazo (§8.5.2): Crítica em tempo corrido; janela útil seg–sex 08:00–18:00; Alta 4, Média 30 e Baixa 50 horas úteis; início fora da janela; fuso UTC−03:00 fixo; `computeDueAt` e `isOverdue`; prazo seguinte a partir da última atualização do service desk; recálculo na mudança de prioridade.       |
 | v2.7   | v2.6; ADR-008 (Bloco 3)                                                       | Pendência "ORM e driver do SQLite" removida do §10, com remissão ao ADR-008. Decisão de infraestrutura; nenhuma regra, entidade, tipo ou função do domínio foi alterada.                                                                                                                                                               |
 | v2.8   | v2.7; Bloco 3 (mapeamento)                                                    | Decisões de mapeamento do ticket-service: campos de prazo do `Ticket` (`firstResponseDueAt`, `nextUpdateDueAt`, `serviceDeskUpdatedAt`) e regras de recálculo; persistência do `ImpactAssessment` em três colunas; `IdempotencyRecord` (§3.16, registro técnico, não entidade); remissão à regra de catálogos persistidos (README §5). |
+| v2.9   | v2.8; Bloco 3 (persistência do `Ticket`) | Premissas de persistência do `Ticket` (§3.2): `id` gerado pelo ticket-service com gerador injetado; `version` começa em 1; datas como `DateTime` (instante preservado, deslocamento normalizado em UTC); `createdAt`, `updatedAt` e `status` fornecidos pelo ticket-service, sem default no schema; FK para `Employee` em migração posterior; regras fora do schema validadas antes da gravação; sem `CHECK` no SQLite (experimento no ADR-008). |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.8 para a v2.9
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| `id` | 3.2 | String gerada pelo ticket-service, sem default no schema; gerador injetado; formato legível segue os exemplos do PRD (Anexo B), sem ser regra |
+| `version` | 3.2 | Começa em 1 na criação, definido pelo ticket-service, sem default no schema |
+| Datas | 3.2 | `DateTime` na persistência; o repositório converte string ISO ↔ `Date`; instante preservado, deslocamento normalizado em UTC (`Z`) |
+| `createdAt`, `updatedAt` e `status` | 3.2 | Fornecidos pelo ticket-service (datas com relógio injetado); sem default no schema |
+| `requesterId` e `assignedTo` | 3.2 | Referenciam `Employee.id`; FK com o model `Employee`, em migração posterior |
+| Regras fora do schema | 3.2 | Validadas antes da gravação; sem `CHECK` no SQLite, porque restrições manuais se perdem quando o Prisma recria a tabela (experimento no ADR-008); limitação aceita para escritas SQL fora do Prisma |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.9 |
 
 ### Alterações da v2.7 para a v2.8
 

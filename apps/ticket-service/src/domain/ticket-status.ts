@@ -1,4 +1,5 @@
-export type TicketStatus = "WAITING_ANALYST" | "APPROVED" | "RESOLVED";
+export const TICKET_STATUSES = ["WAITING_ANALYST", "APPROVED", "RESOLVED"] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 // DM §8.5: [PRD] reabertura "até 7 dias"; [Premissa] 168 horas corridas, limite incluído.
 const REOPEN_WINDOW_MS = 168 * 60 * 60 * 1000;

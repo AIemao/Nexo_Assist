@@ -1,6 +1,7 @@
 import type { MissingField, PriorityReasonCode } from "./catalogs.js";
 
-export type Priority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export const PRIORITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
+export type Priority = (typeof PRIORITIES)[number];
 
 export type PriorityClassification =
   | { status: "CLASSIFIED"; priority: Priority; reasonCode: PriorityReasonCode }
