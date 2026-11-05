@@ -5,3 +5,4 @@ coverage/
 .env
 .env.local
 *.db
+apps/ticket-service/src/generated/

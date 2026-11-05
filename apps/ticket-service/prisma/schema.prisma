@@ -1,0 +1,16 @@
+// SPIKE (descartável): avaliação do Prisma 7 + SQLite. Não é o modelo de domínio.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Ticket {
+  id      String @id
+  version Int
+  title   String
+}
