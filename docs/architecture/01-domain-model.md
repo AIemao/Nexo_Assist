@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.5** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.6** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -117,7 +117,7 @@ interface Ticket {
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string; // ISO 8601 com fuso; ver nota abaixo
-  // PENDENTE (Bloco 2): prazos (ex.: firstResponseDueAt, nextUpdateDueAt)
+  // PENDENTE (Bloco 3): campos de prazo (ex.: firstResponseDueAt, nextUpdateDueAt); cálculo em §8.5.2
 }
 ```
 
@@ -131,9 +131,9 @@ Regras e observações:
 - `Ticket.assignedTo` (quem atende o chamado) é distinto de `Conversation.assignedAnalystId` (quem atende a conversa) (§3.5, README §9).
 - **[PRD]** O Anexo B apresenta exemplos de status: Aguardando analista, Aprovado e Resolvido. "Em andamento" não consta no PRD. **[Premissa]** O catálogo do MVP contém só esses três; um estado de atendimento do chamado (ex.: `IN_PROGRESS`) pode entrar no Bloco 7, se o console precisar. Catálogo, criação, reabertura e transferência: §8.5.
 - `resolvedAt` está presente sempre que `status = RESOLVED`; é definido pelo ticket-service ao entrar em `RESOLVED` e removido na reabertura. O histórico fica em `TicketEvent`.
-- Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização.
+- Prazos por prioridade são **[PRD]** (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis, para a primeira resposta e para cada atualização. Cálculo do prazo: §8.5.2.
 
-PENDENTE (Bloco 2): campos de prazo do chamado e calendário de SLA (README §12 #4). O critério de duplicidade está em §8.5.1.
+PENDENTE (Bloco 3): campos de prazo do chamado e momento de recálculo (README §12 #4). O cálculo de prazo está em §8.5.2; o critério de duplicidade, em §8.5.1.
 
 ### 3.3 TicketDraft (payload da PendingAction)
 
@@ -971,6 +971,23 @@ Ciclo de vida de `Ticket.status` (README §12 #2):
 - **[Premissa]** **Quem confirma:** o ticket-service só identifica candidatos; o funcionário decide se é o mesmo problema. Não existe "duplicidade confirmada pelo serviço". "Mesmo problema" direciona o fluxo e não autoriza escrita: a atualização exige `PendingAction` confirmada. Todos os candidatos descartados → segue a criação.
 - A busca de resolvidos recentes para reabertura é **separada** da busca de duplicidade (README §12 #12, Bloco 5).
 
+#### 8.5.2 SLA: cálculo de prazo
+
+- **[PRD]** Prazos da tabela do Anexo A (README §2): Crítica 1 hora; Alta 4 horas úteis; Média 3 dias úteis; Baixa 5 dias úteis. Valem para a primeira resposta e para cada atualização. Passado o prazo, o chamado está vencido.
+- **[Premissa]** Crítica em tempo corrido (24×7): o PRD escreve "1 hora" e não "hora útil"; o artigo de exemplo cita plantão crítico 24h (evidência, README §12 #4).
+- **[Premissa]** Janela útil: segunda a sexta, 08:00 inclusive a 18:00 exclusivo. Sábado e domingo sem expediente. Feriados fora do MVP (README §3, ordem de corte).
+- **[Premissa]** Prazos em horas úteis: Alta 4, Média 30, Baixa 50 (dia útil = jornada de 10 horas). A contagem é contínua dentro da janela; os testes registram os casos de borda (início às 08:00, término às 18:00, início fora da janela).
+- **[Premissa]** Início fora da janela: a contagem começa na próxima abertura (ex.: segunda 07:59 → 08:00; segunda 18:00 → terça 08:00; sábado 15:00 → segunda 08:00).
+- **[Premissa]** Quando as horas úteis se completam exatamente no fim da janela, o prazo é 18:00 daquele dia (não 08:00 do dia seguinte).
+- **[Premissa]** Fuso operacional do MVP: UTC−03:00, deslocamento fixo, sem biblioteca de fuso. **Risco registrado:** se houver horário de verão, rever.
+- **Funções de domínio** (puras, sem relógio):
+  - `computeDueAt(start: string, priority: Priority): string` → instante ISO 8601 normalizado em UTC (`Z`).
+  - `isOverdue(dueAt: string, now: string): boolean` → `now > dueAt`, comparando instantes; `now === dueAt` não é vencido.
+- **[Premissa]** Vencido é calculado, nunca gravado como status.
+- **[Premissa]** O prazo seguinte é calculado a partir da última atualização do service desk; informação adicional do funcionário não reinicia o prazo. Quais eventos contam como atualização do service desk: PENDENTE (Bloco 7).
+- **[Premissa]** Mudança de prioridade recalcula o prazo vigente a partir do mesmo início; uma elevação pode tornar o chamado vencido na hora; uma redução pode estender o prazo.
+- Campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) e momento de recálculo: PENDENTE (Bloco 3).
+
 ### 8.6 Concorrência entre ciclos (README §9)
 
 | Situação                                                     | Comportamento                                                                                                                                                                                           |
@@ -1037,7 +1054,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                        | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 2): calendário de SLA e campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`)                                      | 2     | §3.2, README §12 #4             |
+| PENDENTE (Bloco 3): campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) e momento de recálculo (cálculo do prazo: §8.5.2) | 3 | §8.5.2, README §12 #4 |
 | PENDENTE (Bloco 2): lista final de tipos de `TicketEvent`                                                                                               | 2     | §3.9, README §12 #5             |
 | PENDENTE (Bloco 3): ORM e driver do SQLite                                                                                                              | 3     | README §5, README §12 #6        |
 | PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício                                 | 3     | README §7D, README §12 #7       |
@@ -1053,6 +1070,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (Bloco 7): operação `ASSIGN_TICKET` ausente de `OperationType` embora `TicketEvent` preveja `ASSIGNED` (não entra em `OperationType` agora)    | 7     | README §9, README §12 #17, §7.1 |
 | PENDENTE (Bloco 7): o que acontece se a reconciliação do `TRANSFER_TICKET` não resolver (conversa transferida, chamado não); mecanismo de sincronização | 7     | §8.6 (C7)                       |
 | PENDENTE (Bloco 7): autorização pelo papel `ANALYST` nas escritas feitas pelo console                                                                   | 7     | §7.3                            |
+| PENDENTE (Bloco 7): quais eventos contam como atualização do service desk para o prazo seguinte (§8.5.2) | 7 | §8.5.2, README §12 #4 |
 | PENDENTE (Bloco 4): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5)                                                                                | 4     | §3.15                           |
 | PENDENTE (Bloco 6): representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                                                     | 6     | §3.8                            |
 | PENDENTE (Bloco 2): catálogo de campos de `TicketEvent.changes` (L12)                                                                                   | 2     | §3.9                            |
@@ -1187,8 +1205,21 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.3   | v2.2; Bloco 2 (`classifyPriority` e `validateImpactAssessment` implementados) | Decisões do Bloco 2: `missingFields` de campo único (coleta progressiva); classificar ≠ validar; `validateImpactAssessment` e o erro `NOT_ASKED_REQUIRES_BLOCKED` substituem o exemplo `.superRefine` na regra do `NOT_ASKED`; referência aos testes em `apps/ticket-service/test/domain/`.        |
 | v2.4   | v2.3; Bloco 2 (`TicketStatus`, reabertura e transferência) | Decisões do Bloco 2: catálogo `TicketStatus` (`WAITING_ANALYST`, `APPROVED`, `RESOLVED`); `resolvedAt`; elegibilidade de reabertura calculada (168 horas corridas); `isOpenTicket` e `canReopen`; `TRANSFER_TICKET` sem mudança de status. Correção da lista de exemplos de status do PRD (inconsistência comprovada). |
 | v2.5   | v2.4; Bloco 2 (duplicidade) | Decisões do Bloco 2: critério estrutural de candidato (mesmo solicitante, tipo e categoria, chamado aberto, fora de `dismissedIds`); `findDuplicateCandidates`; o ticket-service só identifica candidatos e o funcionário decide; `dismissedIds` mantido pelo backend; busca de reabertura separada. |
+| v2.6   | v2.5; Bloco 2 (SLA) | Decisões do Bloco 2: cálculo de prazo (§8.5.2): Crítica em tempo corrido; janela útil seg–sex 08:00–18:00; Alta 4, Média 30 e Baixa 50 horas úteis; início fora da janela; fuso UTC−03:00 fixo; `computeDueAt` e `isOverdue`; prazo seguinte a partir da última atualização do service desk; recálculo na mudança de prioridade. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.5 para a v2.6
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Prazos do PRD | 8.5.2 | [PRD] tabela do Anexo A; vencido após o prazo |
+| Calendário | 8.5.2 | [Premissa] Crítica em tempo corrido; janela útil seg–sex 08:00 inclusive a 18:00 exclusivo; sem feriados no MVP; Alta 4, Média 30, Baixa 50 horas úteis; início fora da janela na próxima abertura; fim exato da janela = 18:00 do mesmo dia |
+| Fuso | 8.5.2 | [Premissa] UTC−03:00 fixo, sem biblioteca de fuso; risco registrado para horário de verão |
+| `computeDueAt` e `isOverdue` | 8.5.2 | Funções puras, sem relógio; `computeDueAt` devolve UTC (`Z`); `now === dueAt` não é vencido |
+| Reinício e recálculo | 8.5.2 | Prazo seguinte a partir da última atualização do service desk (eventos: PENDENTE, Bloco 7); mudança de prioridade recalcula a partir do mesmo início |
+| Pendências | 3.2, 10 | Removido o calendário de SLA do Bloco 2, com remissão ao §8.5.2; novas: campos de prazo e recálculo (Bloco 3) e eventos de atualização do service desk (Bloco 7) |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.6 |
 
 ### Alterações da v2.4 para a v2.5
 
