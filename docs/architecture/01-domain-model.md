@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.6** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.7** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -1056,7 +1056,6 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                        | 7     | §8.5, README §12 #2             |
 | PENDENTE (Bloco 3): campos de prazo do `Ticket` (ex.: `firstResponseDueAt`, `nextUpdateDueAt`) e momento de recálculo (cálculo do prazo: §8.5.2) | 3 | §8.5.2, README §12 #4 |
 | PENDENTE (Bloco 2): lista final de tipos de `TicketEvent`                                                                                               | 2     | §3.9, README §12 #5             |
-| PENDENTE (Bloco 3): ORM e driver do SQLite                                                                                                              | 3     | README §5, README §12 #6        |
 | PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício                                 | 3     | README §7D, README §12 #7       |
 | PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência                                                                                     | 3     | README §9, README §12 #8        |
 | PENDENTE (Bloco 4): modelo LLM                                                                                                                          | 4     | README §12 #9                   |
@@ -1077,6 +1076,8 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console                                  | 7     | README §9, README §12 #17       |
 
 As transições entre `flow` e `stage` do `InteractionContext` (L2) não constam mais como pendência: estão definidas em `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
+
+O ORM e o driver do SQLite (README §12 #6) não constam mais como pendência: estão decididos no ADR-008 (infraestrutura de persistência; não altera o domínio).
 
 ---
 
@@ -1206,8 +1207,16 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.4   | v2.3; Bloco 2 (`TicketStatus`, reabertura e transferência) | Decisões do Bloco 2: catálogo `TicketStatus` (`WAITING_ANALYST`, `APPROVED`, `RESOLVED`); `resolvedAt`; elegibilidade de reabertura calculada (168 horas corridas); `isOpenTicket` e `canReopen`; `TRANSFER_TICKET` sem mudança de status. Correção da lista de exemplos de status do PRD (inconsistência comprovada). |
 | v2.5   | v2.4; Bloco 2 (duplicidade) | Decisões do Bloco 2: critério estrutural de candidato (mesmo solicitante, tipo e categoria, chamado aberto, fora de `dismissedIds`); `findDuplicateCandidates`; o ticket-service só identifica candidatos e o funcionário decide; `dismissedIds` mantido pelo backend; busca de reabertura separada. |
 | v2.6   | v2.5; Bloco 2 (SLA) | Decisões do Bloco 2: cálculo de prazo (§8.5.2): Crítica em tempo corrido; janela útil seg–sex 08:00–18:00; Alta 4, Média 30 e Baixa 50 horas úteis; início fora da janela; fuso UTC−03:00 fixo; `computeDueAt` e `isOverdue`; prazo seguinte a partir da última atualização do service desk; recálculo na mudança de prioridade. |
+| v2.7   | v2.6; ADR-008 (Bloco 3) | Pendência "ORM e driver do SQLite" removida do §10, com remissão ao ADR-008. Decisão de infraestrutura; nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.6 para a v2.7
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| ORM e driver do SQLite | 10 | Pendência removida, com remissão ao ADR-008 (Prisma ORM 7.10.1 + SQLite) |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.7 |
 
 ### Alterações da v2.5 para a v2.6
 
