@@ -31,6 +31,8 @@ Duas regras precisam ser demonstráveis na persistência:
 4. **Isolamento do domínio.** O Prisma aparece somente na camada de persistência e nos repositórios. Nenhum import de Prisma em `src/domain`; o domínio continua sem dependências de infraestrutura.
 5. **Cliente gerado.** O cliente gerado não é versionado no Git. É gerado automaticamente pelo `postinstall` (`prisma generate`). A regra do `.gitignore` correspondente entra no mesmo commit que instala o Prisma.
 
+Invariantes entre campos do `Ticket` não usam `CHECK` manual; são validadas antes da gravação (ver "Experimento: CHECK manual no SQLite").
+
 ## Alternativas consideradas
 
 ### A. `node:sqlite` nativo com SQL explícito
@@ -79,6 +81,36 @@ O spike rodou na branch `spike/prisma`, depois descartada. O Draft PR foi fechad
 - `dependencies`: `@prisma/client` e `@prisma/adapter-better-sqlite3`, ambos 7.10.1.
 - `devDependencies`: `prisma`, 7.10.1.
 - `better-sqlite3` 12.11.1 é dependência transitiva do adapter.
+
+## Experimento: CHECK manual no SQLite
+
+Realizado em 2026-11-05, na branch `feat/ticket-repository`, com Prisma Migrate 7.10.1, em um banco descartável (`prisma/experiment.db`, apagado ao final). Nada do experimento foi commitado.
+
+**Pergunta.** As regras do DM §3.2 que o schema do Prisma não expressa (prazos de atualização juntos ou ausentes; `resolvedAt` se e só se `RESOLVED`; `APPROVED` só para `REQ`) podem ser garantidas no banco com `CHECK` acrescentado à mão no SQL da migração?
+
+**Procedimento.**
+
+1. Gerar a migração inicial com `--create-only` e acrescentar à mão, no `CREATE TABLE "Ticket"`, três restrições: `Ticket_update_deadline_pair_check`, `Ticket_resolved_at_status_check` e `Ticket_approved_requires_request_check`. Aplicar a migração.
+2. Executar quatro INSERTs isolados com `better-sqlite3`: três inválidos, cada um violando uma única restrição, com os demais campos válidos, e um INSERT válido como controle.
+3. Forçar uma recriação de tabela: mudar temporariamente `title String` para `String?` e gerar a segunda migração com `--create-only`. Confirmar no SQL gerado o `CREATE TABLE "new_Ticket"`, a cópia dos dados, o `DROP TABLE "Ticket"` e o `RENAME`, sem editar o SQL.
+4. Aplicar a segunda migração e repetir os quatro INSERTs.
+
+**Resultados, por restrição.**
+
+| Restrição | INSERT inválido antes da recriação | Presente no `CREATE TABLE "new_Ticket"` | INSERT inválido depois da recriação |
+| --- | --- | --- | --- |
+| `Ticket_update_deadline_pair_check` | Rejeitado (`SQLITE_CONSTRAINT_CHECK`, com o nome da restrição) | Ausente | Inserido |
+| `Ticket_resolved_at_status_check` | Rejeitado (`SQLITE_CONSTRAINT_CHECK`, com o nome da restrição) | Ausente | Inserido |
+| `Ticket_approved_requires_request_check` | Rejeitado (`SQLITE_CONSTRAINT_CHECK`, com o nome da restrição) | Ausente | Inserido |
+| Controle (INSERT válido) | Inserido | — | Inserido |
+
+Depois da segunda migração, a tabela `Ticket` final não tinha nenhum `CHECK`. A conclusão vale para cada restrição individualmente: as três foram verificadas uma a uma.
+
+**Observado, sem investigação da causa.** O Prisma Migrate 7.10.1 gerou recriação de tabela para a mudança `title String` → `String?`. A causa dessa escolha não foi investigada, e este ADR não a atribui a uma limitação do SQLite.
+
+**Decisão.** `CHECK` manual não é usado: a recriação de tabela gerada pelo Prisma o descarta sem aviso, e mantê-lo exigiria reescrever à mão cada migração que recriasse a tabela. As invariantes são validadas antes da gravação.
+
+**Limitação aceita.** Escritas SQL fora do Prisma não têm essas garantias, como já ocorre com os enums (README §5).
 
 ## Consequências
 
