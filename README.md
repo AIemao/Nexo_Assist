@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.17):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.8 aprovado e congelado**. `03-agent-flow.md` **v1.3 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1.1 concluídos (`docs/evaluation/`). 🟢 Bloco 2 concluído: domínio do ticket-service com TDD (`classifyPriority`, `validateImpactAssessment`, `TicketStatus` e elegibilidade de reabertura, candidatos de duplicidade e SLA), 79 testes aprovados, sem dependências além do test runner. 🟡 Bloco 3 em andamento: API, seed, persistência, idempotência e falha simulada; ADR-008 aceito (Prisma ORM 7.10.1 + SQLite).
+**Status (README v2.18):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.9 aprovado e congelado**. `03-agent-flow.md` **v1.3 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1.1 concluídos (`docs/evaluation/`). 🟢 Bloco 2 concluído: domínio do ticket-service com TDD (`classifyPriority`, `validateImpactAssessment`, `TicketStatus` e elegibilidade de reabertura, candidatos de duplicidade e SLA), 79 testes aprovados, sem dependências além do test runner. 🟡 Bloco 3 em andamento: API, seed, persistência, idempotência e falha simulada; ADR-008 aceito (Prisma ORM 7.10.1 + SQLite).
 
 ## Referências
 
@@ -165,7 +165,7 @@ Painel de decisão · confirmação antes de escrever · privacidade · persist�
 
 ## 4. Modelo de domínio
 
-A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.8, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
+A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.9, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
 
 **Congelado** significa: muda só por **inconsistência comprovada** ou por **decisão atribuída a um bloco** (as pendências da DM §10). Mudanças são aprovadas (§14) e registradas **primeiro** no domain model, antes de qualquer artefato derivado.
 
@@ -637,3 +637,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.15  | Runtime atualizado para Node 26 LTS (Active LTS desde out/2026; suporte até abr/2029); `.nvmrc` e `engines`                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | v2.16  | ADR-008 aceito: Prisma ORM 7.10.1 + SQLite (adapter better-sqlite3); sincronização com `01-domain-model.md` v2.7; §5 (stack), §11 e §12 #6 (RESOLVIDA, sem renumerar) atualizados; Bloco 3 em andamento |
 | v2.17  | Sincronização com `01-domain-model.md` v2.8 (mapeamento do ticket-service: campos de prazo, `ImpactAssessment` em três colunas, `IdempotencyRecord`); §5 Princípios com a regra de catálogos persistidos; §12 #18 RESOLVIDA (decisão) e §12 #4 com os campos de prazo resolvidos, sem renumerar; status atualizado |
+| v2.18  | Sincronização com `01-domain-model.md` v2.9 (premissas de persistência do `Ticket`: `id`, `version`, datas em `DateTime`, campos fornecidos pelo ticket-service, FK para `Employee` posterior, `CHECK` PENDENTE no Bloco 3); status atualizado |
