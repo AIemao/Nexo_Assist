@@ -222,4 +222,44 @@ describe("TicketRepository", () => {
 
         expect(encontrado).toStrictEqual(chamado);
     });
+
+    it("limpa no banco o campo opcional removido na atualização", async () => {
+        const resolvido = chamadoValido({
+            status: "RESOLVED",
+            resolvedAt: "2026-11-06T12:00:00.000Z",
+        });
+
+        await repository.create(resolvido);
+
+        const reaberto = chamadoValido({
+            status: "WAITING_ANALYST",
+            updatedAt: "2026-11-07T10:00:00.000Z",
+        });
+
+        const chamadoReaberto: Ticket = {
+            ...reaberto,
+            version: 2,
+        };
+
+        const resultado = await repository.update(reaberto);
+
+        expect(resultado).toStrictEqual({
+            ok: true,
+            ticket: chamadoReaberto,
+        });
+
+        const encontrado = await repository.findById(resolvido.id);
+
+        expect(encontrado).toStrictEqual(chamadoReaberto);
+
+        const linha = await db.prisma.ticket.findUnique({
+            where: { id: resolvido.id },
+        });
+
+        expect(linha).toMatchObject({
+            status: "WAITING_ANALYST",
+            version: 2,
+            resolvedAt: null,
+        });
+    });
 });
