@@ -1,3 +1,5 @@
+import type { Ticket } from "./ticket.js";
+
 export const TICKET_STATUSES = ["WAITING_ANALYST", "APPROVED", "RESOLVED"] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
@@ -9,10 +11,9 @@ export function isOpenTicket(status: TicketStatus): boolean {
   return status !== "RESOLVED";
 }
 
-// O parâmetro equivale a Pick<Ticket, "status" | "resolvedAt">; o Ticket completo
-// ainda não está modelado no código. `now` é parâmetro: o domínio não lê relógio.
+// Recebe só os campos que a regra usa. `now` é parâmetro: o domínio não lê relógio.
 export function canReopen(
-  ticket: { status: TicketStatus; resolvedAt?: string },
+  ticket: Pick<Ticket, "status" | "resolvedAt">,
   now: string,
 ): boolean {
   if (ticket.status !== "RESOLVED" || ticket.resolvedAt === undefined) {

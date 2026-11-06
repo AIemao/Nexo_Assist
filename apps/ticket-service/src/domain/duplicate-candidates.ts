@@ -1,17 +1,11 @@
 import { isOpenTicket } from "./ticket-status.js";
-import type { TicketStatus } from "./ticket-status.js";
-import type { TicketCategory, TicketType } from "./ticket.js";
+import type { Ticket, TicketCategory, TicketType } from "./ticket.js";
 
-// Equivale a Pick<Ticket, "id" | "requesterId" | "type" | "category" | "status" | "updatedAt">;
-// o Ticket completo ainda não está modelado no código.
-export type DuplicateCandidateTicket = {
-  id: string;
-  requesterId: string;
-  type: TicketType;
-  category: TicketCategory;
-  status: TicketStatus;
-  updatedAt: string;
-};
+// Só os campos que a busca de duplicidade usa (DM §8.5.1).
+export type DuplicateCandidateTicket = Pick<
+  Ticket,
+  "id" | "requesterId" | "type" | "category" | "status" | "updatedAt"
+>;
 
 // DM §8.5.1: candidato = mesmo solicitante, tipo e categoria, chamado aberto e id fora de dismissedIds.
 // requesterId vem da sessão (ADR-004), nunca do rascunho nem do LLM.
