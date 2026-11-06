@@ -33,6 +33,8 @@ Duas regras precisam ser demonstráveis na persistência:
 
 Invariantes entre campos do `Ticket` não usam `CHECK` manual; são validadas antes da gravação (ver "Experimento: CHECK manual no SQLite").
 
+Todo acesso ao banco feito pelo fluxo da aplicação, inclusive leituras, passa pela Unit of Work (ver "Conexão única do adapter better-sqlite3").
+
 ## Alternativas consideradas
 
 ### A. `node:sqlite` nativo com SQL explícito
@@ -112,6 +114,43 @@ Depois da segunda migração, a tabela `Ticket` final não tinha nenhum `CHECK`.
 
 **Limitação aceita.** Escritas SQL fora do Prisma não têm essas garantias, como já ocorre com os enums (README §5).
 
+## Conexão única do adapter better-sqlite3
+
+Analisado em 2026-11-06, na branch `feat/unit-of-work`, com `@prisma/adapter-better-sqlite3` **7.10.1**. Os experimentos rodaram em um arquivo de teste temporário, apagado ao final. Nada deles foi commitado.
+
+**Pergunta.** Uma consulta feita pelo cliente raiz (`prisma`), e não pelo cliente da transação (`tx`), fica fora de uma transação interativa aberta?
+
+**Evidência no código instalado** (`node_modules/@prisma/adapter-better-sqlite3/dist/index.mjs`):
+
+| Linhas | Trecho | O que mostra |
+| --- | --- | --- |
+| 631–633 | `connect()` cria `new PrismaBetterSqlite3Adapter(createBetterSQLite3Client(this.#config), ...)` | Uma conexão `better-sqlite3` por adapter |
+| 641–646 | `createBetterSQLite3Client`: `new Database(dbPath, config)` | A conexão é um único objeto `Database` |
+| 517 e 532 | `this.client.prepare(query.sql)` em `BetterSQLite3Queryable` | Toda consulta usa o `client` do objeto que a executa |
+| 557–583 | `BetterSQLite3Transaction` recebe o mesmo `client` do adapter; `commit()` e `rollback()` só liberam o mutex | A transação não tem conexão própria |
+| 584–621 | `PrismaBetterSqlite3Adapter`: `#mutex = new Mutex()`; `startTransaction` faz `this.#mutex.acquire()` e `this.client.prepare("BEGIN").run()` | O mutex só é adquirido ao iniciar uma transação |
+
+Adapter e transação usam a mesma conexão `better-sqlite3`. O mutex serializa as transações entre si, mas as consultas comuns feitas pelo cliente raiz não passam por ele. Com um `BEGIN` aberto, essas consultas são executadas na mesma conexão e, portanto, dentro da transação.
+
+**Experimentos.** Banco de teste criado por `createTestDatabase`, com o repositório de tickets.
+
+| Experimento | Procedimento | Resultado |
+| --- | --- | --- |
+| A | Dentro do callback de `$transaction`, `create` feito pelo repositório sobre `prisma`, seguido de `throw` | Escrita desfeita |
+| B | Transação aberta com um `create` por `tx` e espera de 200 ms antes de `throw`; durante a espera, `create` independente e concorrente de outro chamado, feito por `prisma` | As duas escritas desfeitas. O `create` concorrente terminou sem erro para quem o executou |
+| C | Transação aberta por `createUnitOfWork` com `tickets.create`; o callback sinaliza a criação e espera ser liberado. Fora do callback, `prisma.ticket.findUnique` pelo id antes de liberar; depois, liberação, `throw` controlado e nova leitura por `prisma` após a rejeição | **Durante a transação aberta:** a leitura encontrou o chamado ainda não confirmado (`version` 1), sem bloquear. **Após o rollback:** a transação rejeitou com o próprio erro lançado, e a leitura não encontrou o chamado (`null`) |
+
+Os testes da Unit of Work que comparam `tx` com `prisma` não distinguem os dois neste adapter: com o repositório recebendo `prisma` em vez de `tx`, os quatro testes de `test/persistence/unit-of-work.test.ts` continuaram aprovados.
+
+**Decisão.** Todo acesso ao banco feito pelo fluxo da aplicação, inclusive leituras, passa pela Unit of Work. A camada de aplicação recebe a Unit of Work, não o `PrismaClient`. Uma leitura pelo cliente raiz durante uma transação aberta enxerga dados ainda não confirmados dessa transação, que podem desaparecer no rollback (experimento C).
+
+A consulta da chave anterior à transação e a releitura após o rollback, previstas no DM §3.16, são executadas em transações curtas próprias.
+
+**Alcance.**
+- A serialização descrita vale para operações que usam a mesma instância do adapter.
+- Outra conexão ou outro processo continua sujeito aos mecanismos de lock do SQLite.
+- Se a persistência mudar para um banco com pool de conexões, esta decisão deve ser revista e o comportamento transacional testado novamente, inclusive o tratamento de `P2025` dentro da transação. O comportamento observado no SQLite não está garantido no PostgreSQL.
+
 ## Consequências
 
 **Positivas**
@@ -140,5 +179,6 @@ O número de funcionários não exige PostgreSQL por si só. O SQLite permite m�
 
 - README §2 (persistência sobrevive a reinício), §5 (stack; persistência atrás de repositório; PostgreSQL no deploy), §9 (idempotência e concorrência) e §12 #6 (ORM e driver do SQLite).
 - Domain Model v2.7: §10 (pendência anterior de ORM e driver, agora remetida a este ADR).
+- Domain Model v2.9: §3.16 (consulta da chave e releitura após rollback, executadas em transações curtas próprias).
 - ADR-002 (o ticket-service como aplicação separada, dona do domínio dos chamados).
 - ADR-005 (idempotência por `OperationExecution.id`).

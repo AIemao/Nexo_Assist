@@ -16,7 +16,9 @@ export interface TicketRepository {
   update(ticket: Ticket): Promise<UpdateTicketResult>;
 }
 
-export function createTicketRepository(prisma: PrismaClient): TicketRepository {
+export type TicketDatabaseClient = Pick<PrismaClient, "ticket">;
+
+export function createTicketRepository(prisma: TicketDatabaseClient): TicketRepository {
   return {
     async create(ticket) {
       assertInvariants(ticket);
