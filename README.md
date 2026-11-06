@@ -231,7 +231,7 @@ nexo-assist/
 - **Pacotes só quando houver necessidade concreta.** Contratos começam locais; extraímos `packages/contracts` se os dois apps precisarem compartilhar.
 - **Agent só no servidor.** Credenciais do provedor nunca chegam ao navegador.
 - **Persistência atrás de uma camada de repositório.** O domínio não conhece o banco.
-- **Catálogos persistidos:** arrays `as const` no domínio como fonte única; o `schema.prisma` reproduz cada um como enum, e um teste de tipo verifica a igualdade nos dois sentidos (falha no typecheck). Vale para `TicketCategory`, `TicketType`, `Priority`, `TicketStatus`, `WorkImpact`, `AffectedScope` e `CommitmentRisk`. O enum é validado pelo Prisma, não pelo SQLite: escrita fora do Prisma não tem essa proteção. Rótulos de interface: `satisfies Record<…, string>` (Bloco 6).
+- **Catálogos persistidos:** arrays `as const` no domínio como fonte única; o `schema.prisma` reproduz cada um como enum, e um teste de tipo verifica a igualdade nos dois sentidos (falha no typecheck). Vale para `TicketCategory`, `TicketType`, `Priority`, `TicketStatus`, `WorkImpact`, `AffectedScope`, `CommitmentRisk`, `TicketEventType`, `ActorType` e `TicketOperationType`. O enum é validado pelo Prisma, não pelo SQLite: escrita fora do Prisma não tem essa proteção. Rótulos de interface: `satisfies Record<…, string>` (Bloco 6).
 
 ### Stack
 

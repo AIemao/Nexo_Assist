@@ -402,6 +402,8 @@ interface TicketEvent {
 }
 ```
 
+Até a operação `UPDATED`, o código tipa os elementos de `changes` como `JsonValue` (contrato PENDENTE).
+
 - Histórico oficial de alterações.
 - **[Premissa]** Os seis valores de `type` formam o catálogo `TicketEventType`. Produtor previsto de cada um:
 
@@ -427,6 +429,7 @@ Persistência **[Premissa]**:
 - **Regra validada pela aplicação, antes da gravação:** `EMPLOYEE` e `ANALYST` exigem `actor.employeeId`; `SYSTEM` exige `actor.employeeId` ausente.
 - **`changes`:** coluna JSON (`JsonValue`, como §3.16).
 - **`ticketId`:** FK para `Ticket`.
+- Chamados não são excluídos; as FKs para `Ticket` usam `Restrict` em exclusão e atualização (`onDelete` e `onUpdate` explícitos).
 - Catálogos persistidos: regra em README §5 (Princípios).
 
 ### 3.10 TicketAccessLog (README §8)
@@ -658,6 +661,8 @@ interface IdempotencyRecord {
 - **[Premissa]** `JsonValue` representa um valor serializável em JSON. É a representação do resultado persistido, não uma dependência do domínio em Prisma; a conversão para o tipo do ORM é feita no repositório.
 
 - `TicketOperationType` é definido no ticket-service (as operações que ele aceita: criação, atualização, reabertura e transferência), sem depender do `OperationType` do web. É catálogo distinto de `TicketEventType` (§3.9).
+
+- Chamados não são excluídos; as FKs para `Ticket` usam `Restrict` em exclusão e atualização (`onDelete` e `onUpdate` explícitos).
 
 Regras **[Premissa]**:
 
@@ -1294,6 +1299,7 @@ As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na r
 | Persistência do `TicketEvent` | 3.9 | `actor` em `actorType` e `actorEmployeeId` (opcional), convertido pelo repositório nos dois sentidos, como no `ImpactAssessment`; `actor.employeeId` exigido para `EMPLOYEE` e `ANALYST` e ausente para `SYSTEM`, validado pela aplicação; `changes` em coluna JSON (`JsonValue`); `ticketId` com FK para `Ticket` |
 | `TicketOperationType` | 3.16 | Catálogo `CREATE`, `UPDATE`, `REOPEN`, `TRANSFER`; `IdempotencyRecord.ticketId` com FK para `Ticket` |
 | Catálogos distintos | 3.9, 3.16 | `TicketEventType`, `ActorType` e `TicketOperationType` não se confundem: uma operação pode produzir um evento |
+| FKs para `Ticket` | 3.9, 3.16 | Chamados não são excluídos; `TicketEvent.ticketId` e `IdempotencyRecord.ticketId` usam `Restrict` em exclusão e atualização (`onDelete` e `onUpdate` explícitos) |
 | Contrato de `changes` (L12) | 3.9, 9, 10, 11.2 | PENDENTE até a operação `UPDATED` (antes: Bloco 2) |
 | Cabeçalho e histórico | cabeçalho, 14 | Versão 2.10 |
 
