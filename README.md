@@ -333,6 +333,7 @@ O PRD diz que informação de um chamado só vai para quem o abriu, e também qu
 
 - **Identidade vem da sessão.** As tools não têm parâmetro `userId`; o backend injeta o usuário autenticado.
 - **O ticket-service valida o solicitante** em toda leitura e escrita de funcionário — defesa em profundidade.
+- **Fronteira de confiança (premissa de interpretação):** o ticket-service confia no ator informado pelo web. A autenticação do funcionário fica no web, a aplicação que contém a UI e o BFF (ADR-002). O agent nunca fornece nem escolhe o ator.
 - **Autorização por origem da escrita:** funcionário via `PendingAction` confirmada; handoff pela política de transferência; console pelo papel `ANALYST` (DM §7.1, invariante 5).
 - Funcionário não acessa o console; só `ANALYST` assume, devolve ou encerra conversas.
 - O **LLM não recebe credenciais**; o frontend nunca recebe a chave do provedor.
@@ -638,4 +639,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.16  | ADR-008 aceito: Prisma ORM 7.10.1 + SQLite (adapter better-sqlite3); sincronização com `01-domain-model.md` v2.7; §5 (stack), §11 e §12 #6 (RESOLVIDA, sem renumerar) atualizados; Bloco 3 em andamento |
 | v2.17  | Sincronização com `01-domain-model.md` v2.8 (mapeamento do ticket-service: campos de prazo, `ImpactAssessment` em três colunas, `IdempotencyRecord`); §5 Princípios com a regra de catálogos persistidos; §12 #18 RESOLVIDA (decisão) e §12 #4 com os campos de prazo resolvidos, sem renumerar; status atualizado |
 | v2.18  | Sincronização com `01-domain-model.md` v2.9 (premissas de persistência do `Ticket`: `id`, `version`, datas em `DateTime`, campos fornecidos pelo ticket-service, FK para `Employee` posterior, sem `CHECK` no SQLite (experimento no ADR-008)); status atualizado |
-| v2.19  | Sincronização com `01-domain-model.md` v2.10 (catálogos de `TicketEvent`, de ator e de operações do ticket-service; persistência do `TicketEvent`; FK de `IdempotencyRecord.ticketId`); §12 #5 com os tipos resolvidos e o catálogo de `changes` PENDENTE até a operação `UPDATED`, sem renumerar; status atualizado |
+| v2.19  | Sincronização com `01-domain-model.md` v2.10 (catálogos de `TicketEvent`, de ator e de operações do ticket-service; persistência do `TicketEvent`; FK de `IdempotencyRecord.ticketId`); §12 #5 com os tipos resolvidos e o catálogo de `changes` PENDENTE até a operação `UPDATED`, sem renumerar; status atualizado. §5 "Vale para…" com os três catálogos novos; §8 com a fronteira de confiança (o ticket-service confia no ator informado pelo web) |
