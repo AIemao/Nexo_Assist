@@ -23,7 +23,7 @@ export { computeDueAt, isOverdue } from "./sla.js";
 export type { TicketInvariantError } from "./validate-ticket-invariants.js";
 export { validateTicketInvariants } from "./validate-ticket-invariants.js";
 export type { JsonValue } from "./json.js";
-export type { TicketEvent, TicketEventType, ActorType } from "./ticket-event.js";
+export type { TicketEvent, TicketEventType, ActorType, Actor } from "./ticket-event.js";
 export { TICKET_EVENT_TYPES, ACTOR_TYPES } from "./ticket-event.js";
 export type { TicketOperationType } from "./ticket-operation.js";
 export { TICKET_OPERATION_TYPES } from "./ticket-operation.js";
