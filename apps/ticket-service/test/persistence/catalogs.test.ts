@@ -15,6 +15,7 @@ import {
 } from "../../src/domain/index.js";
 
 import type {
+    Actor,
     ActorType,
     AffectedScope,
     CommitmentRisk,
@@ -76,6 +77,8 @@ export type CatalogTypeChecks = {
     ticketEventTypes: Assert<Equals<TicketEventType, PrismaTicketEventType>>;
     actorTypes: Assert<Equals<ActorType, PrismaActorType>>;
     ticketOperationTypes: Assert<Equals<TicketOperationType, PrismaTicketOperationType>>;
+    // Conferência interna do domínio: Actor precisa cobrir todo ActorType.
+    actorCoversActorTypes: Assert<Equals<Actor["type"], ActorType>>;
 };
 
 // Verificação real de valores em runtime.
