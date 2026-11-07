@@ -15,7 +15,11 @@ import type {
     TicketEvent,
 } from "../../src/domain/index.js";
 import { computeDueAt } from "../../src/domain/index.js";
-import { createUnitOfWork } from "../../src/persistence/unit-of-work.js";
+import { CorruptedRecordError } from "../../src/persistence/corrupted-record-error.js";
+import {
+    createUnitOfWork,
+    type UnitOfWork,
+} from "../../src/persistence/unit-of-work.js";
 import { createTestDatabase } from "../support/test-database.js";
 
 const NOW = "2026-11-07T12:00:00.000Z";
@@ -32,6 +36,13 @@ const IDEMPOTENCY_KEY_7 = "00000000-0000-4000-8000-000000000007";
 const IDEMPOTENCY_KEY_8 = "00000000-0000-4000-8000-000000000008";
 const IDEMPOTENCY_KEY_8_RECOVERY = "00000000-0000-4000-8000-000000000081";
 const IDEMPOTENCY_KEY_9 = "00000000-0000-4000-8000-000000000009";
+const IDEMPOTENCY_KEY_10 = "00000000-0000-4000-8000-000000000010";
+const IDEMPOTENCY_KEY_11_OK_FALSE = "00000000-0000-4000-8000-000000000111";
+const IDEMPOTENCY_KEY_11_TICKET_NAO_OBJETO = "00000000-0000-4000-8000-000000000112";
+const IDEMPOTENCY_KEY_11_ID_NAO_STRING = "00000000-0000-4000-8000-000000000113";
+const IDEMPOTENCY_KEY_11_ID_DIVERGENTE = "00000000-0000-4000-8000-000000000114";
+const IDEMPOTENCY_KEY_12 = "00000000-0000-4000-8000-000000000012";
+const IDEMPOTENCY_KEY_12_NEXT = "00000000-0000-4000-8000-000000000121";
 
 const actor = {
     type: "EMPLOYEE",
@@ -116,6 +127,37 @@ const eventoConflitante: TicketEvent = {
     occurredAt: "2026-11-06T10:00:00.000Z",
 };
 
+// Teste 12: deixa o caso de uso cego para a chave nas primeiras execuções da Unit of Work.
+// Nas cegas, findByKey devolve undefined; o resto dos repositórios é o real, com o mesmo tx.
+function criarUnitOfWorkCegaParaChave(real: UnitOfWork, execucoesCegas: number) {
+    let execucoes = 0;
+
+    const unitOfWorkCega: UnitOfWork = {
+        execute(work) {
+            execucoes += 1;
+
+            if (execucoes > execucoesCegas) {
+                return real.execute(work);
+            }
+
+            return real.execute((repos) =>
+                work({
+                    ...repos,
+                    idempotencyRecords: {
+                        ...repos.idempotencyRecords,
+                        findByKey: async () => undefined,
+                    },
+                }),
+            );
+        },
+    };
+
+    return {
+        unitOfWork: unitOfWorkCega,
+        execucoes: () => execucoes,
+    };
+}
+
 describe("createTicket", () => {
     let db: Awaited<ReturnType<typeof createTestDatabase>>;
     let unitOfWork: ReturnType<typeof createUnitOfWork>;
@@ -123,6 +165,8 @@ describe("createTicket", () => {
 
     let clockCalls: number;
     let eventIdGeneratorCalls: number;
+    let clock: { now(): string };
+    let eventIdGenerator: { generate(): string };
 
     async function expectNoCreation(idempotencyKey: string) {
         const persistidos = await unitOfWork.execute(
@@ -151,14 +195,14 @@ describe("createTicket", () => {
         clockCalls = 0;
         eventIdGeneratorCalls = 0;
 
-        const clock = {
+        clock = {
             now(): string {
                 clockCalls += 1;
                 return NOW;
             },
         };
 
-        const eventIdGenerator = {
+        eventIdGenerator = {
             generate(): string {
                 eventIdGeneratorCalls += 1;
 
@@ -632,5 +676,188 @@ describe("createTicket", () => {
         expect(persistidos.segundoTicket).toBeUndefined();
         expect(persistidos.events).toHaveLength(1);
         expect(persistidos.record?.result).toStrictEqual(resultados[0]);
+    });
+
+    // Teste 10: prova que a chave de outra operação não revela o snapshot, mesmo do próprio funcionário.
+    it("rejeita a chave já usada por outra operação do mesmo funcionário", async () => {
+        const registroDeOutraOperacao = {
+            key: IDEMPOTENCY_KEY_10,
+            operationType: "UPDATE",
+            ticketId: chamadoAncora.id,
+            result: {
+                ok: true,
+                ticket: {
+                    id: chamadoAncora.id,
+                    title: chamadoAncora.title,
+                },
+            },
+            createdAt: "2026-11-06T10:00:00.000Z",
+        } as const;
+
+        await unitOfWork.execute(async ({ tickets, idempotencyRecords }) => {
+            await tickets.create(chamadoAncora);
+            await idempotencyRecords.create(registroDeOutraOperacao);
+        });
+
+        const resultado = await createTicket.execute({
+            idempotencyKey: IDEMPOTENCY_KEY_10,
+            draft,
+            actor,
+        });
+
+        expect(resultado).toStrictEqual({
+            ok: false,
+            error: "IDEMPOTENCY_KEY_CONFLICT",
+        });
+
+        expect(clockCalls).toBe(0);
+        expect(eventIdGeneratorCalls).toBe(0);
+
+        const persistidos = await unitOfWork.execute(
+            async ({ tickets, idempotencyRecords }) => {
+                return {
+                    ticket: await tickets.findById("INC-1"),
+                    record: await idempotencyRecords.findByKey(
+                        IDEMPOTENCY_KEY_10,
+                    ),
+                };
+            },
+        );
+
+        expect(persistidos.ticket).toBeUndefined();
+        expect(persistidos.record).toStrictEqual(registroDeOutraOperacao);
+    });
+
+    // Teste 11: prova que snapshot malformado é tratado como dado corrompido, nunca devolvido.
+    it("lança CorruptedRecordError quando o snapshot da chave está malformado", async () => {
+        const snapshotsMalformados = [
+            {
+                key: IDEMPOTENCY_KEY_11_OK_FALSE,
+                result: { ok: false, ticket: { id: chamadoAncora.id } },
+            },
+            {
+                key: IDEMPOTENCY_KEY_11_TICKET_NAO_OBJETO,
+                result: { ok: true, ticket: chamadoAncora.id },
+            },
+            {
+                key: IDEMPOTENCY_KEY_11_ID_NAO_STRING,
+                result: { ok: true, ticket: { id: 1 } },
+            },
+            {
+                key: IDEMPOTENCY_KEY_11_ID_DIVERGENTE,
+                result: { ok: true, ticket: { id: "INC-OUTRO" } },
+            },
+        ];
+
+        await unitOfWork.execute(async ({ tickets, idempotencyRecords }) => {
+            await tickets.create(chamadoAncora);
+
+            for (const { key, result } of snapshotsMalformados) {
+                await idempotencyRecords.create({
+                    key,
+                    operationType: "CREATE",
+                    ticketId: chamadoAncora.id,
+                    result,
+                    createdAt: "2026-11-06T10:00:00.000Z",
+                });
+            }
+        });
+
+        for (const { key } of snapshotsMalformados) {
+            await expect(
+                createTicket.execute({
+                    idempotencyKey: key,
+                    draft,
+                    actor,
+                }),
+            ).rejects.toBeInstanceOf(CorruptedRecordError);
+        }
+
+        expect(clockCalls).toBe(0);
+        expect(eventIdGeneratorCalls).toBe(0);
+
+        const persistidos = await unitOfWork.execute(
+            async ({ tickets, ticketEvents, idempotencyRecords }) => {
+                const registros = [];
+
+                for (const { key } of snapshotsMalformados) {
+                    registros.push(await idempotencyRecords.findByKey(key));
+                }
+
+                return {
+                    ticket: await tickets.findById("INC-1"),
+                    events: await ticketEvents.listByTicket("INC-1"),
+                    results: registros.map((registro) => registro?.result),
+                };
+            },
+        );
+
+        expect(persistidos.ticket).toBeUndefined();
+        expect(persistidos.events).toStrictEqual([]);
+        expect(persistidos.results).toStrictEqual(
+            snapshotsMalformados.map(({ result }) => result),
+        );
+    });
+
+    // Teste 12: prova a releitura após o rollback (passo e), o caminho que protege entre processos.
+    it("relê a chave após o rollback e devolve o snapshot do vencedor", async () => {
+        const respostaVencedor = await createTicket.execute({
+            idempotencyKey: IDEMPOTENCY_KEY_12,
+            draft,
+            actor,
+        });
+
+        expect(respostaVencedor).toMatchObject({
+            ok: true,
+            ticket: { id: "INC-1" },
+        });
+
+        const cega = criarUnitOfWorkCegaParaChave(unitOfWork, 2);
+        const createTicketCego = createCreateTicket({
+            unitOfWork: cega.unitOfWork,
+            eventIdGenerator,
+            clock,
+        });
+
+        const respostaPerdedor = await createTicketCego.execute({
+            idempotencyKey: IDEMPOTENCY_KEY_12,
+            draft,
+            actor,
+        });
+
+        expect(respostaPerdedor).toStrictEqual(respostaVencedor);
+        expect(cega.execucoes()).toBe(3);
+        expect(clockCalls).toBe(2);
+        expect(eventIdGeneratorCalls).toBe(2);
+
+        const persistidos = await unitOfWork.execute(
+            async ({ tickets, ticketEvents, idempotencyRecords }) => {
+                return {
+                    ticket: await tickets.findById("INC-1"),
+                    segundoTicket: await tickets.findById("INC-2"),
+                    events: await ticketEvents.listByTicket("INC-1"),
+                    record: await idempotencyRecords.findByKey(
+                        IDEMPOTENCY_KEY_12,
+                    ),
+                };
+            },
+        );
+
+        expect(persistidos.ticket).toBeDefined();
+        expect(persistidos.segundoTicket).toBeUndefined();
+        expect(persistidos.events).toHaveLength(1);
+        expect(persistidos.record?.ticketId).toBe("INC-1");
+        expect(persistidos.record?.result).toStrictEqual(respostaVencedor);
+
+        const proximaResposta = await createTicket.execute({
+            idempotencyKey: IDEMPOTENCY_KEY_12_NEXT,
+            draft,
+            actor,
+        });
+
+        expect(proximaResposta).toMatchObject({
+            ok: true,
+            ticket: { id: "INC-2" },
+        });
     });
 });
