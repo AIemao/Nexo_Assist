@@ -9,13 +9,18 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/node": "26.6.6",
     "prisma": "7.10.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@hono/zod-validator": "0.9.1",
     "@prisma/adapter-better-sqlite3": "7.10.1",
     "@prisma/client": "7.10.1",
-    "better-sqlite3": "12.11.1"
+    "better-sqlite3": "12.11.1",
+    "hono": "4.13.14",
+    "zod": "4.6.7"
   }
 }
