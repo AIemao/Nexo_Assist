@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.10** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.11** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -683,8 +683,9 @@ Regras **[Premissa]**:
 - **Snapshot:** o `result` é a resposta original da operação. Na leitura, a validação é rasa: `ok === true`, `ticket` é objeto, `ticket.id` é string e igual a `IdempotencyRecord.ticketId`. Se falhar, lança exceção. O restante do objeto não é validado contra a estrutura atual de `Ticket`: o snapshot preserva a resposta original mesmo depois que o modelo evoluir.
 - **Ordem:** a chave é verificada antes de `expectedTicketVersion`; a consulta é repetida dentro da transação antes da validação de versão.
 - **Atomicidade:** `Ticket`, `TicketEvent` e `IdempotencyRecord` na mesma transação; se ela falhar, nenhum efeito fica confirmado isoladamente.
-- **Concorrência com a mesma chave:** só uma operação é confirmada. A perdedora, após o rollback integral (por chave duplicada ou por bloqueio de escrita), relê a chave fora da transação que falhou; se o registro vencedor existir, devolve o `result` original, sem erro de duplicidade; se não existir, o conflito segue a política de retry (README §12 #7).
-- **Conflito recuperável:** só o `P2002` da chave de idempotência. `P2002` de outra restrição é relançado. Até a resolução da política de retry (README §12 #7), se a releitura após o rollback não encontrar o registro vencedor, a falha é relançada. O caso de uso não tem laço de retry.
+- **Concorrência com a mesma chave:** só uma operação é confirmada. A perdedora, após o rollback integral (por chave duplicada ou por bloqueio de escrita), relê a chave fora da transação que falhou; se o registro vencedor existir, devolve o `result` original, sem erro de duplicidade; se não existir, vale o conflito recuperável abaixo.
+- **Conflito recuperável:** só o `P2002` da chave de idempotência. `P2002` de outra restrição é relançado. Se a releitura após o rollback não encontrar o registro vencedor, a falha é relançada. A política de retry pertence ao cliente web/BFF, que repete a mesma intenção com a mesma chave e o mesmo corpo original; nova intenção ou nova confirmação recebe outra chave (README §12 #7). O ticket-service não tem laço de retry.
+- **Consulta pela chave:** endpoint opcional, fora do MVP; repetir a operação com a mesma chave reconcilia o resultado original (README §12 #8).
 
 ---
 
@@ -1013,8 +1014,8 @@ stateDiagram-v2
     OUTCOME_UNKNOWN --> PROCESSING: retry seguro com mesmo ID
 ```
 
-- Reconciliação: repetir a operação com o mesmo `id` já reconcilia (se executada, o serviço devolve o resultado guardado; se não, executa) (README §9). PENDENTE (Bloco 3): endpoint específico de consulta pela chave (README §9, README §12 #8).
-- PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos, recuperação após reinício (README §7D, README §12 #7).
+- Reconciliação: repetir a operação com o mesmo `id` já reconcilia (se executada, o serviço devolve o resultado guardado; se não, executa) (README §9). Um endpoint específico de consulta pela chave é opcional, fora do MVP (README §12 #8).
+- Timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos e recuperação após reinício: a responsabilidade é do cliente web/BFF (README §7D, README §12 #7). PENDENTE (quando o web existir): os parâmetros concretos. O ticket-service não implementa laço de retry (§3.16).
 
 ### 8.5 Ticket
 
@@ -1127,7 +1128,7 @@ Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numera
 | 7   | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle`     | Contrato de `TicketEvent.changes` (operação `UPDATED`); snapshot de `QUICK_REPLIES` (Bloco 6)                 | §3.8, §3.9               |
 | 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                              | §8.8. PENDENTE (Bloco 6) |
 | 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                       | §8.7. PENDENTE (Bloco 7) |
-| 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas                                                                   | §8.4. PENDENTE (Bloco 3) |
+| 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas; a responsabilidade (cliente web/BFF, README §12 #7) está decidida | §8.4. PENDENTE (quando o web existir) |
 | 13  | Catálogos de códigos string                                   | `appliedRules` (Bloco 4); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4); `TicketStatus`: §8.5 | §3.15                    |
 
 A lacuna #5 (estrutura de `InteractionContext`; transições entre pares `(flow, stage)`, L2) foi resolvida por `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
@@ -1141,8 +1142,6 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício                                 | 3     | README §7D, README §12 #7       |
-| PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência                                                                                     | 3     | README §9, README §12 #8        |
 | PENDENTE (Bloco 4): modelo LLM                                                                                                                          | 4     | README §12 #9                   |
 | PENDENTE (Bloco 4): critério de "baixa confiança" para transferir                                                                                       | 4     | README §12 #10                  |
 | PENDENTE (Bloco 4): catálogo de `appliedRules`                                                                                                          | 4     | §3.15, README §12 #11           |
@@ -1160,11 +1159,16 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (operação `UPDATED`): contrato dos elementos de `TicketEvent.changes` (catálogo de `field`, `previousValue`, `newValue`) (L12)                  | —     | §3.9, README §12 #5             |
 | PENDENTE (operação `UPDATED`): onde garantir a imutabilidade de `requesterId` (caso de uso de atualização ou `update` do repositório)                    | —     | §3.2, §3.16                     |
 | PENDENTE (operação `TRANSFER`): como a verificação de solicitante da chave reutilizada se aplica quando o ator é `SYSTEM`                                | —     | §3.16                           |
+| PENDENTE (quando o web existir): detalhamento operacional da política de retry do cliente (timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos e recuperação após reinício) | —     | §8.4, §9 lacuna #11, README §12 #7 |
 | PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console                                  | 7     | README §9, README §12 #17       |
 
 As transições entre `flow` e `stage` do `InteractionContext` (L2) não constam mais como pendência: estão definidas em `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
 A lista final de tipos de `TicketEvent` (README §12 #5) não consta mais como pendência: está no §3.9 (catálogo `TicketEventType`). Continua PENDENTE o contrato de `changes` (linha acima): pendência por gatilho, não por bloco, resolvida quando a operação `UPDATED` for implementada; por isso a coluna Bloco traz "—".
+
+A responsabilidade pela política de retry não consta mais como pendência. O detalhamento operacional permanece PENDENTE até a existência do web. O ticket-service não implementa laço de retry (§3.16).
+
+O endpoint de consulta pela chave de idempotência (README §12 #8) não consta mais como pendência: é opcional e fora do MVP; repetir a operação com a mesma chave reconcilia o resultado original (§3.16).
 
 O ORM e o driver do SQLite (README §12 #6) não constam mais como pendência: estão decididos no ADR-008 (infraestrutura de persistência; não altera o domínio).
 
@@ -1302,8 +1306,19 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.8   | v2.7; Bloco 3 (mapeamento)                                                    | Decisões de mapeamento do ticket-service: campos de prazo do `Ticket` (`firstResponseDueAt`, `nextUpdateDueAt`, `serviceDeskUpdatedAt`) e regras de recálculo; persistência do `ImpactAssessment` em três colunas; `IdempotencyRecord` (§3.16, registro técnico, não entidade); remissão à regra de catálogos persistidos (README §5). |
 | v2.9   | v2.8; Bloco 3 (persistência do `Ticket`) | Premissas de persistência do `Ticket` (§3.2): `id` gerado pelo ticket-service com gerador injetado; `version` começa em 1; datas como `DateTime` (instante preservado, deslocamento normalizado em UTC); `createdAt`, `updatedAt` e `status` fornecidos pelo ticket-service, sem default no schema; FK para `Employee` em migração posterior; regras fora do schema validadas antes da gravação; sem `CHECK` no SQLite (experimento no ADR-008). |
 | v2.10  | v2.9; Bloco 3 (`TicketEvent` e idempotência) | Catálogo `TicketEventType` (§3.9) com o produtor previsto de cada tipo e revisão no Bloco 8; `CREATED` com `changes` vazio e `summary` fixo; `ActorType`; persistência do `TicketEvent` (`actor` em duas colunas, `changes` em JSON, FK para `Ticket`); `TicketOperationType` (§3.16) com FK de `IdempotencyRecord.ticketId`; catálogos distintos; contrato de `changes` PENDENTE até a operação `UPDATED`; tipo `Actor`; prioridade e prazo do draft (§3.3, inconsistência comprovada); geração do `id` por contador; imutabilidade de `requesterId`; chave reutilizada, snapshot e conflito (§3.16). |
+| v2.11  | v2.10; Bloco 3 (contrato HTTP, ADR-010) | Pendências de retry (README §12 #7) e de consulta pela chave (README §12 #8) resolvidas em §3.16 e removidas do §10: o retry pertence ao cliente web/BFF, com a mesma chave e o mesmo corpo, sem laço no ticket-service; a consulta pela chave é opcional, e o retry do `POST` reconcilia. Ajustes de coerência em §8.4, §9 (lacuna #11) e §10: responsabilidade decidida, detalhamento operacional PENDENTE até o web existir. Nenhuma outra alteração. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.10 para a v2.11
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Política de retry (README §12 #7) | 3.16, 10 | Pertence ao cliente web/BFF: mesma intenção, mesma chave e mesmo corpo original; nova intenção ou confirmação, chave nova; sem laço de retry no ticket-service. Removida do §10 |
+| Consulta pela chave (README §12 #8) | 3.16, 10 | Opcional, fora do MVP; repetir a operação com a mesma chave reconcilia o resultado original. Removida do §10 |
+| Coerência da execução (README §12 #7 e #8) | 8.4, 9 | §8.4: consulta pela chave deixa de ser pendência e passa a opcional, fora do MVP; timeout, backoff, limite de tentativas, classificação de erros e recuperação após reinício são responsabilidade do cliente web/BFF, com os parâmetros concretos PENDENTES até o web existir; sem laço de retry no ticket-service. §9, lacuna #11: mesma distinção (responsabilidade decidida; parâmetros PENDENTES, gatilho "quando o web existir") |
+| Pendência do retry no §10 | 10 | Nova linha "PENDENTE (quando o web existir): detalhamento operacional da política de retry do cliente" (origem §8.4, §9 lacuna #11, README §12 #7); o parágrafo do §10 passa a dizer que só a responsabilidade deixou de ser pendência, e o detalhamento operacional segue PENDENTE até a existência do web |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.11 |
 
 ### Alterações da v2.9 para a v2.10
 
