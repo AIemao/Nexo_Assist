@@ -17,6 +17,7 @@ export { TICKET_STATUSES, canReopen, isOpenTicket } from "./ticket-status.js";
 export type { Ticket, TicketType, TicketCategory } from "./ticket.js";
 export { TICKET_TYPES, TICKET_CATEGORIES } from "./ticket.js";
 export { formatTicketId } from "./format-ticket-id.js";
+export type { CreateTicketDraft } from "./ticket-draft.js";
 export type { DuplicateCandidateTicket } from "./duplicate-candidates.js";
 export { findDuplicateCandidates } from "./duplicate-candidates.js";
 export { computeDueAt, isOverdue } from "./sla.js";
