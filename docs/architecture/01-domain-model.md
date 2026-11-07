@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.9** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.10** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -139,11 +139,17 @@ Regras e observações:
 
 Persistência **[Premissa]**:
 
-- **`id`:** string gerada pelo ticket-service, sem default no schema. O gerador é injetado, e a estratégia é definida na implementação da criação. O formato legível segue os exemplos do PRD (Anexo B; ex.: `INC-20311`), que são exemplos, não regra.
+- **`id`:** string gerada pelo ticket-service, sem default no schema. O formato legível segue os exemplos do PRD (Anexo B; ex.: `INC-20311`), que são exemplos, não regra.
+  - Formatado por `formatTicketId(type, n)`.
+  - `n` é alocado por um contador independente para cada tipo de chamado (`TicketCounter`), dentro da transação de criação.
+  - A numeração começa em 1, sem zeros à esquerda.
+  - A linha do contador de cada tipo é criada por `upsert` no primeiro uso.
+  - Numeração sem buracos não é garantida.
 - **`version`:** começa em 1 na criação, definido pelo ticket-service, sem default no schema.
 - **Datas:** `DateTime` na persistência; o repositório converte string ISO ↔ `Date`. O instante é preservado; o deslocamento original não (volta normalizado em UTC, sufixo `Z`).
 - **`createdAt`, `updatedAt` e `status`:** `createdAt` e `updatedAt` são fornecidos pelo ticket-service com relógio injetado; `status` é fornecido explicitamente pelo ticket-service (valor inicial: §8.5). Nenhum deles tem default no schema.
 - **`requesterId` e `assignedTo`** (quando presente) referenciam `Employee.id`; a FK entra junto com o model `Employee`, em migração posterior.
+- **`requesterId` é imutável depois da criação.** A verificação de solicitante do §3.16 depende disso. PENDENTE (operação `UPDATED`): onde garantir, no caso de uso de atualização ou no `update` do repositório, que hoje grava todos os campos recebidos.
 - **Regras que o schema não expressa** (prazos juntos ou ausentes; `resolvedAt` se e só se `RESOLVED`; `APPROVED` só para `REQ`) são validadas antes da gravação. Sem `CHECK` no SQLite: restrições manuais se perdem quando o Prisma recria a tabela (experimento no ADR-008). Limitação aceita: escritas SQL fora do Prisma não têm essas garantias, como já ocorre com os enums (README §5).
 
 ### 3.3 TicketDraft (payload da PendingAction)
@@ -182,7 +188,8 @@ interface ReopenTicketDraft {
 
 Regras:
 
-- O funcionário confirma **exatamente** a prioridade e o prazo exibidos no card. O ticket-service **revalida** antes de criar; se o resultado mudou, nova proposta é apresentada.
+- **Prioridade:** o funcionário confirma a prioridade exibida no card, e ela precisa ser igual à prioridade recalculada pelo ticket-service antes de criar. Se houver divergência, nova proposta é apresentada ao funcionário.
+- **[Premissa] Prazo:** o `firstResponseDueAt` do draft é previsão para exibição. O prazo persistido é recalculado com o instante efetivo da criação (§8.5.2). Exemplo: prévia às 17:55 e confirmação às 18:05; o prazo pode passar para o próximo dia útil sem exigir nova confirmação, porque o prazo apresentado era previsão. (Antes, esta regra exigia confirmar "exatamente" também o prazo, o que um prazo calculado a partir do instante da criação não permite cumprir; inconsistência comprovada, v2.10.)
 - Se `expectedTicketVersion` não bate com a versão atual do chamado, a operação é rejeitada como desatualizada e o agent consulta de novo antes de propor.
 - Resolvido há até 7 dias pode ser reaberto **[PRD]** (README §2).
 - Abertura exige título, descrição, tipo, categoria, prioridade e afetados; fluxo rascunho, confirmação, criação **[PRD]** (README §2).
@@ -379,6 +386,12 @@ interface Message {
 ### 3.9 TicketEvent
 
 ```ts
+type ActorType = "EMPLOYEE" | "ANALYST" | "SYSTEM";
+
+type Actor =
+  | { type: "EMPLOYEE" | "ANALYST"; employeeId: string }
+  | { type: "SYSTEM" };
+
 interface TicketEvent {
   id: string;
   ticketId: string;
@@ -389,7 +402,7 @@ interface TicketEvent {
     | "TRANSFERRED"
     | "ASSIGNED"
     | "STATUS_CHANGED";
-  actor: { type: "EMPLOYEE" | "ANALYST" | "SYSTEM"; employeeId?: string };
+  actor: Actor;
   summary: string;
   changes: Array<{
     field: string;
@@ -400,9 +413,35 @@ interface TicketEvent {
 }
 ```
 
-- Histórico oficial de alterações. PENDENTE (Bloco 2): lista final de tipos, conforme as operações implementadas (README §12 #5).
+Até a operação `UPDATED`, o código tipa os elementos de `changes` como `JsonValue` (contrato PENDENTE).
+
+- Histórico oficial de alterações.
+- **[Premissa]** Os seis valores de `type` formam o catálogo `TicketEventType`. Produtor previsto de cada um:
+
+  | Tipo             | Produtor previsto                     |
+  | ---------------- | ------------------------------------- |
+  | `CREATED`        | Criação                               |
+  | `UPDATED`        | Atualização pelo funcionário          |
+  | `REOPENED`       | Reabertura                            |
+  | `TRANSFERRED`    | `TRANSFER_TICKET`                     |
+  | `ASSIGNED`       | Analista assume o chamado (Bloco 7)   |
+  | `STATUS_CHANGED` | Analista muda o status (§7.3)         |
+
+  Revisão no Bloco 8: valor sem produtor implementado sai do catálogo.
+- **[Premissa]** `CREATED`: `changes = []` e `summary` fixo "Chamado criado".
 - No evento `TRANSFERRED`, `summary` recebe a cópia de `ConversationEvent.summary` enviada pelo `TRANSFER_TICKET` (§3.6).
 - Toda mutação de chamado feita por analista gera `TicketEvent` com `actor.type: "ANALYST"` (§7.3).
+- `TicketEventType`, `ActorType` e `TicketOperationType` (§3.16) são **catálogos distintos**: uma operação pode produzir um evento, mas os conceitos não se confundem.
+- PENDENTE (operação `UPDATED`): contrato dos elementos de `changes` (catálogo de `field`, `previousValue`, `newValue`) (L12).
+
+Persistência **[Premissa]**:
+
+- **`actor`:** no domínio, `Actor` (união discriminada); na persistência, duas colunas, `actorType` (catálogo `ActorType`) e `actorEmployeeId` (opcional). O repositório converte nos dois sentidos, como no `ImpactAssessment` (§3.4). A interface de domínio não tem campos de persistência.
+- **Regra do ator:** `EMPLOYEE` e `ANALYST` têm `employeeId`; `SYSTEM` não tem. No domínio, a regra é expressa pelo tipo `Actor`. Na leitura do banco, o repositório valida a consistência entre `actorType` e `actorEmployeeId` ao converter as colunas em `Actor`; combinação inválida lança exceção (dado corrompido, como o snapshot do §3.16).
+- **`changes`:** coluna JSON (`JsonValue`, como §3.16).
+- **`ticketId`:** FK para `Ticket`.
+- Chamados não são excluídos; as FKs para `Ticket` usam `Restrict` em exclusão e atualização (`onDelete` e `onUpdate` explícitos).
+- Catálogos persistidos: regra em README §5 (Princípios).
 
 ### 3.10 TicketAccessLog (README §8)
 
@@ -619,10 +658,12 @@ type PolicyReasonCode = // por que esta ação (política)
 Registro técnico do ticket-service. **Não é entidade de domínio**: a contagem de entidades (§2) não muda. É distinto de `OperationExecution` (§3.14), que pertence ao web e ao fluxo do agent.
 
 ```ts
+type TicketOperationType = "CREATE" | "UPDATE" | "REOPEN" | "TRANSFER"; // [Premissa]
+
 interface IdempotencyRecord {
   key: string; // valor opaco = OperationExecution.id; chave primária; não é FK
   operationType: TicketOperationType;
-  ticketId: string; // obrigatório
+  ticketId: string; // obrigatório; FK para Ticket
   result: JsonValue; // snapshot JSON serializável do resultado original
   createdAt: string;
 }
@@ -630,15 +671,20 @@ interface IdempotencyRecord {
 
 - **[Premissa]** `JsonValue` representa um valor serializável em JSON. É a representação do resultado persistido, não uma dependência do domínio em Prisma; a conversão para o tipo do ORM é feita no repositório.
 
-- `TicketOperationType` é definido no ticket-service (as operações que ele aceita: criação, atualização, reabertura e transferência), sem depender do `OperationType` do web.
+- `TicketOperationType` é definido no ticket-service (as operações que ele aceita: criação, atualização, reabertura e transferência), sem depender do `OperationType` do web. É catálogo distinto de `TicketEventType` (§3.9).
+
+- Chamados não são excluídos; as FKs para `Ticket` usam `Restrict` em exclusão e atualização (`onDelete` e `onUpdate` explícitos).
 
 Regras **[Premissa]**:
 
 - **Só operações que produziram efeito sobre um chamado são registradas.** Operação rejeitada (ex.: versão desatualizada) não gera registro; a chave não é consumida e a nova tentativa reavalia a operação (o resultado pode mudar se o estado do chamado mudar).
-- **Resultado original:** com a chave existente, devolve o `result` armazenado, sem consultar o estado atual do chamado.
+- **Resultado original:** com a chave existente, devolve o `result` armazenado, sem reavaliar a operação nem consultar o estado atual do chamado. A única leitura do chamado é a do `requesterId`, imutável (§3.2), para a verificação abaixo.
+- **Chave reutilizada:** com a chave existente, confere `operationType` e o solicitante (`IdempotencyRecord.ticketId` → `Ticket.requesterId`). Se a operação ou o solicitante não corresponderem, responde `IDEMPOTENCY_KEY_CONFLICT`, sem revelar o `result` armazenado. Não há comparação do conteúdo da requisição (fingerprint do payload). PENDENTE (operação `TRANSFER`): como a verificação de solicitante se aplica quando o ator é `SYSTEM`.
+- **Snapshot:** o `result` é a resposta original da operação. Na leitura, a validação é rasa: `ok === true`, `ticket` é objeto, `ticket.id` é string e igual a `IdempotencyRecord.ticketId`. Se falhar, lança exceção. O restante do objeto não é validado contra a estrutura atual de `Ticket`: o snapshot preserva a resposta original mesmo depois que o modelo evoluir.
 - **Ordem:** a chave é verificada antes de `expectedTicketVersion`; a consulta é repetida dentro da transação antes da validação de versão.
 - **Atomicidade:** `Ticket`, `TicketEvent` e `IdempotencyRecord` na mesma transação; se ela falhar, nenhum efeito fica confirmado isoladamente.
 - **Concorrência com a mesma chave:** só uma operação é confirmada. A perdedora, após o rollback integral (por chave duplicada ou por bloqueio de escrita), relê a chave fora da transação que falhou; se o registro vencedor existir, devolve o `result` original, sem erro de duplicidade; se não existir, o conflito segue a política de retry (README §12 #7).
+- **Conflito recuperável:** só o `P2002` da chave de idempotência. `P2002` de outra restrição é relançado. Até a resolução da política de retry (README §12 #7), se a releitura após o rollback não encontrar o registro vencedor, a falha é relançada. O caso de uso não tem laço de retry.
 
 ---
 
@@ -1078,7 +1124,7 @@ Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numera
 
 | #   | Lacuna                                                        | Resíduo aberto                                                                                                | Tratamento               |
 | --- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| 7   | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle`     | Lista final de tipos de `TicketEvent` (Bloco 2); snapshot de `QUICK_REPLIES` (Bloco 6)                        | §3.8, §3.9               |
+| 7   | Atributos de `Message`, `TicketEvent`, `KnowledgeArticle`     | Contrato de `TicketEvent.changes` (operação `UPDATED`); snapshot de `QUICK_REPLIES` (Bloco 6)                 | §3.8, §3.9               |
 | 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                              | §8.8. PENDENTE (Bloco 6) |
 | 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                       | §8.7. PENDENTE (Bloco 7) |
 | 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas                                                                   | §8.4. PENDENTE (Bloco 3) |
@@ -1095,7 +1141,6 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 2): lista final de tipos de `TicketEvent`                                                                                               | 2     | §3.9, README §12 #5             |
 | PENDENTE (Bloco 3): timeout, backoff, limite de tentativas, erros transitórios x definitivos, recuperação após reinício                                 | 3     | README §7D, README §12 #7       |
 | PENDENTE (Bloco 3): endpoint de consulta pela chave de idempotência                                                                                     | 3     | README §9, README §12 #8        |
 | PENDENTE (Bloco 4): modelo LLM                                                                                                                          | 4     | README §12 #9                   |
@@ -1112,10 +1157,14 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (Bloco 7): quais eventos contam como atualização do service desk para o prazo seguinte (§8.5.2)                                                | 7     | §8.5.2, README §12 #4           |
 | PENDENTE (Bloco 4): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5)                                                                                | 4     | §3.15                           |
 | PENDENTE (Bloco 6): representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                                                     | 6     | §3.8                            |
-| PENDENTE (Bloco 2): catálogo de campos de `TicketEvent.changes` (L12)                                                                                   | 2     | §3.9                            |
+| PENDENTE (operação `UPDATED`): contrato dos elementos de `TicketEvent.changes` (catálogo de `field`, `previousValue`, `newValue`) (L12)                  | —     | §3.9, README §12 #5             |
+| PENDENTE (operação `UPDATED`): onde garantir a imutabilidade de `requesterId` (caso de uso de atualização ou `update` do repositório)                    | —     | §3.2, §3.16                     |
+| PENDENTE (operação `TRANSFER`): como a verificação de solicitante da chave reutilizada se aplica quando o ator é `SYSTEM`                                | —     | §3.16                           |
 | PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console                                  | 7     | README §9, README §12 #17       |
 
 As transições entre `flow` e `stage` do `InteractionContext` (L2) não constam mais como pendência: estão definidas em `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
+
+A lista final de tipos de `TicketEvent` (README §12 #5) não consta mais como pendência: está no §3.9 (catálogo `TicketEventType`). Continua PENDENTE o contrato de `changes` (linha acima): pendência por gatilho, não por bloco, resolvida quando a operação `UPDATED` for implementada; por isso a coluna Bloco traz "—".
 
 O ORM e o driver do SQLite (README §12 #6) não constam mais como pendência: estão decididos no ADR-008 (infraestrutura de persistência; não altera o domínio).
 
@@ -1136,7 +1185,7 @@ Os itens abaixo são ausências **observadas ao derivar o modelo**, que não tin
 | L2  | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`).     | §3.5, README §7B | **RESOLVIDA** por `03-agent-flow.md` v1.1, §§3–6 |
 | L5  | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PENDENTE** (Bloco 4)                           |
 | L7  | Como a pergunta "Sim, resolvido / Ainda não" é representada na `Message` (`QUICK_REPLIES`? outro anexo?).                                                                    | README §6, §3.8  | **PENDENTE** (Bloco 6)                           |
-| L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`.                          | §3.9, §3.15      | **PENDENTE** (Bloco 2)                           |
+| L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`.                          | §3.9, §3.15      | **PENDENTE** (operação `UPDATED`)                |
 
 ---
 
@@ -1252,8 +1301,29 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.7   | v2.6; ADR-008 (Bloco 3)                                                       | Pendência "ORM e driver do SQLite" removida do §10, com remissão ao ADR-008. Decisão de infraestrutura; nenhuma regra, entidade, tipo ou função do domínio foi alterada.                                                                                                                                                               |
 | v2.8   | v2.7; Bloco 3 (mapeamento)                                                    | Decisões de mapeamento do ticket-service: campos de prazo do `Ticket` (`firstResponseDueAt`, `nextUpdateDueAt`, `serviceDeskUpdatedAt`) e regras de recálculo; persistência do `ImpactAssessment` em três colunas; `IdempotencyRecord` (§3.16, registro técnico, não entidade); remissão à regra de catálogos persistidos (README §5). |
 | v2.9   | v2.8; Bloco 3 (persistência do `Ticket`) | Premissas de persistência do `Ticket` (§3.2): `id` gerado pelo ticket-service com gerador injetado; `version` começa em 1; datas como `DateTime` (instante preservado, deslocamento normalizado em UTC); `createdAt`, `updatedAt` e `status` fornecidos pelo ticket-service, sem default no schema; FK para `Employee` em migração posterior; regras fora do schema validadas antes da gravação; sem `CHECK` no SQLite (experimento no ADR-008). |
+| v2.10  | v2.9; Bloco 3 (`TicketEvent` e idempotência) | Catálogo `TicketEventType` (§3.9) com o produtor previsto de cada tipo e revisão no Bloco 8; `CREATED` com `changes` vazio e `summary` fixo; `ActorType`; persistência do `TicketEvent` (`actor` em duas colunas, `changes` em JSON, FK para `Ticket`); `TicketOperationType` (§3.16) com FK de `IdempotencyRecord.ticketId`; catálogos distintos; contrato de `changes` PENDENTE até a operação `UPDATED`; tipo `Actor`; prioridade e prazo do draft (§3.3, inconsistência comprovada); geração do `id` por contador; imutabilidade de `requesterId`; chave reutilizada, snapshot e conflito (§3.16). |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.9 para a v2.10
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| `TicketEventType` | 3.9, 10 | Os seis tipos do §3.9 formam o catálogo, com o produtor previsto de cada um; revisão no Bloco 8 (valor sem produtor implementado sai do catálogo); removido o PENDENTE (Bloco 2) dos tipos |
+| `CREATED` | 3.9 | `changes = []` e `summary` fixo "Chamado criado" |
+| `ActorType` | 3.9 | Catálogo `EMPLOYEE`, `ANALYST`, `SYSTEM`, persistido em `actorType` |
+| `Actor` | 3.9 | União discriminada nomeada (`EMPLOYEE` e `ANALYST` com `employeeId`; `SYSTEM` sem); `TicketEvent.actor` usa `Actor`; a regra do ator passa a ser expressa pelo tipo, e o repositório valida a consistência entre `actorType` e `actorEmployeeId` na leitura; combinação inválida lança exceção (dado corrompido) |
+| Prioridade e prazo do draft | 3.3 | Inconsistência comprovada: a regra exigia confirmar "exatamente" o prazo, que é recalculado a partir do instante da criação. Prioridade exige igualdade com a recalculada (divergência → nova proposta); `firstResponseDueAt` do draft é previsão, e o persistido é recalculado (exemplo 17:55 → 18:05) |
+| Geração do `id` | 3.2 | `formatTicketId(type, n)`; contador por tipo (`TicketCounter`) alocado na transação de criação; começa em 1, sem zeros à esquerda; linha criada por `upsert` no primeiro uso; numeração sem buracos não garantida |
+| Imutabilidade de `requesterId` | 3.2, 10 | `requesterId` não muda depois da criação (base da verificação de solicitante do §3.16); onde garantir: PENDENTE (operação `UPDATED`) |
+| Chave reutilizada e snapshot | 3.16 | Confere `operationType` e solicitante (`ticketId` → `requesterId`); divergência → `IDEMPOTENCY_KEY_CONFLICT` sem revelar o `result`; sem fingerprint do payload; verificação de solicitante com ator `SYSTEM`: PENDENTE (operação `TRANSFER`), também no §10; validação rasa do snapshot na leitura (exceção se falhar), sem validar contra a estrutura atual de `Ticket` |
+| Conflito e retry | 3.16 | Só o `P2002` da chave é recuperável; outro `P2002` é relançado; até a política do README §12 #7, releitura sem registro vencedor relança; sem laço de retry no caso de uso |
+| Persistência do `TicketEvent` | 3.9 | `actor` em `actorType` e `actorEmployeeId` (opcional), convertido pelo repositório nos dois sentidos, como no `ImpactAssessment`; regra do ator: linha `Actor`; `changes` em coluna JSON (`JsonValue`); `ticketId` com FK para `Ticket` |
+| `TicketOperationType` | 3.16 | Catálogo `CREATE`, `UPDATE`, `REOPEN`, `TRANSFER`; `IdempotencyRecord.ticketId` com FK para `Ticket` |
+| Catálogos distintos | 3.9, 3.16 | `TicketEventType`, `ActorType` e `TicketOperationType` não se confundem: uma operação pode produzir um evento |
+| FKs para `Ticket` | 3.9, 3.16 | Chamados não são excluídos; `TicketEvent.ticketId` e `IdempotencyRecord.ticketId` usam `Restrict` em exclusão e atualização (`onDelete` e `onUpdate` explícitos) |
+| Contrato de `changes` (L12) | 3.9, 9, 10, 11.2 | PENDENTE até a operação `UPDATED` (antes: Bloco 2) |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.10 |
 
 ### Alterações da v2.8 para a v2.9
 

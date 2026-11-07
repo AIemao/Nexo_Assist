@@ -7,6 +7,7 @@ import { PrismaClient } from "../../src/generated/prisma/client.js";
 
 export interface TestDatabase {
     prisma: PrismaClient;
+    reset(): Promise<void>;
     dispose(): Promise<void>;
 }
 
@@ -19,6 +20,13 @@ export async function createTestDatabase(): Promise<TestDatabase> {
 
     return {
         prisma,
+        // FKs com Restrict: os filhos de Ticket saem antes dele.
+        async reset() {
+            await prisma.idempotencyRecord.deleteMany();
+            await prisma.ticketEvent.deleteMany();
+            await prisma.ticket.deleteMany();
+            await prisma.ticketCounter.deleteMany();
+        },
         async dispose() {
             await prisma.$disconnect();
             // No Windows o arquivo pode seguir travado logo após fechar a conexão.

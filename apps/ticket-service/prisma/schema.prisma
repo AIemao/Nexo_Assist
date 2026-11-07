@@ -56,10 +56,32 @@ enum CommitmentRisk {
   NOT_ASKED
 }
 
+enum TicketEventType {
+  CREATED
+  UPDATED
+  REOPENED
+  TRANSFERRED
+  ASSIGNED
+  STATUS_CHANGED
+}
+
+enum ActorType {
+  EMPLOYEE
+  ANALYST
+  SYSTEM
+}
+
+enum TicketOperationType {
+  CREATE
+  UPDATE
+  REOPEN
+  TRANSFER
+}
+
 // Sem defaults: id, version, datas e status são fornecidos pelo ticket-service (DM §3.2).
 // requesterId e assignedTo sem relação até o model Employee (migração posterior).
 model Ticket {
-  id                   String         @id
+  id                   String              @id
   version              Int
   type                 TicketType
   title                String
@@ -78,4 +100,36 @@ model Ticket {
   firstResponseDueAt   DateTime
   nextUpdateDueAt      DateTime?
   serviceDeskUpdatedAt DateTime?
+  events               TicketEvent[]
+  idempotencyRecords   IdempotencyRecord[]
+}
+
+// DM §3.9. actor em duas colunas; changes é um Json cujo valor é um array.
+// Chamados não são excluídos: FK com Restrict.
+model TicketEvent {
+  id              String          @id
+  ticketId        String
+  ticket          Ticket          @relation(fields: [ticketId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  type            TicketEventType
+  actorType       ActorType
+  actorEmployeeId String?
+  summary         String
+  changes         Json
+  occurredAt      DateTime
+}
+
+// DM §3.16. Registro técnico; key = OperationExecution.id.
+model IdempotencyRecord {
+  key           String              @id
+  operationType TicketOperationType
+  ticketId      String
+  ticket        Ticket              @relation(fields: [ticketId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  result        Json
+  createdAt     DateTime
+}
+
+// DM §3.2. Um contador por tipo; linha criada por upsert no primeiro uso.
+model TicketCounter {
+  type       TicketType @id
+  lastNumber Int
 }
