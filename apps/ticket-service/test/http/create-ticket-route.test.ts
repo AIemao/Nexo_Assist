@@ -618,4 +618,37 @@ describe("POST /tickets", () => {
         expect(registrados).toHaveLength(1);
         expect(fake.chamadas).toHaveLength(1);
     });
+
+    // Cenário 10: um registro assíncrono que rejeita não impede a resposta 500 genérica.
+    it("devolve 500 genérico mesmo quando onUnexpectedError assíncrono rejeita", async () => {
+        const fake = criarCreateTicketFalso(
+            new Error("detalhe interno: SELECT * FROM Ticket"),
+        );
+
+        const registrados: unknown[] = [];
+
+        const app = createApp({
+            createTicket: fake.createTicket,
+            onUnexpectedError: async (error) => {
+                registrados.push(error);
+                throw new Error("falha assíncrona no logger");
+            },
+        });
+
+        const response = await app.request("/tickets", {
+            method: "POST",
+            headers: validHeaders(),
+            body: serialize(draft),
+        });
+
+        const responseText = await response.clone().text();
+
+        await expectProblem(response, 500, "INTERNAL_ERROR");
+
+        expect(responseText).not.toContain("detalhe interno");
+        expect(responseText).not.toContain("falha assíncrona no logger");
+
+        expect(registrados).toHaveLength(1);
+        expect(fake.chamadas).toHaveLength(1);
+    });
 });
