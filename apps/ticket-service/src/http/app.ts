@@ -1,6 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 
 import type { CreateTicketInput, CreateTicketResult } from "../application/create-ticket.js";
@@ -200,12 +199,28 @@ export function createApp({ createTicket, onUnexpectedError = console.error }: A
     "/tickets",
     requireJson,
     zValidator("header", headersValidatorSchema, rejectInvalid),
-    zValidator("json", createTicketDraftSchema, rejectInvalid),
     async (c) => {
       const headers = c.req.valid("header");
+
+      // Corpo lido aqui, e não pelo zValidator("json"): o validador do Hono testa o
+      // Content-Type com uma regex própria, mais restrita que a do requireJson.
+      // Só o erro de parse vira 400; qualquer outra falha segue para o onError (500).
+      let body: unknown;
+      try {
+        body = await c.req.json<unknown>();
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        return problem(400, "VALIDATION_ERROR", [{ path: "#", message: "Corpo JSON malformado." }]);
+      }
+
+      const parsed = createTicketDraftSchema.safeParse(body);
+      if (!parsed.success) {
+        return problem(400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
+      }
+
       const result = await createTicket.execute({
         idempotencyKey: headers[IDEMPOTENCY_KEY],
-        draft: c.req.valid("json"),
+        draft: parsed.data,
         actor: toActor(headers),
       });
 
@@ -216,12 +231,12 @@ export function createApp({ createTicket, onUnexpectedError = console.error }: A
   );
 
   app.onError((error) => {
-    // JSON malformado: o validador do Hono lança HTTPException 400 antes do Zod.
-    if (error instanceof HTTPException && error.status === 400) {
-      return problem(400, "VALIDATION_ERROR", [{ path: "#", message: "Corpo JSON malformado." }]);
-    }
     // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno.
-    onUnexpectedError(error);
+    try {
+      onUnexpectedError(error);
+    } catch {
+      // Uma falha no registro não pode impedir a resposta 500.
+    }
     return problem(500, "INTERNAL_ERROR");
   });
 
