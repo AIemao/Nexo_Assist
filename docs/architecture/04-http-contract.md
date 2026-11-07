@@ -74,6 +74,7 @@ X-Actor-Employee-Id: EMP-001
 | HTTP | Condição | `code` |
 | ---: | --- | --- |
 | 400 | Corpo ou cabeçalhos inválidos na validação Zod, inclusive campo extra no corpo ou cabeçalho `X-Actor-*` não previsto | `VALIDATION_ERROR` |
+| 400 | Corpo que não é JSON válido (JSON malformado), com `path` `"#"` em `errors` | `VALIDATION_ERROR` |
 | 403 | Ator válido, mas diferente de `EMPLOYEE` | `ACTOR_NOT_EMPLOYEE` |
 | 409 | Chave vinculada a outra operação ou outro solicitante | `IDEMPOTENCY_KEY_CONFLICT` |
 | 415 | `Content-Type` ausente ou diferente de `application/json` | `UNSUPPORTED_MEDIA_TYPE` |
@@ -82,6 +83,8 @@ X-Actor-Employee-Id: EMP-001
 | 500 | Dado corrompido, erro de banco ou exceção inesperada | `INTERNAL_ERROR` |
 
 Os códigos 403, 409 e 422 correspondem aos resultados de rejeição do caso de uso `createTicket`; o 400 e o 415 são da validação de forma na fronteira; o 500 cobre toda exceção não mapeada.
+
+Os cabeçalhos são validados antes do corpo. Com cabeçalho inválido, o corpo não é lido nem validado, e `errors` traz só os erros de cabeçalho.
 
 ### 4.2 Formato: Problem Details (RFC 9457)
 
