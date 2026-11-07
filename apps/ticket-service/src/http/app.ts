@@ -24,7 +24,7 @@ export interface CreateTicketUseCase {
 
 export interface AppDependencies {
   createTicket: CreateTicketUseCase;
-  onUnexpectedError?: (error: unknown) => void;
+  onUnexpectedError?: (error: unknown) => void | Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,9 +233,10 @@ export function createApp({ createTicket, onUnexpectedError = console.error }: A
   app.onError((error) => {
     // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno.
     try {
-      onUnexpectedError(error);
+      // Sem await: a resposta 500 não espera o registro, e uma rejeição é descartada.
+      void Promise.resolve(onUnexpectedError(error)).catch(() => {});
     } catch {
-      // Uma falha no registro não pode impedir a resposta 500.
+      // Uma falha síncrona no registro não pode impedir a resposta 500.
     }
     return problem(500, "INTERNAL_ERROR");
   });
