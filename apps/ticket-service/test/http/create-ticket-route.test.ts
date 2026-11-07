@@ -533,4 +533,89 @@ describe("POST /tickets", () => {
             ticketId: "INC-1",
         });
     });
+
+    // Cenário 7: o media type é comparado sem os parâmetros, com ou sem espaço antes do ";".
+    it.each([
+        "application/json; charset=utf-8",
+        "application/json ; charset=utf-8",
+    ])(
+        "aceita Content-Type %s",
+        async (contentType) => {
+            const fake = criarCreateTicketFalso(resultadoSucesso);
+            const app = createApp({ createTicket: fake.createTicket });
+
+            const response = await app.request("/tickets", {
+                method: "POST",
+                headers: {
+                    ...validHeaders(),
+                    "Content-Type": contentType,
+                },
+                body: serialize(draft),
+            });
+
+            expect(response.status).toBe(201);
+
+            expect(fake.chamadas).toStrictEqual([
+                {
+                    idempotencyKey: IDEMPOTENCY_KEY,
+                    draft,
+                    actor,
+                },
+            ]);
+        },
+    );
+
+    // Cenário 8: JSON malformado é erro de validação na raiz do corpo.
+    it("rejeita corpo JSON malformado com 400 no caminho #", async () => {
+        const fake = criarCreateTicketFalso(resultadoSucesso);
+        const app = createApp({ createTicket: fake.createTicket });
+
+        const response = await app.request("/tickets", {
+            method: "POST",
+            headers: validHeaders(),
+            body: "{",
+        });
+
+        const problem = await expectProblem(
+            response,
+            400,
+            "VALIDATION_ERROR",
+        );
+
+        expect(problem.errors?.[0]?.path).toBe("#");
+        expect(fake.chamadas).toStrictEqual([]);
+    });
+
+    // Cenário 9: uma falha no registro interno não impede a resposta 500 genérica.
+    it("devolve 500 genérico mesmo quando onUnexpectedError lança", async () => {
+        const fake = criarCreateTicketFalso(
+            new Error("detalhe interno: SELECT * FROM Ticket"),
+        );
+
+        const registrados: unknown[] = [];
+
+        const app = createApp({
+            createTicket: fake.createTicket,
+            onUnexpectedError: (error) => {
+                registrados.push(error);
+                throw new Error("falha no logger");
+            },
+        });
+
+        const response = await app.request("/tickets", {
+            method: "POST",
+            headers: validHeaders(),
+            body: serialize(draft),
+        });
+
+        const responseText = await response.clone().text();
+
+        await expectProblem(response, 500, "INTERNAL_ERROR");
+
+        expect(responseText).not.toContain("detalhe interno");
+        expect(responseText).not.toContain("falha no logger");
+
+        expect(registrados).toHaveLength(1);
+        expect(fake.chamadas).toHaveLength(1);
+    });
 });
