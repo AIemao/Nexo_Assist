@@ -127,3 +127,9 @@ model IdempotencyRecord {
   result        Json
   createdAt     DateTime
 }
+
+// DM §3.2. Um contador por tipo; linha criada por upsert no primeiro uso.
+model TicketCounter {
+  type       TicketType @id
+  lastNumber Int
+}
