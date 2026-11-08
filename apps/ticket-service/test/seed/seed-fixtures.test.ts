@@ -271,6 +271,18 @@ describe("seedFixtures", () => {
         expect(await contagens()).toStrictEqual(antes);
     });
 
+    it("resolve cada fixture depois de criá-la (S1)", () => {
+        const comResolucao = TICKET_FIXTURES.flatMap((fixture) =>
+            "resolution" in fixture ? [fixture] : [],
+        );
+        const resolvidasAntesDaCriacao = comResolucao
+            .filter((fixture) => fixture.resolution.beforeReferenceMs >= fixture.createdBeforeReferenceMs)
+            .map((fixture) => fixture.label);
+
+        expect(comResolucao.length).toBeGreaterThan(0);
+        expect(resolvidasAntesDaCriacao).toStrictEqual([]);
+    });
+
     it("usa chaves de idempotência UUID, distintas, uma por rótulo", () => {
         const rotulos = TICKET_FIXTURES.map((fixture) => fixture.label);
         const chaves = TICKET_FIXTURES.map((fixture) => fixture.idempotencyKey);
