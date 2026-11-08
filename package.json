@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "smoke": "npm run smoke --workspaces --if-present"
   },
   "allowScripts": {
     "@prisma/engines@7.10.1": true,
