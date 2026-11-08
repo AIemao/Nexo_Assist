@@ -1,3 +1,6 @@
+import { setTimeout as sleep } from "node:timers/promises";
+import type { HttpBindings } from "@hono/node-server";
+import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { zValidator } from "@hono/zod-validator";
 import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
@@ -14,6 +17,7 @@ import {
   type Actor,
   type CreateTicketDraft,
 } from "../domain/index.js";
+import type { SimulatedFault } from "./simulated-fault.js";
 
 // Contrato: docs/architecture/04-http-contract.md. Camada fina (ADR-010, condição 5):
 // valida a forma, chama o caso de uso e traduz o resultado.
@@ -25,6 +29,8 @@ export interface CreateTicketUseCase {
 export interface AppDependencies {
   createTicket: CreateTicketUseCase;
   onUnexpectedError?: (error: unknown) => void | Promise<void>;
+  // Cenários §2.2. Ausente = desligada.
+  simulatedFault?: SimulatedFault;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,10 +196,23 @@ const requireJson: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
+// FS5: encerra a conexão sem resposta HTTP e avisa o adapter de que não deve responder.
+function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
+  outgoing.destroy();
+  return RESPONSE_ALREADY_SENT;
+}
+
 // ---------------------------------------------------------------------------
 
-export function createApp({ createTicket, onUnexpectedError = console.error }: AppDependencies) {
-  const app = new Hono();
+export function createApp({ createTicket, onUnexpectedError = console.error, simulatedFault }: AppDependencies) {
+  // Bindings do adapter Node: a falha simulada encerra o ServerResponse (c.env.outgoing),
+  // o que só existe com @hono/node-server. Os testes de rota (app.request()) não ligam
+  // falha e nunca chegam a c.env.
+  const app = new Hono<{ Bindings: HttpBindings }>();
+
+  // FS6: estado da instância (uma instância = um processo), consumido pela primeira
+  // requisição elegível. Nunca em variável de módulo.
+  let faultPending = simulatedFault !== undefined;
 
   app.post(
     "/tickets",
@@ -218,14 +237,40 @@ export function createApp({ createTicket, onUnexpectedError = console.error }: A
         return problem(400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
       }
 
+      // FS2: F-DROP-BEFORE age aqui, depois de toda a validação da fronteira HTTP
+      // (Content-Type, cabeçalhos e corpo) e antes do caso de uso. As regras de negócio
+      // ficam dentro do caso de uso e nunca são avaliadas quando a falha age; nada é gravado.
+      // Sem await entre a verificação e a atribuição: no event loop, as duas são atômicas.
+      if (faultPending && simulatedFault?.mode === "F-DROP-BEFORE") {
+        faultPending = false;
+        return dropConnection(c.env.outgoing);
+      }
+
       const result = await createTicket.execute({
         idempotencyKey: headers[IDEMPOTENCY_KEY],
         draft: parsed.data,
         actor: toActor(headers),
       });
 
-      // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
-      if (result.ok) return c.json(result.ticket, 201);
+      if (result.ok) {
+        // FS3: F-DROP-AFTER age aqui, depois do commit da Unit of Work (o caso de uso já
+        // devolveu sucesso, inclusive no replay) e fora dela: perder a resposta antes do
+        // commit reverteria a transação e seria outro caso.
+        if (faultPending && simulatedFault?.mode === "F-DROP-AFTER") {
+          faultPending = false;
+          return dropConnection(c.env.outgoing);
+        }
+        // FS4: F-SLOW espera aqui, depois do execute, com a transação já encerrada.
+        // Nunca dentro da Unit of Work: com a conexão única (ADR-008), uma espera
+        // dentro da transação seguraria todas as outras requisições.
+        // A falha é consumida antes do await, para outra requisição não a ver pendente.
+        if (faultPending && simulatedFault?.mode === "F-SLOW") {
+          faultPending = false;
+          await sleep(simulatedFault.delayMs);
+        }
+        // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
+        return c.json(result.ticket, 201);
+      }
       return problem(REJECTION_STATUS[result.error], result.error);
     },
   );

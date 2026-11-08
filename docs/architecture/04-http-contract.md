@@ -1,6 +1,6 @@
 # 04 — Contrato HTTP do ticket-service
 
-> Artefato do Bloco 3, **versão 1.0** (2026-11-07).
+> Artefato do Bloco 3, **versão 1.1** (2026-11-08; ver seção 8, Histórico de versões).
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles e descreve só a **fronteira HTTP**: rotas, cabeçalhos, códigos de status e formato dos erros. Não redefine regras do domínio; remete ao DM.
 >
@@ -149,6 +149,8 @@ O cliente pode repetir uma operação que recebeu 500 com a **mesma chave e o me
 - Retries da **mesma intenção** reutilizam a mesma chave e o mesmo corpo original. **Nova intenção ou nova confirmação** recebe outra chave.
 - Repetir o `POST /tickets` com a mesma chave reconcilia o resultado original; um endpoint de consulta pela chave é opcional e não faz parte do MVP (README §12 #8).
 
+> **Nota informativa: falha simulada.** Com uma falha simulada ativa ([`01-evaluation-scenarios.md`](../evaluation/01-evaluation-scenarios.md) §2.2), o servidor pode encerrar a conexão sem resposta HTTP ou atrasar a resposta. A falha vem desligada por padrão e fica fora do contrato normal: esta nota não altera nenhuma regra deste documento, e nenhum código de status novo é introduzido. Para o cliente, a conexão encerrada sem resposta é um resultado desconhecido, reconciliado repetindo a operação com a mesma chave e o mesmo corpo (acima).
+
 ## 6. Diferenças em relação ao Internet-Draft de `Idempotency-Key`
 
 Documento de referência vigente em 2026-11-07: `draft-ietf-httpapi-idempotency-key-header-08` (22/10/2026), Internet-Draft ativo, ainda não RFC. **O Nexo Assist não declara conformidade integral com esse documento.**
@@ -167,3 +169,11 @@ Documento de referência vigente em 2026-11-07: `draft-ietf-httpapi-idempotency-
 - DM v2.11: §3.2 (`requesterId` vem da sessão), §3.3 (`CreateTicketDraft`), §3.9 (`Actor`, `ActorType`) e §3.16 (idempotência, snapshot e conflito).
 - ADR-002, ADR-005, ADR-008 (conexão única do adapter) e ADR-010.
 - RFC 9457 (Problem Details for HTTP APIs); `draft-ietf-httpapi-idempotency-key-header-08`.
+- `01-evaluation-scenarios.md` §2.2 (mecanismo das falhas simuladas).
+
+## 8. Histórico de versões
+
+| Versão | Data | Mudanças |
+| --- | --- | --- |
+| 1.0 | 2026-11-07 | Primeira versão, publicada com a API HTTP do ticket-service (ADR-010): `POST /tickets`, `Idempotency-Key`, ator, respostas de sucesso, erros em Problem Details (inclusive JSON malformado e ordem de validação, §4.1), retry e reconciliação, diferenças em relação ao Internet-Draft |
+| 1.1 | 2026-11-08 | Nota informativa em §5: com falha simulada ativa (cenários §2.2), o servidor pode encerrar a conexão sem resposta ou atrasá-la; desligada por padrão; fora do contrato normal. Nenhuma regra alterada. §7 cita a §2.2 dos cenários. Seção de histórico criada |
