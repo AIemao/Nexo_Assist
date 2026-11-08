@@ -7,7 +7,10 @@ import {
     expect,
     it,
 } from "vitest";
-import { createCreateTicket } from "../../src/application/create-ticket.js";
+import {
+    createCreateTicket,
+    type CreateTicketResult,
+} from "../../src/application/create-ticket.js";
 import type {
     Actor,
     CreateTicketDraft,
@@ -43,6 +46,7 @@ const IDEMPOTENCY_KEY_11_ID_NAO_STRING = "00000000-0000-4000-8000-000000000113";
 const IDEMPOTENCY_KEY_11_ID_DIVERGENTE = "00000000-0000-4000-8000-000000000114";
 const IDEMPOTENCY_KEY_12 = "00000000-0000-4000-8000-000000000012";
 const IDEMPOTENCY_KEY_12_NEXT = "00000000-0000-4000-8000-000000000121";
+const IDEMPOTENCY_KEY_13 = "00000000-0000-4000-8000-000000000013";
 
 const actor = {
     type: "EMPLOYEE",
@@ -127,7 +131,7 @@ const eventoConflitante: TicketEvent = {
     occurredAt: "2026-11-06T10:00:00.000Z",
 };
 
-// Teste 12: deixa o caso de uso cego para a chave nas primeiras execuções da Unit of Work.
+// Testes 12 e 13: deixa o caso de uso cego para a chave nas primeiras execuções da Unit of Work.
 // Nas cegas, findByKey devolve undefined; o resto dos repositórios é o real, com o mesmo tx.
 function criarUnitOfWorkCegaParaChave(real: UnitOfWork, execucoesCegas: number) {
     let execucoes = 0;
@@ -182,6 +186,20 @@ describe("createTicket", () => {
         expect(persistidos.ticket).toBeUndefined();
         expect(persistidos.events).toStrictEqual([]);
         expect(persistidos.record).toBeUndefined();
+    }
+
+    // Cenários §1.1, IN7: o snapshot persistido é só { ok: true, ticket }, sem outcome.
+    function snapshotEsperado(resultado: CreateTicketResult) {
+        if (!resultado.ok) throw new Error("esperado resultado de sucesso");
+
+        return { ok: true, ticket: resultado.ticket };
+    }
+
+    // Lê o registro direto pelo Prisma, sem passar pelo repositório.
+    async function lerRegistroDoBanco(idempotencyKey: string) {
+        return db.prisma.idempotencyRecord.findUniqueOrThrow({
+            where: { key: idempotencyKey },
+        });
     }
 
     beforeAll(async () => {
@@ -256,8 +274,16 @@ describe("createTicket", () => {
             actor,
         });
 
+        // Antes das asserções da resposta: o snapshot no banco não leva o outcome.
+        const registroNoBanco = await lerRegistroDoBanco(IDEMPOTENCY_KEY_1);
+        expect(registroNoBanco.result).toStrictEqual({
+            ok: true,
+            ticket: ticketEsperado,
+        });
+
         expect(resultado).toStrictEqual({
             ok: true,
+            outcome: "CREATED",
             ticket: ticketEsperado,
         });
 
@@ -302,7 +328,7 @@ describe("createTicket", () => {
             actor,
         });
 
-        expect(primeiraResposta.ok).toBe(true);
+        const registroAntes = await lerRegistroDoBanco(IDEMPOTENCY_KEY_1);
 
         const respostaRepetida = await createTicket.execute({
             idempotencyKey: IDEMPOTENCY_KEY_1,
@@ -310,7 +336,22 @@ describe("createTicket", () => {
             actor,
         });
 
-        expect(respostaRepetida).toStrictEqual(primeiraResposta);
+        // Antes das asserções da resposta: a repetição não regrava o snapshot,
+        // que continua { ok: true, ticket }, sem outcome.
+        const registroDepois = await lerRegistroDoBanco(IDEMPOTENCY_KEY_1);
+        expect(registroDepois).toStrictEqual(registroAntes);
+        expect(registroDepois.result).toStrictEqual(
+            snapshotEsperado(primeiraResposta),
+        );
+
+        expect(primeiraResposta).toMatchObject({
+            ok: true,
+            outcome: "CREATED",
+        });
+        expect(respostaRepetida).toStrictEqual({
+            ...primeiraResposta,
+            outcome: "REPLAYED",
+        });
         expect(clockCalls).toBe(1);
         expect(eventIdGeneratorCalls).toBe(1);
 
@@ -342,6 +383,7 @@ describe("createTicket", () => {
 
         expect(terceiraResposta).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: {
                 id: "INC-2",
             },
@@ -362,6 +404,7 @@ describe("createTicket", () => {
 
         expect(primeiraResposta).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: {
                 id: "INC-1",
                 priority: "LOW",
@@ -374,7 +417,10 @@ describe("createTicket", () => {
             actor,
         });
 
-        expect(respostaRepetida).toStrictEqual(primeiraResposta);
+        expect(respostaRepetida).toStrictEqual({
+            ...primeiraResposta,
+            outcome: "REPLAYED",
+        });
         expect(clockCalls).toBe(1);
         expect(eventIdGeneratorCalls).toBe(1);
 
@@ -394,7 +440,9 @@ describe("createTicket", () => {
         expect(persistidos.segundoTicket).toBeUndefined();
         expect(persistidos.ticket?.priority).toBe("LOW");
         expect(persistidos.events).toHaveLength(1);
-        expect(persistidos.record?.result).toStrictEqual(primeiraResposta);
+        expect(persistidos.record?.result).toStrictEqual(
+            snapshotEsperado(primeiraResposta),
+        );
     });
 
     // Teste 4: prova que o ator é validado antes da consulta da chave.
@@ -433,6 +481,7 @@ describe("createTicket", () => {
 
         expect(respostaOriginal).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: { id: "INC-1" },
         });
 
@@ -468,7 +517,9 @@ describe("createTicket", () => {
         expect(persistidos.ticket?.requesterId).toBe(actor.employeeId);
         expect(persistidos.segundoTicket).toBeUndefined();
         expect(persistidos.events).toHaveLength(1);
-        expect(persistidos.record?.result).toStrictEqual(respostaOriginal);
+        expect(persistidos.record?.result).toStrictEqual(
+            snapshotEsperado(respostaOriginal),
+        );
     });
 
     // Teste 5: prova que impacto inválido não consome a chave.
@@ -494,6 +545,7 @@ describe("createTicket", () => {
 
         expect(resultadoValido).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: {
                 id: "INC-1",
                 priority: "LOW",
@@ -527,6 +579,7 @@ describe("createTicket", () => {
 
         expect(resultadoValido).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: {
                 id: "INC-1",
                 priority: "LOW",
@@ -547,6 +600,7 @@ describe("createTicket", () => {
 
         expect(respostaOriginal).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: {
                 id: "INC-1",
                 requesterId: actor.employeeId,
@@ -583,7 +637,9 @@ describe("createTicket", () => {
         expect(persistidos.ticket?.requesterId).toBe(actor.employeeId);
         expect(persistidos.segundoTicket).toBeUndefined();
         expect(persistidos.events).toHaveLength(1);
-        expect(persistidos.record?.result).toStrictEqual(respostaOriginal);
+        expect(persistidos.record?.result).toStrictEqual(
+            snapshotEsperado(respostaOriginal),
+        );
     });
 
     // Teste 8: prova atomicidade e que somente o P2002 da chave é recuperável.
@@ -621,6 +677,7 @@ describe("createTicket", () => {
 
         expect(resultadoRecuperacao).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: {
                 id: "INC-1",
                 priority: "LOW",
@@ -632,6 +689,7 @@ describe("createTicket", () => {
     });
 
     // Teste 9: prova que duas execuções concorrentes produzem um único efeito.
+    // O caminho da perdedora não é fixado aqui; o teste 13 fixa a verificação dentro da transação.
     it("processa duas execuções concorrentes com a mesma chave uma única vez", async () => {
         const resultados = await Promise.all([
             createTicket.execute({
@@ -645,16 +703,6 @@ describe("createTicket", () => {
                 actor,
             }),
         ]);
-
-        expect(resultados[0]).toMatchObject({
-            ok: true,
-            ticket: {
-                id: "INC-1",
-                priority: "LOW",
-            },
-        });
-
-        expect(resultados[1]).toStrictEqual(resultados[0]);
 
         expect(clockCalls).toBe(1);
         expect(eventIdGeneratorCalls).toBe(1);
@@ -672,10 +720,25 @@ describe("createTicket", () => {
             },
         );
 
-        expect(persistidos.ticket).toBeDefined();
+        expect(persistidos.ticket).toMatchObject({
+            id: "INC-1",
+            priority: "LOW",
+        });
         expect(persistidos.segundoTicket).toBeUndefined();
         expect(persistidos.events).toHaveLength(1);
-        expect(persistidos.record?.result).toStrictEqual(resultados[0]);
+        expect(persistidos.record?.result).toStrictEqual({
+            ok: true,
+            ticket: persistidos.ticket,
+        });
+
+        // Exatamente uma CREATED e uma REPLAYED, em qualquer ordem: a vencedora não é garantida.
+        expect(resultados).toHaveLength(2);
+        expect(resultados).toEqual(
+            expect.arrayContaining([
+                { ok: true, outcome: "CREATED", ticket: persistidos.ticket },
+                { ok: true, outcome: "REPLAYED", ticket: persistidos.ticket },
+            ]),
+        );
     });
 
     // Teste 10: prova que a chave de outra operação não revela o snapshot, mesmo do próprio funcionário.
@@ -809,6 +872,7 @@ describe("createTicket", () => {
 
         expect(respostaVencedor).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: { id: "INC-1" },
         });
 
@@ -825,7 +889,10 @@ describe("createTicket", () => {
             actor,
         });
 
-        expect(respostaPerdedor).toStrictEqual(respostaVencedor);
+        expect(respostaPerdedor).toStrictEqual({
+            ...respostaVencedor,
+            outcome: "REPLAYED",
+        });
         expect(cega.execucoes()).toBe(3);
         expect(clockCalls).toBe(2);
         expect(eventIdGeneratorCalls).toBe(2);
@@ -847,7 +914,9 @@ describe("createTicket", () => {
         expect(persistidos.segundoTicket).toBeUndefined();
         expect(persistidos.events).toHaveLength(1);
         expect(persistidos.record?.ticketId).toBe("INC-1");
-        expect(persistidos.record?.result).toStrictEqual(respostaVencedor);
+        expect(persistidos.record?.result).toStrictEqual(
+            snapshotEsperado(respostaVencedor),
+        );
 
         const proximaResposta = await createTicket.execute({
             idempotencyKey: IDEMPOTENCY_KEY_12_NEXT,
@@ -857,7 +926,64 @@ describe("createTicket", () => {
 
         expect(proximaResposta).toMatchObject({
             ok: true,
+            outcome: "CREATED",
             ticket: { id: "INC-2" },
         });
+    });
+
+    // Teste 13: prova a verificação dentro da transação (passo d), o caminho da perdedora
+    // concorrente que entra na transação depois do commit da vencedora. Só a verificação
+    // prévia fica cega; a transação de criação vê a chave e devolve o snapshot sem criar.
+    it("devolve o snapshot do vencedor pela verificação dentro da transação", async () => {
+        const respostaVencedor = await createTicket.execute({
+            idempotencyKey: IDEMPOTENCY_KEY_13,
+            draft,
+            actor,
+        });
+
+        const cega = criarUnitOfWorkCegaParaChave(unitOfWork, 1);
+        const createTicketCego = createCreateTicket({
+            unitOfWork: cega.unitOfWork,
+            eventIdGenerator,
+            clock,
+        });
+
+        const respostaPerdedor = await createTicketCego.execute({
+            idempotencyKey: IDEMPOTENCY_KEY_13,
+            draft,
+            actor,
+        });
+
+        // Antes das asserções da resposta: o snapshot no banco não leva o outcome.
+        const registroNoBanco = await lerRegistroDoBanco(IDEMPOTENCY_KEY_13);
+        expect(registroNoBanco.result).toStrictEqual(
+            snapshotEsperado(respostaVencedor),
+        );
+
+        expect(respostaVencedor).toMatchObject({
+            ok: true,
+            outcome: "CREATED",
+            ticket: { id: "INC-1" },
+        });
+        expect(respostaPerdedor).toStrictEqual({
+            ...respostaVencedor,
+            outcome: "REPLAYED",
+        });
+        // Verificação prévia (cega) + transação de criação; sem a releitura do passo e.
+        expect(cega.execucoes()).toBe(2);
+        expect(clockCalls).toBe(1);
+        expect(eventIdGeneratorCalls).toBe(1);
+
+        const persistidos = await unitOfWork.execute(
+            async ({ tickets, ticketEvents }) => {
+                return {
+                    segundoTicket: await tickets.findById("INC-2"),
+                    events: await ticketEvents.listByTicket("INC-1"),
+                };
+            },
+        );
+
+        expect(persistidos.segundoTicket).toBeUndefined();
+        expect(persistidos.events).toHaveLength(1);
     });
 });
