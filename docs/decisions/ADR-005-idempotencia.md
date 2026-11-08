@@ -49,6 +49,12 @@ Depois de uma atualização bem-sucedida, a versão do chamado avança. Se a res
 - Guardar resultados associados às chaves, para poder devolvê-los na reconciliação.
 - Pendente (Bloco 3): endpoint específico de consulta pela chave, política de retry e recuperação após reinício (README §9; DM §8.4).
 
+**Atualização (2026-11-07).** Nota posterior à decisão. O texto acima fica como registro histórico, e a decisão deste ADR não muda.
+
+- **Resolvido:** o endpoint específico de consulta pela chave é opcional e não faz parte do MVP. Repetir a operação com a mesma chave reconcilia o resultado original (DM v2.11 §3.16; README §12 #8; contrato HTTP, [`04-http-contract.md`](../architecture/04-http-contract.md) §5).
+- **Resolvido:** a responsabilidade pela política de retry é do cliente web/BFF. Retries da mesma intenção reutilizam a mesma chave e o mesmo corpo original, e o ticket-service não tem laço de retry (DM v2.11 §§3.16 e 8.4; README §12 #7; contrato HTTP §5).
+- **Movido para o Bloco 5:** o detalhamento operacional da política de retry (timeout, backoff, limite de tentativas, classificação de erros transitórios × definitivos) e a recuperação após reinício do cliente web/BFF. Motivo: o Bloco 5 é o da primeira escrita do web no ticket-service e das operações `UPDATE` e `REOPEN`, onde essa política é exercida (DM v2.11 §8.4 e §10: PENDENTE quando o web existir; README §12 #7).
+
 ## E se o produto crescer para 20 mil funcionários?
 
 **Permanece:** a chave pertence à execução, e a ordem de verificação (chave antes da versão) continua valendo.
