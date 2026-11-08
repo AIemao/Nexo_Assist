@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.20):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.11 aprovado e congelado**. `03-agent-flow.md` **v1.3 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1.1 concluídos (`docs/evaluation/`). 🟢 Bloco 2 concluído: domínio do ticket-service com TDD (`classifyPriority`, `validateImpactAssessment`, `TicketStatus` e elegibilidade de reabertura, candidatos de duplicidade e SLA), 79 testes aprovados, sem dependências além do test runner. 🟡 Bloco 3 em andamento: API, seed, persistência, idempotência e falha simulada; ADR-008 aceito (Prisma ORM 7.10.1 + SQLite); ADR-010 aceito (Hono + `@hono/node-server`); contrato HTTP em `docs/architecture/04-http-contract.md`.
+**Status (README v2.21):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.11 aprovado e congelado**. `03-agent-flow.md` **v1.3 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1.1 concluídos (`docs/evaluation/`). 🟢 Bloco 2 concluído: domínio do ticket-service com TDD (`classifyPriority`, `validateImpactAssessment`, `TicketStatus` e elegibilidade de reabertura, candidatos de duplicidade e SLA), 79 testes aprovados, sem dependências além do test runner. 🟡 Bloco 3 em andamento: API, seed, persistência, idempotência e falha simulada; ADR-008 aceito (Prisma ORM 7.10.1 + SQLite); ADR-010 aceito (Hono + `@hono/node-server`); contrato HTTP em `docs/architecture/04-http-contract.md`; rota `POST /tickets` implementada, com raiz de composição (`src/main.ts`), build e smoke test do servidor real na CI.
 
 ## Referências
 
@@ -247,6 +247,27 @@ nexo-assist/
 | Monorepo               | npm workspaces                   | Decidido                         |
 | Runtime                | Node 26 LTS, ESM                 | Decidido                         |
 | Modelo LLM             | —                                | Bloco 4                          |
+
+### Como rodar o ticket-service
+
+Com `npm ci` feito na raiz, a partir de `apps/ticket-service`:
+
+```bash
+export DATABASE_URL="file:./prisma/dev.db"
+npx prisma migrate deploy   # cria ou atualiza o banco SQLite
+npm run build               # compila src/ para dist/
+npm start                   # node dist/main.js
+```
+
+| Variável       | Padrão        | Observação                                                       |
+| -------------- | ------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL` | — (obrigatória) | URL do SQLite; caminho relativo resolvido a partir de `apps/ticket-service` |
+| `HOST`         | `127.0.0.1`   | Interface em que o servidor escuta                               |
+| `PORT`         | `3001`        | Inteiro de 1 a 65535; valor inválido encerra o processo com erro |
+
+- **O ticket-service não autentica:** confia no ator informado pelo web nos cabeçalhos `X-Actor-*` (§8; contrato §2.2). Por isso escuta em `127.0.0.1` por padrão. Outro `HOST` expõe a API a quem alcançar essa interface.
+- `SIGINT`/`SIGTERM` encerram de forma ordenada: o servidor para de aceitar conexões, as requisições em andamento terminam e só então o banco é desconectado.
+- `npm run smoke` compila, sobe `dist/main.js` contra um banco temporário e verifica criação, repetição pela mesma chave e encerramento (ADR-010, condição 3).
 
 ---
 
@@ -643,3 +664,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.18  | Sincronização com `01-domain-model.md` v2.9 (premissas de persistência do `Ticket`: `id`, `version`, datas em `DateTime`, campos fornecidos pelo ticket-service, FK para `Employee` posterior, sem `CHECK` no SQLite (experimento no ADR-008)); status atualizado |
 | v2.19  | Sincronização com `01-domain-model.md` v2.10 (catálogos de `TicketEvent`, de ator e de operações do ticket-service; persistência do `TicketEvent`; FK de `IdempotencyRecord.ticketId`); §12 #5 com os tipos resolvidos e o catálogo de `changes` PENDENTE até a operação `UPDATED`, sem renumerar; status atualizado. §5 "Vale para…" com os três catálogos novos; §8 com a fronteira de confiança (o ticket-service confia no ator informado pelo web) |
 | v2.20  | ADR-010 aceito (framework HTTP: Hono 4.13.14 + `@hono/node-server` 2.1.5, `@hono/zod-validator` 0.9.1, Zod 4.6.7); contrato HTTP em `docs/architecture/04-http-contract.md`; §5 (stack) e §11 atualizados; sincronização com `01-domain-model.md` v2.11: §12 #7 (retry é responsabilidade do cliente web/BFF) e #8 (consulta pela chave opcional) RESOLVIDAS, sem renumerar; status atualizado |
+| v2.21  | §5 com a subseção "Como rodar o ticket-service" (migração, build, start; variáveis `DATABASE_URL`, `HOST` e `PORT`; escuta em `127.0.0.1` por padrão porque o serviço não autentica, §8; encerramento ordenado; `npm run smoke`); smoke test do servidor real na CI (ADR-010, condição 3); status atualizado |
