@@ -195,6 +195,12 @@ const requireJson: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
+// FS5: encerra a conexão sem resposta HTTP e avisa o adapter de que não deve responder.
+function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
+  outgoing.destroy();
+  return RESPONSE_ALREADY_SENT;
+}
+
 // ---------------------------------------------------------------------------
 
 export function createApp({ createTicket, onUnexpectedError = console.error, simulatedFault }: AppDependencies) {
@@ -230,6 +236,15 @@ export function createApp({ createTicket, onUnexpectedError = console.error, sim
         return problem(400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
       }
 
+      // FS2: F-DROP-BEFORE age aqui, depois de toda a validação da fronteira HTTP
+      // (Content-Type, cabeçalhos e corpo) e antes do caso de uso. As regras de negócio
+      // ficam dentro do caso de uso e nunca são avaliadas quando a falha age; nada é gravado.
+      // Sem await entre a verificação e a atribuição: no event loop, as duas são atômicas.
+      if (faultPending && simulatedFault?.mode === "F-DROP-BEFORE") {
+        faultPending = false;
+        return dropConnection(c.env.outgoing);
+      }
+
       const result = await createTicket.execute({
         idempotencyKey: headers[IDEMPOTENCY_KEY],
         draft: parsed.data,
@@ -239,12 +254,10 @@ export function createApp({ createTicket, onUnexpectedError = console.error, sim
       if (result.ok) {
         // FS3: F-DROP-AFTER age aqui, depois do commit da Unit of Work (o caso de uso já
         // devolveu sucesso, inclusive no replay) e fora dela: perder a resposta antes do
-        // commit reverteria a transação e seria outro caso. A conexão é encerrada sem
-        // resposta HTTP (FS5) e o adapter é avisado de que não deve responder.
+        // commit reverteria a transação e seria outro caso.
         if (faultPending && simulatedFault?.mode === "F-DROP-AFTER") {
           faultPending = false;
-          c.env.outgoing.destroy();
-          return RESPONSE_ALREADY_SENT;
+          return dropConnection(c.env.outgoing);
         }
         // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
         return c.json(result.ticket, 201);
