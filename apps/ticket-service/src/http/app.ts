@@ -1,3 +1,5 @@
+import type { HttpBindings } from "@hono/node-server";
+import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { zValidator } from "@hono/zod-validator";
 import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
@@ -14,6 +16,7 @@ import {
   type Actor,
   type CreateTicketDraft,
 } from "../domain/index.js";
+import type { SimulatedFault } from "./simulated-fault.js";
 
 // Contrato: docs/architecture/04-http-contract.md. Camada fina (ADR-010, condição 5):
 // valida a forma, chama o caso de uso e traduz o resultado.
@@ -25,6 +28,8 @@ export interface CreateTicketUseCase {
 export interface AppDependencies {
   createTicket: CreateTicketUseCase;
   onUnexpectedError?: (error: unknown) => void | Promise<void>;
+  // Cenários §2.2. Ausente = desligada.
+  simulatedFault?: SimulatedFault;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,8 +197,15 @@ const requireJson: MiddlewareHandler = async (c, next) => {
 
 // ---------------------------------------------------------------------------
 
-export function createApp({ createTicket, onUnexpectedError = console.error }: AppDependencies) {
-  const app = new Hono();
+export function createApp({ createTicket, onUnexpectedError = console.error, simulatedFault }: AppDependencies) {
+  // Bindings do adapter Node: a falha simulada encerra o ServerResponse (c.env.outgoing),
+  // o que só existe com @hono/node-server. Os testes de rota (app.request()) não ligam
+  // falha e nunca chegam a c.env.
+  const app = new Hono<{ Bindings: HttpBindings }>();
+
+  // FS6: estado da instância (uma instância = um processo), consumido pela primeira
+  // requisição elegível. Nunca em variável de módulo.
+  let faultPending = simulatedFault !== undefined;
 
   app.post(
     "/tickets",
@@ -224,8 +236,19 @@ export function createApp({ createTicket, onUnexpectedError = console.error }: A
         actor: toActor(headers),
       });
 
-      // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
-      if (result.ok) return c.json(result.ticket, 201);
+      if (result.ok) {
+        // FS3: F-DROP-AFTER age aqui, depois do commit da Unit of Work (o caso de uso já
+        // devolveu sucesso, inclusive no replay) e fora dela: perder a resposta antes do
+        // commit reverteria a transação e seria outro caso. A conexão é encerrada sem
+        // resposta HTTP (FS5) e o adapter é avisado de que não deve responder.
+        if (faultPending && simulatedFault?.mode === "F-DROP-AFTER") {
+          faultPending = false;
+          c.env.outgoing.destroy();
+          return RESPONSE_ALREADY_SENT;
+        }
+        // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
+        return c.json(result.ticket, 201);
+      }
       return problem(REJECTION_STATUS[result.error], result.error);
     },
   );
