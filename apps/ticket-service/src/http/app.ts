@@ -18,6 +18,7 @@ import {
   type CreateTicketDraft,
 } from "../domain/index.js";
 import type { SimulatedFault } from "./simulated-fault.js";
+import type { WriteRecord } from "./write-record.js";
 
 // Contrato: docs/architecture/04-http-contract.md. Camada fina (ADR-010, condição 5):
 // valida a forma, chama o caso de uso e traduz o resultado.
@@ -31,6 +32,8 @@ export interface AppDependencies {
   onUnexpectedError?: (error: unknown) => void | Promise<void>;
   // Cenários §2.2. Ausente = desligada.
   simulatedFault?: SimulatedFault;
+  // Cenários §1.1: recebe um registro por requisição de escrita.
+  recordWrite?: (record: WriteRecord) => void;
 }
 
 // ---------------------------------------------------------------------------
