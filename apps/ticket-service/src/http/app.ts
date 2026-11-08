@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import type { HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { zValidator } from "@hono/zod-validator";
@@ -258,6 +259,14 @@ export function createApp({ createTicket, onUnexpectedError = console.error, sim
         if (faultPending && simulatedFault?.mode === "F-DROP-AFTER") {
           faultPending = false;
           return dropConnection(c.env.outgoing);
+        }
+        // FS4: F-SLOW espera aqui, depois do execute, com a transação já encerrada.
+        // Nunca dentro da Unit of Work: com a conexão única (ADR-008), uma espera
+        // dentro da transação seguraria todas as outras requisições.
+        // A falha é consumida antes do await, para outra requisição não a ver pendente.
+        if (faultPending && simulatedFault?.mode === "F-SLOW") {
+          faultPending = false;
+          await sleep(simulatedFault.delayMs);
         }
         // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
         return c.json(result.ticket, 201);
