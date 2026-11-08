@@ -7,6 +7,7 @@ import {
     describe,
     expect,
     it,
+    vi,
 } from "vitest";
 import { createCreateTicket } from "../../src/application/create-ticket.js";
 import type { CreateTicketDraft } from "../../src/domain/index.js";
@@ -21,6 +22,10 @@ import { createTestDatabase } from "../support/test-database.js";
 const NOW = "2026-11-07T12:00:00.000Z";
 
 const IDEMPOTENCY_KEY = "00000000-0000-4000-8000-000000000001";
+const OUTRA_IDEMPOTENCY_KEY = "00000000-0000-4000-8000-000000000002";
+
+// Folga grande: requisições normais levam dezenas de ms. Só limites inferiores.
+const DELAY_MS = 500;
 
 const draft = {
     operation: "CREATE_TICKET",
@@ -47,10 +52,10 @@ const draftPrioridadeDivergente = {
     priority: "HIGH",
 } satisfies CreateTicketDraft;
 
-function validHeaders(): Record<string, string> {
+function validHeaders(idempotencyKey: string): Record<string, string> {
     return {
         "Content-Type": "application/json",
-        "Idempotency-Key": IDEMPOTENCY_KEY,
+        "Idempotency-Key": idempotencyKey,
         "X-Actor-Type": "EMPLOYEE",
         "X-Actor-Employee-Id": "EMP-001",
     };
@@ -113,10 +118,10 @@ describe("Falhas simuladas no transporte (servidor real, porta 0)", () => {
         ({ servidor, baseUrl } = await subirServidor(app));
     }
 
-    function post(body: object): Promise<Response> {
+    function post(body: object, idempotencyKey = IDEMPOTENCY_KEY): Promise<Response> {
         return fetch(`${baseUrl}/tickets`, {
             method: "POST",
-            headers: validHeaders(),
+            headers: validHeaders(idempotencyKey),
             body: JSON.stringify(body),
         });
     }
@@ -241,6 +246,62 @@ describe("Falhas simuladas no transporte (servidor real, porta 0)", () => {
 
             expect(valida.status).toBe(201);
             expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+        });
+    });
+
+    describe("F-SLOW", () => {
+        beforeEach(async () => {
+            await ligar({ mode: "F-SLOW", delayMs: DELAY_MS });
+        });
+
+        it("grava antes de responder e entrega o 201 depois do atraso", async () => {
+            const inicio = performance.now();
+            let respondeu = false;
+            const pendente = post(draft).then((resposta) => {
+                respondeu = true;
+                return resposta;
+            });
+
+            await vi.waitFor(async () => {
+                expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+            });
+            expect(respondeu).toBe(false);
+
+            const resposta = await pendente;
+
+            expect(resposta.status).toBe(201);
+            expect(performance.now() - inicio).toBeGreaterThanOrEqual(DELAY_MS);
+        });
+
+        // FS4: a espera nunca acontece dentro da transação (conexão única, ADR-008).
+        it("não segura a transação: outra requisição grava e responde durante o atraso", async () => {
+            let aRespondeu = false;
+            const a = post(draft).then((resposta) => {
+                aRespondeu = true;
+                return resposta;
+            });
+            await vi.waitFor(async () => {
+                expect(await db.prisma.ticket.count()).toBe(1);
+            });
+
+            const b = await post(draft, OUTRA_IDEMPOTENCY_KEY);
+
+            expect(b.status).toBe(201);
+            expect(aRespondeu).toBe(false);
+            expect(await contagens()).toStrictEqual({ chamados: 2, eventos: 2, registros: 2 });
+
+            expect((await a).status).toBe(201);
+        });
+
+        it("rejeição de negócio não consome a falha", async () => {
+            const rejeitada = await post(draftPrioridadeDivergente);
+            expect(rejeitada.status).toBe(422);
+
+            const inicio = performance.now();
+            const valida = await post(draft);
+
+            expect(valida.status).toBe(201);
+            expect(performance.now() - inicio).toBeGreaterThanOrEqual(DELAY_MS);
         });
     });
 });
