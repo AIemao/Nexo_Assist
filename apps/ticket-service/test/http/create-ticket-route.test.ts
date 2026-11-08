@@ -94,6 +94,7 @@ interface InvalidRequest {
 
 const resultadoSucesso: CreateTicketResult = {
     ok: true,
+    outcome: "CREATED",
     ticket,
 };
 
