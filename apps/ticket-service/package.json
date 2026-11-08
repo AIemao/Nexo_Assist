@@ -9,6 +9,7 @@
     "test:watch": "vitest",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
+    "seed": "node dist/seed/cli.js",
     "smoke": "node scripts/smoke.ts"
   },
   "devDependencies": {
