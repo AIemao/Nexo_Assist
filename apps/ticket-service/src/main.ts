@@ -7,6 +7,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { createCreateTicket } from "./application/create-ticket.js";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
+import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
 import { createUnitOfWork } from "./persistence/unit-of-work.js";
 
 interface Config {
@@ -48,6 +49,10 @@ function readConfig(env: NodeJS.ProcessEnv): { ok: true; config: Config } | { ok
   return { ok: true, config: { databaseUrl, host, port } };
 }
 
+function describeFault(fault: SimulatedFault): string {
+  return fault.mode === "F-SLOW" ? `${fault.mode} (${fault.delayMs} ms)` : fault.mode;
+}
+
 function formatAddress(info: AddressInfo): string {
   const host = info.family === "IPv6" ? `[${info.address}]` : info.address;
   return `http://${host}:${info.port}`;
@@ -55,12 +60,19 @@ function formatAddress(info: AddressInfo): string {
 
 function main(): void {
   const result = readConfig(process.env);
-  if (!result.ok) {
-    for (const error of result.errors) console.error(`Configuração inválida: ${error}`);
+  // Cenários §2.2, FS1: a falha simulada só é ligada por configuração do processo.
+  const faultResult = readSimulatedFault(process.env);
+  if (!result.ok || !faultResult.ok) {
+    const errors = [...(result.ok ? [] : result.errors), ...(faultResult.ok ? [] : [faultResult.message])];
+    for (const error of errors) console.error(`Configuração inválida: ${error}`);
     process.exitCode = 1;
     return;
   }
   const { databaseUrl, host, port } = result.config;
+  const { fault } = faultResult;
+  if (fault !== undefined) {
+    console.warn(`AVISO: falha simulada ativa: ${describeFault(fault)}`);
+  }
 
   const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: databaseUrl }) });
   const createTicket = createCreateTicket({
@@ -68,7 +80,7 @@ function main(): void {
     eventIdGenerator: { generate: randomUUID },
     clock: { now: () => new Date().toISOString() },
   });
-  const app = createApp({ createTicket });
+  const app = createApp({ createTicket, simulatedFault: fault });
 
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`ticket-service ouvindo em ${formatAddress(info)}`);
