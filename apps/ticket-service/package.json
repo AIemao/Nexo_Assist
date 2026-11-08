@@ -6,7 +6,10 @@
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "smoke": "node scripts/smoke.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
