@@ -10,7 +10,13 @@ export type SimulatedFaultConfig =
   | { ok: true; fault: SimulatedFault | undefined }
   | { ok: false; message: string };
 
-const SIMULATED_FAULT_MODES = ["F-DROP-BEFORE", "F-DROP-AFTER", "F-SLOW"] as const satisfies readonly SimulatedFault["mode"][];
+// Record com satisfies: o compilador exige exatamente uma chave por modo da união.
+// Modo novo sem chave aqui (ou chave sem modo) quebra o typecheck.
+const SIMULATED_FAULT_MODES = {
+  "F-DROP-BEFORE": true,
+  "F-DROP-AFTER": true,
+  "F-SLOW": true,
+} as const satisfies Record<SimulatedFault["mode"], true>;
 
 // Teto do setTimeout (2^31 − 1 ms). Acima dele o Node troca a espera por 1 ms e só emite
 // um aviso: um F-SLOW maior pareceria funcionar sem atrasar nada.
@@ -39,7 +45,7 @@ export function readSimulatedFault(env: Record<string, string | undefined>): Sim
   // (b) Modo avaliado antes do atraso; comparação exata.
   if (!isSimulatedFaultMode(mode)) {
     return invalid(
-      `SIMULATED_FAULT inválida: ${JSON.stringify(mode)}. Valores aceitos: ${SIMULATED_FAULT_MODES.join(", ")}.`,
+      `SIMULATED_FAULT inválida: ${JSON.stringify(mode)}. Valores aceitos: ${Object.keys(SIMULATED_FAULT_MODES).join(", ")}.`,
     );
   }
 
@@ -68,7 +74,8 @@ function presentValue(value: string | undefined): string | undefined {
 }
 
 function isSimulatedFaultMode(value: string): value is SimulatedFault["mode"] {
-  return SIMULATED_FAULT_MODES.some((mode) => mode === value);
+  // hasOwn, e não "in": "toString" e outras chaves herdadas não são modos.
+  return Object.hasOwn(SIMULATED_FAULT_MODES, value);
 }
 
 function invalid(message: string): SimulatedFaultConfig {
