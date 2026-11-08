@@ -11,6 +11,7 @@ import {
 import { createCreateTicket } from "../../src/application/create-ticket.js";
 import type { CreateTicketDraft } from "../../src/domain/index.js";
 import { createApp } from "../../src/http/app.js";
+import type { SimulatedFault } from "../../src/http/simulated-fault.js";
 import {
     createUnitOfWork,
     type UnitOfWork,
@@ -74,7 +75,7 @@ function fecharServidor(servidor: ServerType): Promise<void> {
     });
 }
 
-describe("F-DROP-AFTER no transporte (servidor real, porta 0)", () => {
+describe("Falhas simuladas no transporte (servidor real, porta 0)", () => {
     let db: Awaited<ReturnType<typeof createTestDatabase>>;
     let unitOfWork: UnitOfWork;
     let servidor: ServerType | undefined;
@@ -87,18 +88,6 @@ describe("F-DROP-AFTER no transporte (servidor real, porta 0)", () => {
 
     beforeEach(async () => {
         await db.reset();
-
-        let n = 0;
-        const createTicket = createCreateTicket({
-            unitOfWork,
-            eventIdGenerator: { generate: () => `EVT-FAULT-${++n}` },
-            clock: { now: () => NOW },
-        });
-        const app = createApp({
-            createTicket,
-            simulatedFault: { mode: "F-DROP-AFTER" },
-        });
-        ({ servidor, baseUrl } = await subirServidor(app));
     });
 
     afterEach(async () => {
@@ -111,6 +100,18 @@ describe("F-DROP-AFTER no transporte (servidor real, porta 0)", () => {
     afterAll(async () => {
         await db.dispose();
     });
+
+    // Uma instância de app por teste: a falha começa armada (FS6).
+    async function ligar(simulatedFault: SimulatedFault): Promise<void> {
+        let n = 0;
+        const createTicket = createCreateTicket({
+            unitOfWork,
+            eventIdGenerator: { generate: () => `EVT-FAULT-${++n}` },
+            clock: { now: () => NOW },
+        });
+        const app = createApp({ createTicket, simulatedFault });
+        ({ servidor, baseUrl } = await subirServidor(app));
+    }
 
     function post(body: object): Promise<Response> {
         return fetch(`${baseUrl}/tickets`, {
@@ -138,48 +139,108 @@ describe("F-DROP-AFTER no transporte (servidor real, porta 0)", () => {
         };
     }
 
-    it("grava o chamado e encerra a conexão sem resposta HTTP", async () => {
-        const resultado = await postSemResposta(draft);
-
-        expect(resultado).toBeInstanceOf(TypeError);
-        expect(resultado).toHaveProperty("cause", expect.anything());
-
-        expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
-    });
-
-    it("a repetição com a mesma chave devolve o chamado gravado, sem nova gravação", async () => {
-        expect(await postSemResposta(draft)).toBeInstanceOf(TypeError);
-        const [gravado] = await db.prisma.ticket.findMany();
-        expect(gravado).toBeDefined();
-
-        const resposta = await post(draft);
-
-        expect(resposta.status).toBe(201);
-        expect(await resposta.json()).toMatchObject({ id: gravado?.id });
-        expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
-
+    async function ultimoNumeroInc(): Promise<number | undefined> {
         const contador = await db.prisma.ticketCounter.findUnique({ where: { type: "INC" } });
-        expect(contador?.lastNumber).toBe(1);
+        return contador?.lastNumber;
+    }
+
+    describe("F-DROP-AFTER", () => {
+        beforeEach(async () => {
+            await ligar({ mode: "F-DROP-AFTER" });
+        });
+
+        it("grava o chamado e encerra a conexão sem resposta HTTP", async () => {
+            const resultado = await postSemResposta(draft);
+
+            expect(resultado).toBeInstanceOf(TypeError);
+            expect(resultado).toHaveProperty("cause", expect.anything());
+
+            expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+        });
+
+        it("a repetição com a mesma chave devolve o chamado gravado, sem nova gravação", async () => {
+            expect(await postSemResposta(draft)).toBeInstanceOf(TypeError);
+            const [gravado] = await db.prisma.ticket.findMany();
+            expect(gravado).toBeDefined();
+
+            const resposta = await post(draft);
+
+            expect(resposta.status).toBe(201);
+            expect(await resposta.json()).toMatchObject({ id: gravado?.id });
+            expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+            expect(await ultimoNumeroInc()).toBe(1);
+        });
+
+        it("requisição inválida não consome a falha", async () => {
+            const invalida = await post(draftInvalido);
+            expect(invalida.status).toBe(400);
+
+            const resultado = await postSemResposta(draft);
+
+            expect(resultado).toBeInstanceOf(TypeError);
+            expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+        });
+
+        it("rejeição de negócio não consome a falha", async () => {
+            const rejeitada = await post(draftPrioridadeDivergente);
+            expect(rejeitada.status).toBe(422);
+            expect(await contagens()).toStrictEqual({ chamados: 0, eventos: 0, registros: 0 });
+
+            const resultado = await postSemResposta(draft);
+
+            expect(resultado).toBeInstanceOf(TypeError);
+            expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+        });
     });
 
-    it("requisição inválida não consome a falha", async () => {
-        const invalida = await post(draftInvalido);
-        expect(invalida.status).toBe(400);
+    describe("F-DROP-BEFORE", () => {
+        beforeEach(async () => {
+            await ligar({ mode: "F-DROP-BEFORE" });
+        });
 
-        const resultado = await postSemResposta(draft);
+        it("não grava nada e encerra a conexão sem resposta HTTP", async () => {
+            const resultado = await postSemResposta(draft);
 
-        expect(resultado).toBeInstanceOf(TypeError);
-        expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
-    });
+            expect(resultado).toBeInstanceOf(TypeError);
+            expect(resultado).toHaveProperty("cause", expect.anything());
 
-    it("rejeição de negócio não consome a falha", async () => {
-        const rejeitada = await post(draftPrioridadeDivergente);
-        expect(rejeitada.status).toBe(422);
-        expect(await contagens()).toStrictEqual({ chamados: 0, eventos: 0, registros: 0 });
+            expect(await contagens()).toStrictEqual({ chamados: 0, eventos: 0, registros: 0 });
+        });
 
-        const resultado = await postSemResposta(draft);
+        it("a repetição com a mesma chave cria o chamado", async () => {
+            expect(await postSemResposta(draft)).toBeInstanceOf(TypeError);
 
-        expect(resultado).toBeInstanceOf(TypeError);
-        expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+            const resposta = await post(draft);
+
+            expect(resposta.status).toBe(201);
+            const [criado] = await db.prisma.ticket.findMany();
+            expect(criado).toBeDefined();
+            expect(await resposta.json()).toMatchObject({ id: criado?.id });
+            expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+            expect(await ultimoNumeroInc()).toBe(1);
+        });
+
+        it("requisição inválida não consome a falha", async () => {
+            const invalida = await post(draftInvalido);
+            expect(invalida.status).toBe(400);
+
+            const resultado = await postSemResposta(draft);
+
+            expect(resultado).toBeInstanceOf(TypeError);
+            expect(await contagens()).toStrictEqual({ chamados: 0, eventos: 0, registros: 0 });
+        });
+
+        // FS2: a falha age antes do caso de uso; a regra de negócio nunca é avaliada.
+        it("rejeição de negócio consome a falha sem chegar ao caso de uso", async () => {
+            const resultado = await postSemResposta(draftPrioridadeDivergente);
+
+            expect(resultado).toBeInstanceOf(TypeError);
+            expect(await contagens()).toStrictEqual({ chamados: 0, eventos: 0, registros: 0 });
+
+            const valida = await post(draft);
+
+            expect(valida.status).toBe(201);
+            expect(await contagens()).toStrictEqual({ chamados: 1, eventos: 1, registros: 1 });
+        });
     });
 });
