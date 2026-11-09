@@ -3,7 +3,7 @@
 > Agent de atendimento para o service desk de TI da Nexo (empresa fictícia).
 > O funcionário descreve o problema num chat, e o agent decide se responde uma dúvida, consulta ou atualiza um chamado, abre um chamado novo ou chama um analista.
 
-**Status (README v2.25):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.12 aprovado e congelado**. `03-agent-flow.md` **v1.4 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1.5 concluídos (`docs/evaluation/`). 🟢 Bloco 2 concluído: domínio do ticket-service com TDD (`classifyPriority`, `validateImpactAssessment`, `TicketStatus` e elegibilidade de reabertura, candidatos de duplicidade e SLA), 79 testes aprovados, sem dependências além do test runner. 🟡 Bloco 3 em andamento: API, seed, persistência, idempotência e falha simulada; ADR-008 aceito (Prisma ORM 7.10.1 + SQLite); ADR-010 aceito (Hono + `@hono/node-server`); contrato HTTP em `docs/architecture/04-http-contract.md`; rota `POST /tickets` implementada, com raiz de composição (`src/main.ts`), build e smoke test do servidor real na CI; premissas da instrumentação das escritas em `docs/evaluation/01-evaluation-scenarios.md` §1.1 (implementada).
+**Status (README v2.26):** 🟢 Bloco 1 concluído. `01-domain-model.md` **v2.13 aprovado e congelado**. `03-agent-flow.md` **v1.5 concluído** (resolve L2). ADRs 001–007 concluídos. Cenários de avaliação v1.6 concluídos (`docs/evaluation/`). 🟢 Bloco 2 concluído: domínio do ticket-service com TDD (`classifyPriority`, `validateImpactAssessment`, `TicketStatus` e elegibilidade de reabertura, candidatos de duplicidade e SLA), 79 testes aprovados, sem dependências além do test runner. 🟢 Bloco 3 concluído: ticket-service com API `POST /tickets` (ADR-010: Hono + `@hono/node-server`; contrato em `docs/architecture/04-http-contract.md`), persistência (ADR-008: Prisma ORM 7.10.1 + SQLite), idempotência, seed das fixtures, falha simulada e instrumentação das escritas (`docs/evaluation/01-evaluation-scenarios.md` §1.1); 238 testes aprovados em 21 arquivos, mais o smoke do servidor real na CI. Próximo: Bloco 4, começando pelo ADR-009 (escolha do modelo LLM).
 
 ## Referências
 
@@ -165,7 +165,7 @@ Painel de decisão · confirmação antes de escrever · privacidade · persist�
 
 ## 4. Modelo de domínio
 
-A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.12, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
+A especificação oficial do domínio está em **[`docs/architecture/01-domain-model.md`](docs/architecture/01-domain-model.md)** (v2.13, congelado): entidades e responsabilidades, contratos conceituais, value objects, relacionamentos e cardinalidades, 16 invariantes, catálogos de códigos, `classifyPriority` e os quatro ciclos de estado.
 
 **Congelado** significa: muda só por **inconsistência comprovada** ou por **decisão atribuída a um bloco** (as pendências da DM §10). Mudanças são aprovadas (§14) e registradas **primeiro** no domain model, antes de qualquer artefato derivado.
 
@@ -205,19 +205,30 @@ flowchart LR
 
 ### Estrutura do repositório
 
+Principais diretórios e arquivos; a árvore não é exaustiva. Itens marcados "(previsto)" ainda não existem.
+
 ```
 nexo-assist/
 ├── apps/
-│   ├── web/              # Next.js: UI + BFF + agent + módulo de conhecimento
+│   ├── web/              # (previsto) Next.js: UI + BFF + agent + módulo de conhecimento
 │   └── ticket-service/   # Serviço simulado; domínio e dados de chamados
-│       ├── src/domain/   # Camada de domínio das regras de chamado
-│       └── test/         # Testes (Vitest)
+│       ├── prisma/
+│       │   ├── schema.prisma # Schema do banco (Prisma)
+│       │   └── migrations/   # Migrações do SQLite
+│       ├── src/main.ts       # Raiz de composição: configuração, dependências e servidor HTTP
+│       ├── src/domain/       # Camada de domínio das regras de chamado
+│       ├── src/application/  # Casos de uso (createTicket)
+│       ├── src/http/         # API HTTP (Hono), falha simulada e registro das escritas
+│       ├── src/persistence/  # Repositórios e Unit of Work (Prisma + SQLite)
+│       ├── src/seed/         # Seed das fixtures dos cenários
+│       ├── scripts/          # Smoke test do servidor real
+│       └── test/             # Testes (Vitest)
 ├── docs/
 │   ├── architecture/     # 01-domain-model.md, 03-agent-flow.md, …
 │   ├── decisions/        # ADRs
 │   └── evaluation/       # cenários e estratégia de avaliação
 ├── .github/workflows/    # CI (GitHub Actions)
-├── .env.example
+├── .env.example          # (previsto)
 ├── .gitattributes
 ├── .nvmrc                # Versão do Node
 └── README.md
@@ -429,7 +440,7 @@ Retry com backoff curto. Se persistir, o agent avisa que o sistema está instáv
 | Nível              | O quê                                                                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unitário           | Domínio do ticket-service: `classifyPriority` (tabela com todas as combinações), SLA, duplicidade, reabertura em 7 dias; transições de estado |
-| Integração         | Ticket-service: idempotência antes da versão, privacidade, falha simulada, reconciliação, auditoria do analista                               |
+| Integração         | Ticket-service: falha simulada e reconciliação (cobertas no Bloco 3); idempotência antes da versão (Bloco 5, com a operação `UPDATE`); privacidade (Bloco 4, com as leituras); auditoria do analista (Bloco 7) |
 | Avaliação do agent | Cenários congelados contra baseline                                                                                                           |
 
 ### Avaliação do agent
@@ -528,7 +539,7 @@ Nenhuma bloqueia o início. Cada uma tem o bloco em que será decidida.
 | 19  | `isOverdue` não considera o status: decidir se chamado `RESOLVED` pode ser vencido | PENDENTE. `isOverdue(dueAt, now)` compara só instantes (DM §8.5.2), e o prazo vigente é `nextUpdateDueAt ?? firstResponseDueAt` (DM §3.2); não há prazo de resolução. Quem chama decide se o status entra na regra. Afeta como `TKT-A2` é apresentado na listagem (vencido ou não); o SC-04 hoje não verifica isso — ao decidir a #19, avaliar acrescentar essa expectativa ao cenário. Origem: seed das fixtures (`TKT-A2`, `docs/evaluation/01-evaluation-scenarios.md` §2) | Bloco 4 |
 | 20  | Falhas em leituras (§9): tratamento quando a listagem existir | PENDENTE. O §9 ("Falhas na leitura") prevê retry com backoff curto e aviso de instabilidade sem perder a conversa; as falhas simuladas `F-*` cobrem só escritas (`POST /tickets`; `docs/evaluation/01-evaluation-scenarios.md` §2.2, FS6) | Bloco 4 |
 | 21  | Instrumentação de leituras (SC-04, SC-05, SC-19) | PENDENTE. A instrumentação das escritas cobre só as rotas de escrita (`docs/evaluation/01-evaluation-scenarios.md` §1.1, IN3); as leituras entram com as rotas de leitura | Bloco 4 |
-| 22  | Log do 500 imprime o objeto de erro inteiro (metadados do Prisma podem trazer valores da consulta) | PENDENTE. Avaliar contra o §8 ("Logs sem dados sensíveis desnecessários"). O corpo da resposta já é genérico (contrato HTTP §4.3); a questão é só o registro interno no stderr. Origem: levantamento da instrumentação das escritas (`docs/evaluation/01-evaluation-scenarios.md` §1.1) | Sem bloco definido |
+| 22  | Log do 500 imprime o objeto de erro inteiro (metadados do Prisma podem trazer valores da consulta) | PENDENTE. Avaliar contra o §8 ("Logs sem dados sensíveis desnecessários"). O corpo da resposta já é genérico (contrato HTTP §4.3); a questão é só o registro interno no stderr. Origem: levantamento da instrumentação das escritas (`docs/evaluation/01-evaluation-scenarios.md` §1.1). Gatilho: resolver antes de qualquer encaminhamento de logs a outros leitores (mesmo gatilho da reavaliação da chave sem hash, `docs/evaluation/01-evaluation-scenarios.md` §1.1, IN6) | Sem bloco; por gatilho (encaminhamento de logs) |
 | 23  | Instante de recebimento no registro das escritas | PENDENTE. O registro traz só o instante da emissão (`at`); o de recebimento entra se o SC-14 precisar (`docs/evaluation/01-evaluation-scenarios.md` §1.1, IN10) | Bloco 7 |
 | 24  | Cruzamento do registro das escritas com `OperationExecution.attempts`; quem sobe o ticket-service e captura o stdout dele a partir do Bloco 5 | PENDENTE (`docs/evaluation/01-evaluation-scenarios.md` §1.1, IN10). O registro é a visão do servidor; `attempts` é a do cliente web/BFF (DM §3.14). No Bloco 3, o harness sobe o serviço e captura o stdout (IN9); a partir do Bloco 5, nenhum documento define quem faz isso | Bloco 5 |
 
@@ -543,7 +554,7 @@ Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado
 | 1     | Fase 0: ~~domain model~~ (v2.2 aprovado), ~~agent flow~~ (v1.2 concluído), ~~ADRs 001–007~~ (concluídos), ~~cenários~~ (concluídos)                                                                                                                                 | Consigo explicar o fluxo inteiro sem olhar o documento               |
 | 2     | Domínio do ticket-service com TDD (funções puras), nesta ordem: ~~`classifyPriority`~~ (concluído), ~~`TicketStatus` e predicados~~ (concluído), ~~reabertura (elegibilidade)~~ (concluído; transição movida para o Bloco 5: é uma operação nova, com caso de uso, `TicketEvent` `REOPENED` e idempotência `REOPEN`, não parte da criação), ~~duplicidade~~ (concluído), ~~SLA~~ (concluído) | Testes verdes, sem dependências além do test runner                  |
 | 3     | Ticket-service: ~~API~~ (concluído: `POST /tickets`), ~~seed~~ (concluído: fixtures `TKT-A1`, `TKT-A2`, `TKT-B1`), ~~persistência~~ (concluído), ~~idempotência~~ (concluído), ~~falha simulada~~ (concluído: F-DROP-BEFORE, F-DROP-AFTER, F-SLOW e reinício no smoke), ~~instrumentação das escritas~~ (concluído: registro JSON por escrita no stdout, cenários §1.1)                                                                                                                              | Retry após timeout não duplica chamado                               |
-| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`; model `Employee` e seed dos funcionários (antes da FK de `requesterId`/`assignedTo`)                                                                                                    | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
+| 4     | Fatias 1 e 2: login, conversa persistida, `searchArticles`, `listMyTickets`; model `Employee` e seed dos funcionários (antes da FK de `requesterId`/`assignedTo`); rotas de leitura no ticket-service e extensão do contrato HTTP                                    | "VPN 809 no Win11" e "status do meu chamado" funcionam sem vazamento |
 | 5     | Fatia 3: rascunho → confirmação (ID + versão) → criação idempotente                                                                                                                                                                                                 | Tela 2 de ponta a ponta                                              |
 | 6     | Chat fiel ao protótipo + painel de decisão + encerramento                                                                                                                                                                                                           | Dá para ver o quê, por quê e com que evidência                       |
 | 7     | Fatia 4: transferência, console, assumir/devolver/encerrar, auditoria; substituir a transição `RESOLVED` do seed pelo caso de uso de resolução                                                                                                                      | Telas 4 e 5 funcionando, estado sobrevive a reinício                 |
@@ -551,6 +562,29 @@ Blocos de ~3 horas. A ordem importa mais que a data; a velocidade de aprendizado
 | 9–10  | Folga: deploy, "Meu perfil", polimento, treino de entrevista                                                                                                                                                                                                        | —                                                                    |
 
 > O antigo `02-state-model.md` foi absorvido pelo domain model (DM §8). Não criaremos um documento separado de estados, para não duplicar a especificação.
+
+### Evidência do pronto do Bloco 3
+
+Critério: **"Retry após timeout não duplica chamado"**. "Timeout" é o que o cliente vive: conexão encerrada sem resposta (cenários §2.2, FS5), nas variantes "executou e perdeu a resposta" (`F-DROP-AFTER`) e "não executou" (`F-DROP-BEFORE`). "Não duplica" = 1 `Ticket`, 1 `TicketEvent` `CREATED`, 1 `IdempotencyRecord` e `TicketCounter` sem incremento extra. Testes por nível (caminhos relativos a `apps/ticket-service/`; formato `arquivo › describe › it`). A CI roda `npm test` e `npm run smoke`.
+
+- **Caso de uso** — `test/application/create-ticket.test.ts › createTicket ›`
+  - "devolve o snapshot original no replay sem consumir novos recursos": a repetição pela verificação prévia devolve o original (`REPLAYED`) sem novo chamado nem regravar o snapshot.
+  - "devolve o snapshot original quando a mesma chave chega com outra prioridade": a repetição devolve o original antes de qualquer validação.
+  - "desfaz toda a criação quando o evento viola sua chave primária": falha na transação não deixa efeito parcial.
+- **Concorrência no mesmo processo** — `test/application/create-ticket.test.ts › createTicket ›`
+  - "processa duas execuções concorrentes com a mesma chave uma única vez": um único efeito; uma `CREATED` e uma `REPLAYED`, sem fixar a vencedora.
+  - "devolve o snapshot do vencedor pela verificação dentro da transação": o caminho da verificação na transação, de forma determinística.
+- **Colisão entre processos, simulada** — `test/application/create-ticket.test.ts › createTicket › "relê a chave após o rollback e devolve o snapshot do vencedor"`: uma Unit of Work cega esconde a chave e força a colisão no insert (P2002); a releitura após o rollback devolve o snapshot do vencedor. É simulação: não há corrida simultânea entre processos reais.
+- **Persistência** — `test/persistence/idempotency-record-repository.test.ts › IdempotencyRecordRepository › "lança IdempotencyKeyAlreadyExists para chave duplicada"`: a unicidade da chave no banco.
+- **Rota com banco real, sem socket** — `test/http/create-ticket-route.test.ts › POST /tickets › "cria e reconcilia o chamado pela mesma chave com o banco real"`.
+- **Transporte real (porta 0, mesmo processo)** — `test/http/simulated-fault-transport.test.ts › Falhas simuladas no transporte (servidor real, porta 0) ›`
+  - `F-DROP-AFTER ›` "grava o chamado e encerra a conexão sem resposta HTTP" e "a repetição com a mesma chave devolve o chamado gravado, sem nova gravação" (SC-17, caso A; registros `CREATED`/`DROPPED` e `REPLAYED`/`SENT` com o mesmo `ticketId`).
+  - `F-DROP-BEFORE ›` "não grava nada e encerra a conexão sem resposta HTTP" e "a repetição com a mesma chave cria o chamado" (SC-17, caso B; registros `NOT_EXECUTED`/`DROPPED` e `CREATED`/`SENT`).
+- **Processo real com reinício** — `scripts/smoke.ts`, com `node dist/main.js` em processos filhos:
+  - etapa 1, "criação e repetição pela mesma chave": a repetição devolve o corpo idêntico; registros `CREATED` e `REPLAYED` com o mesmo `ticketId`.
+  - etapa 2, "reinício entre a gravação e a repetição (FS8)": (a) A sobe com `F-DROP-AFTER`; (b) o POST tem a conexão encerrada; (c) A é encerrado; (d) B sobe sem falha, no mesmo banco; (e) o mesmo POST recebe 201 com o chamado de A; (f) B é encerrado; (g) o banco tem 1 `Ticket`, 1 `TicketEvent`, 1 `IdempotencyRecord` e `lastNumber` 1. Registros: A `CREATED`/`F-DROP-AFTER`/`DROPPED`; B `REPLAYED`/`SENT`, com o mesmo `ticketId`. Prova reinício **sequencial** com o mesmo banco, não corrida simultânea entre processos reais.
+
+Limites conhecidos: o caso `F-DROP-BEFORE` não tem versão com reinício (a FS8 só exige `F-DROP-AFTER`); encerramento abrupto (`SIGKILL`) é opcional na FS8 e não está no smoke; o encerramento ordenado só é verificado na CI (Linux), porque no Windows o `SIGTERM` mata o processo; a colisão entre processos é simulada pela Unit of Work cega; a métrica "escrita sem confirmação" do SC-17 depende do web (Bloco 5).
 
 ### Fatias verticais
 
@@ -683,3 +717,4 @@ O conteúdo de refinamento migra para `docs/` e o README final aponta para ele.
 | v2.23  | Premissas do seed das fixtures registradas em `01-evaluation-scenarios.md` v1.3 (§2.1, S1–S9). §13: Bloco 4 com o model `Employee` e o seed dos funcionários (antes da FK de `requesterId`/`assignedTo`); Bloco 7 com a substituição da transição `RESOLVED` do seed pelo caso de uso de resolução. Linha do Bloco 3 inalterada. §12 #19 nova: `isOverdue` não considera o status; decidir se chamado `RESOLVED` pode ser vencido (Bloco 4); afeta como `TKT-A2` é apresentado na listagem (vencido ou não), o que o SC-04 hoje não verifica. §5 com o seed das fixtures (`npm run build && npm run seed`) e o aviso da S6 (reexecução segura, sem renovar datas). Status atualizado |
 | v2.24  | Mecanismo das falhas simuladas registrado em `01-evaluation-scenarios.md` v1.4 (§2.2, FS1–FS8). §9: a frase "indisponível por alguns segundos — de propósito" é mantida e ganha a premissa de que a indisponibilidade é simulada por requisição (`F-*`), sem janela global e sem quarta fixture. §12 #20 nova: falhas em leituras, tratamento quando a listagem existir (Bloco 4). §13: ~~seed~~ concluído no Bloco 3 (PR #25: `TKT-A1`, `TKT-A2`, `TKT-B1`) e "instrumentação das escritas" como entrega pendente do Bloco 3; ~~falha simulada~~ concluída no mesmo PR (F-DROP-BEFORE, F-DROP-AFTER, F-SLOW e reinício no smoke). O Bloco 3 segue em andamento: falta a instrumentação das escritas. Nota informativa no contrato HTTP v1.1 e atualização datada no ADR-010. Status atualizado |
 | v2.25  | Premissas da instrumentação das escritas registradas em `01-evaluation-scenarios.md` v1.5 (§1.1, IN1–IN10) e distinção interna `CREATED`/`REPLAYED` do `createTicket` no `01-domain-model.md` v2.12 (§3.16), sem mudança no contrato HTTP. §12: novas #21 (instrumentação de leituras, Bloco 4), #22 (log do 500 com o objeto de erro inteiro, avaliar contra o §8, sem bloco definido), #23 (instante de recebimento no registro, Bloco 7, se o SC-14 precisar) e #24 (cruzamento com `OperationExecution.attempts` e quem sobe o ticket-service e captura o stdout dele a partir do Bloco 5, Bloco 5); as duas pendências da IN10 entram como linhas separadas, porque têm blocos diferentes. Status e §4 citam o DM v2.12. §5 ("Como rodar o ticket-service"): cada escrita gera uma linha JSON `ticket_write` no stdout (cenários §1.1). §13, linha do Bloco 3: ~~instrumentação das escritas~~ concluída (registro JSON por escrita no stdout, cenários §1.1); todas as entregas do Bloco 3 concluídas, e o fechamento do bloco fica para outra branch. Status: a instrumentação das escritas passa de "implementação pendente" a "implementada", com o Bloco 3 ainda em andamento. Status atualizado |
+| v2.26  | Fechamento do Bloco 3. Status: 🟢 Bloco 3 concluído, com as entregas (API `POST /tickets`, persistência, idempotência, seed, falha simulada, instrumentação das escritas), 238 testes em 21 arquivos e o próximo passo (Bloco 4, começando pelo ADR-009); status e §4 citam o DM v2.13, o AF v1.5 e os cenários v1.6. §13: linha do Bloco 3 mantida no formato do Bloco 2 (todas as entregas riscadas e concluídas); nova subseção "Evidência do pronto do Bloco 3", com os testes pelo nome, agrupados por nível (caso de uso, concorrência no processo, colisão entre processos simulada, persistência, rota com banco real, transporte real, processo real com reinício), e os limites conhecidos; linha do Bloco 4 com as rotas de leitura no ticket-service e a extensão do contrato HTTP. §5, estrutura do repositório: `prisma/` (schema e migrações), `src/main.ts` (raiz de composição), `src/application/`, `src/http/`, `src/persistence/`, `src/seed/` e `scripts/`; aviso de que a árvore não é exaustiva; `apps/web/` e `.env.example` marcados "(previsto)", porque ainda não existem. §10, linha "Integração": falha simulada e reconciliação cobertas no Bloco 3; idempotência antes da versão no Bloco 5, privacidade no Bloco 4 e auditoria do analista no Bloco 7. §12 #22: sem bloco, com gatilho (resolver antes de qualquer encaminhamento de logs a outros leitores, o mesmo da reavaliação da chave sem hash, cenários §1.1, IN6). Sincronização com `01-domain-model.md` v2.13 (cabeçalho "Estado"), `03-agent-flow.md` v1.5 (T13 coerente com §5.6; teste de reinício entregue) e `01-evaluation-scenarios.md` v1.6 (§2 com a materialização por grupo; §6 sem as linhas resolvidas do Bloco 3 e com as novas dos Blocos 4, 5 e 7; SC-17 aponta para a evidência do §13) |

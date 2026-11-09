@@ -1,10 +1,10 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.12** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.13** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
-> Estado: documentação arquitetural. Implementado no ticket-service (Bloco 2): classifyPriority e validateImpactAssessment (§4, §5); as demais regras seguem como especificação.
+> Estado: documentação arquitetural. Implementado no ticket-service (Blocos 2 e 3): as funções de domínio `classifyPriority` e `validateImpactAssessment` (§4, §5), `TicketStatus` com `isOpenTicket` e `canReopen` (§8.5), `findDuplicateCandidates` (§8.5.1), `computeDueAt` e `isOverdue` (§8.5.2), `formatTicketId` e `validateTicketInvariants` (§3.2); a persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord` (§3.2, §3.9, §3.16); e a criação de chamado com idempotência (`createTicket`, §3.3, §3.16). As demais regras (as outras entidades e as operações de atualização, reabertura e transferência) seguem como especificação.
 
 ## 0. Como ler este documento
 
@@ -1309,8 +1309,16 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.10  | v2.9; Bloco 3 (`TicketEvent` e idempotência) | Catálogo `TicketEventType` (§3.9) com o produtor previsto de cada tipo e revisão no Bloco 8; `CREATED` com `changes` vazio e `summary` fixo; `ActorType`; persistência do `TicketEvent` (`actor` em duas colunas, `changes` em JSON, FK para `Ticket`); `TicketOperationType` (§3.16) com FK de `IdempotencyRecord.ticketId`; catálogos distintos; contrato de `changes` PENDENTE até a operação `UPDATED`; tipo `Actor`; prioridade e prazo do draft (§3.3, inconsistência comprovada); geração do `id` por contador; imutabilidade de `requesterId`; chave reutilizada, snapshot e conflito (§3.16). |
 | v2.11  | v2.10; Bloco 3 (contrato HTTP, ADR-010) | Pendências de retry (README §12 #7) e de consulta pela chave (README §12 #8) resolvidas em §3.16 e removidas do §10: o retry pertence ao cliente web/BFF, com a mesma chave e o mesmo corpo, sem laço no ticket-service; a consulta pela chave é opcional, e o retry do `POST` reconcilia. Ajustes de coerência em §8.4, §9 (lacuna #11) e §10: responsabilidade decidida, detalhamento operacional PENDENTE até o web existir. Nenhuma outra alteração. |
 | v2.12  | v2.11; Bloco 3 (instrumentação das escritas, `01-evaluation-scenarios.md` §1.1, IN7) | §3.16: o caso de uso distingue internamente criação (`CREATED`) e repetição (`REPLAYED`) em todos os caminhos de repetição; o HTTP não expõe a distinção e o snapshot persistido não muda. Nenhuma outra alteração. |
+| v2.13  | v2.12; fechamento do Bloco 3 | Cabeçalho, "Estado": passa a listar o que está implementado no ticket-service depois dos Blocos 2 e 3 (funções de domínio, persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord`, `createTicket`). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.12 para a v2.13
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Estado da implementação (fechamento do Bloco 3) | cabeçalho | "Implementado no ticket-service (Bloco 2): classifyPriority e validateImpactAssessment" passa a listar o que existe depois dos Blocos 2 e 3: funções de domínio (§3.2, §4, §5, §8.5, §8.5.1, §8.5.2), persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord` (§3.2, §3.9, §3.16) e `createTicket` (§3.3, §3.16). Sem mudança de regra |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.13 |
 
 ### Alterações da v2.11 para a v2.12
 
