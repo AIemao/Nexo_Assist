@@ -2,7 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { zValidator } from "@hono/zod-validator";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 
 import type { CreateTicketInput, CreateTicketResult } from "../application/create-ticket.js";
@@ -18,6 +18,7 @@ import {
   type CreateTicketDraft,
 } from "../domain/index.js";
 import type { SimulatedFault } from "./simulated-fault.js";
+import type { WriteRecord } from "./write-record.js";
 
 // Contrato: docs/architecture/04-http-contract.md. Camada fina (ADR-010, condição 5):
 // valida a forma, chama o caso de uso e traduz o resultado.
@@ -31,6 +32,8 @@ export interface AppDependencies {
   onUnexpectedError?: (error: unknown) => void | Promise<void>;
   // Cenários §2.2. Ausente = desligada.
   simulatedFault?: SimulatedFault;
+  // Cenários §1.1: recebe um registro por requisição de escrita.
+  recordWrite?: (record: WriteRecord) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +67,63 @@ function problem(status: ProblemStatus, code: string, errors?: ValidationError[]
     status,
     headers: { "Content-Type": "application/problem+json" },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Registro das escritas (cenários §1.1). Quem decide o desfecho deixa estes metadados
+// no contexto (IN8); o emissor só os lê, sem deduzir o desfecho pelo status da resposta.
+
+// O registro sem `event`, `operation` e `idempotencyKey`, que o emissor completa.
+export type WriteOutcome = Omit<WriteRecord, "event" | "operation" | "idempotencyKey">;
+
+// IN6: a marca vive no contexto da requisição, nunca em estado da instância; sob
+// concorrência, cada requisição carrega a sua.
+type WriteVariables = { writeOutcome?: WriteOutcome };
+
+// Ambiente mínimo do emissor: só as variáveis de escrita, sem os bindings do Node, para
+// que ele funcione também num Hono que não é o deste app.
+export type WriteEnv = { Variables: WriteVariables };
+
+type AppEnv = {
+  Bindings: HttpBindings;
+  Variables: WriteVariables;
+};
+
+type AppContext = Context<AppEnv>;
+
+type UnexpectedErrorHandler = (error: unknown) => void | Promise<void>;
+
+// O contexto visto só pelo que a marca usa. A classe Context do Hono não é atribuível
+// entre ambientes diferentes; este tipo aceita o contexto de qualquer app cujas variáveis
+// incluam a marca (o real e o mínimo dos testes), sem type assertion.
+type WriteMarkTarget = { set(key: "writeOutcome", value: WriteOutcome): void };
+
+// Único mecanismo de marca do desfecho.
+export function markWrite(c: WriteMarkTarget, writeOutcome: WriteOutcome): void {
+  c.set("writeOutcome", writeOutcome);
+}
+
+// Resposta de erro (Problem Details) que também marca o desfecho da escrita.
+function rejectWrite(
+  c: AppContext,
+  outcome: "INVALID" | "REJECTED" | "ERROR",
+  status: ProblemStatus,
+  code: string,
+  errors?: ValidationError[],
+): Response {
+  markWrite(c, { outcome, status, code, responseDisposition: "SENT" });
+  return problem(status, code, errors);
+}
+
+// Repassa um erro ao registro interno sem nunca alterar a resposta: falha síncrona ou
+// promessa rejeitada do próprio onUnexpectedError são descartadas.
+function reportUnexpected(onUnexpectedError: UnexpectedErrorHandler, error: unknown): void {
+  try {
+    // Sem await: a resposta não espera o registro.
+    void Promise.resolve(onUnexpectedError(error)).catch(() => {});
+  } catch {
+    // Uma falha síncrona no registro não pode alterar a resposta.
+  }
 }
 
 type Rejection = Extract<CreateTicketResult, { ok: false }>["error"];
@@ -122,9 +182,12 @@ const actorHeadersSchema = z.discriminatedUnion(ACTOR_TYPE, [
   }),
 ]);
 
-// Contrato §2.1: UUID sem aspas.
+// Contrato §2.1: UUID sem aspas. Único schema da chave: a validação de cabeçalhos e o
+// emissor do registro (cenários §1.1, IN4) usam este mesmo objeto.
+const idempotencyKeySchema = z.uuid();
+
 const idempotencyHeaderSchema = z.looseObject({
-  [IDEMPOTENCY_KEY]: z.uuid(),
+  [IDEMPOTENCY_KEY]: idempotencyKeySchema,
 });
 
 // Contrato §2.2: conjunto fechado de cabeçalhos X-Actor-*; os demais cabeçalhos são ignorados.
@@ -177,9 +240,9 @@ function toValidationErrors(error: z.core.$ZodError, target: string): Validation
 
 type ValidationResult = ({ success: true } | { success: false; error: z.core.$ZodError }) & { target: string };
 
-function rejectInvalid(result: ValidationResult): Response | undefined {
+function rejectInvalid(result: ValidationResult, c: AppContext): Response | undefined {
   if (result.success) return undefined;
-  return problem(400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+  return rejectWrite(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
 }
 
 // ---------------------------------------------------------------------------
@@ -189,12 +252,63 @@ function mediaType(contentType: string | undefined): string | undefined {
   return contentType?.split(";")[0]?.trim().toLowerCase();
 }
 
-const requireJson: MiddlewareHandler = async (c, next) => {
+const requireJson: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (mediaType(c.req.header("content-type")) !== "application/json") {
-    return problem(415, "UNSUPPORTED_MEDIA_TYPE");
+    return rejectWrite(c, "INVALID", 415, "UNSUPPORTED_MEDIA_TYPE");
   }
   await next();
 };
+
+// ---------------------------------------------------------------------------
+// Emissor único do registro das escritas (cenários §1.1, IN8). Fica por fora de
+// requireJson, validadores e handler: depois do next(), o desfecho já foi marcado por
+// quem o decidiu, inclusive pelo onError, que roda dentro do next() (o compose do Hono
+// captura a exceção na camada do handler, chama o onError e só então devolve o controle).
+// Só observa: não decide regra de negócio (ADR-010, condição 5).
+
+export interface WriteRecorderOptions {
+  // Ausente: nada é emitido, mas o diagnóstico de caminho sem marca continua ativo.
+  recordWrite?: ((record: WriteRecord) => void) | undefined;
+  onUnexpectedError: UnexpectedErrorHandler;
+}
+
+export function writeRecorder({ recordWrite, onUnexpectedError }: WriteRecorderOptions): MiddlewareHandler<WriteEnv> {
+  return async (c, next) => {
+    await next();
+
+    const writeOutcome = c.get("writeOutcome");
+    // IN8: todo caminho marca o próprio desfecho. Um caminho sem marca é defeito da
+    // instrumentação: não se inventa um desfecho (seria mentir sobre o que aconteceu),
+    // mas o defeito aparece no registro interno em vez de a linha sumir em silêncio.
+    if (writeOutcome === undefined) {
+      reportUnexpected(
+        onUnexpectedError,
+        new Error(`${c.req.method} ${c.req.path} terminou sem desfecho registrado (cenários §1.1, IN8).`),
+      );
+      return;
+    }
+    if (recordWrite === undefined) return;
+
+    // IN4: a chave entra em qualquer desfecho, só se for válida pelo mesmo schema da
+    // validação de cabeçalhos, sem depender da ordem dos validadores. Inválida: omitida.
+    const key = idempotencyKeySchema.safeParse(c.req.header(IDEMPOTENCY_KEY));
+
+    const record: WriteRecord = {
+      event: "ticket_write",
+      operation: "CREATE",
+      ...writeOutcome,
+      ...(key.success ? { idempotencyKey: key.data } : {}),
+    };
+
+    // IN8: falha do gravador nunca altera a resposta nem o resultado de negócio. O erro
+    // vai para o registro interno, e nenhum segundo registro é emitido.
+    try {
+      recordWrite(record);
+    } catch (error) {
+      reportUnexpected(onUnexpectedError, error);
+    }
+  };
+}
 
 // FS5: encerra a conexão sem resposta HTTP e avisa o adapter de que não deve responder.
 function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
@@ -204,11 +318,16 @@ function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
 
 // ---------------------------------------------------------------------------
 
-export function createApp({ createTicket, onUnexpectedError = console.error, simulatedFault }: AppDependencies) {
+export function createApp({
+  createTicket,
+  onUnexpectedError = console.error,
+  simulatedFault,
+  recordWrite,
+}: AppDependencies) {
   // Bindings do adapter Node: a falha simulada encerra o ServerResponse (c.env.outgoing),
   // o que só existe com @hono/node-server. Os testes de rota (app.request()) não ligam
   // falha e nunca chegam a c.env.
-  const app = new Hono<{ Bindings: HttpBindings }>();
+  const app = new Hono<AppEnv>();
 
   // FS6: estado da instância (uma instância = um processo), consumido pela primeira
   // requisição elegível. Nunca em variável de módulo.
@@ -216,8 +335,16 @@ export function createApp({ createTicket, onUnexpectedError = console.error, sim
 
   app.post(
     "/tickets",
+    // IN3: só esta rota de escrita registra; o emissor envolve todo o resto da cadeia.
+    writeRecorder({ recordWrite, onUnexpectedError }),
     requireJson,
-    zValidator("header", headersValidatorSchema, rejectInvalid),
+    // Genéricos explícitos: o zValidator não infere o ambiente (E) a partir do hook, e o
+    // rejectInvalid precisa do contexto tipado para marcar o desfecho.
+    zValidator<typeof headersValidatorSchema, "header", AppEnv, "/tickets", typeof rejectInvalid>(
+      "header",
+      headersValidatorSchema,
+      rejectInvalid,
+    ),
     async (c) => {
       const headers = c.req.valid("header");
 
@@ -229,20 +356,22 @@ export function createApp({ createTicket, onUnexpectedError = console.error, sim
         body = await c.req.json<unknown>();
       } catch (error) {
         if (!(error instanceof SyntaxError)) throw error;
-        return problem(400, "VALIDATION_ERROR", [{ path: "#", message: "Corpo JSON malformado." }]);
+        return rejectWrite(c, "INVALID", 400, "VALIDATION_ERROR", [{ path: "#", message: "Corpo JSON malformado." }]);
       }
 
       const parsed = createTicketDraftSchema.safeParse(body);
       if (!parsed.success) {
-        return problem(400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
+        return rejectWrite(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
       }
 
       // FS2: F-DROP-BEFORE age aqui, depois de toda a validação da fronteira HTTP
       // (Content-Type, cabeçalhos e corpo) e antes do caso de uso. As regras de negócio
       // ficam dentro do caso de uso e nunca são avaliadas quando a falha age; nada é gravado.
       // Sem await entre a verificação e a atribuição: no event loop, as duas são atômicas.
+      // IN4: marcado antes de agir. Sem status nem code: nada foi produzido.
       if (faultPending && simulatedFault?.mode === "F-DROP-BEFORE") {
         faultPending = false;
+        markWrite(c, { outcome: "NOT_EXECUTED", fault: simulatedFault.mode, responseDisposition: "DROPPED" });
         return dropConnection(c.env.outgoing);
       }
 
@@ -253,37 +382,43 @@ export function createApp({ createTicket, onUnexpectedError = console.error, sim
       });
 
       if (result.ok) {
+        // IN7: CREATED ou REPLAYED vem do caso de uso; 201 é o status produzido ou, no
+        // F-DROP-AFTER, o que seria enviado (IN4).
+        const success = { outcome: result.outcome, status: 201, ticketId: result.ticket.id };
+
         // FS3: F-DROP-AFTER age aqui, depois do commit da Unit of Work (o caso de uso já
         // devolveu sucesso, inclusive no replay) e fora dela: perder a resposta antes do
-        // commit reverteria a transação e seria outro caso.
+        // commit reverteria a transação e seria outro caso. Marcado antes de agir.
         if (faultPending && simulatedFault?.mode === "F-DROP-AFTER") {
           faultPending = false;
+          markWrite(c, { ...success, fault: simulatedFault.mode, responseDisposition: "DROPPED" });
           return dropConnection(c.env.outgoing);
         }
         // FS4: F-SLOW espera aqui, depois do execute, com a transação já encerrada.
         // Nunca dentro da Unit of Work: com a conexão única (ADR-008), uma espera
         // dentro da transação seguraria todas as outras requisições.
-        // A falha é consumida antes do await, para outra requisição não a ver pendente.
+        // A falha é consumida e marcada antes do await, para outra requisição não a ver
+        // pendente; a resposta sai depois da espera (SENT, IN5).
         if (faultPending && simulatedFault?.mode === "F-SLOW") {
           faultPending = false;
+          markWrite(c, { ...success, fault: simulatedFault.mode, responseDisposition: "SENT" });
           await sleep(simulatedFault.delayMs);
+        } else {
+          markWrite(c, { ...success, responseDisposition: "SENT" });
         }
-        // Contrato §3: o corpo é só o ticket; o discriminante `ok` não é exposto.
+        // Contrato §3: o corpo é só o ticket; `ok` e `outcome` não são expostos.
         return c.json(result.ticket, 201);
       }
-      return problem(REJECTION_STATUS[result.error], result.error);
+      return rejectWrite(c, "REJECTED", REJECTION_STATUS[result.error], result.error);
     },
   );
 
-  app.onError((error) => {
-    // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno.
-    try {
-      // Sem await: a resposta 500 não espera o registro, e uma rejeição é descartada.
-      void Promise.resolve(onUnexpectedError(error)).catch(() => {});
-    } catch {
-      // Uma falha síncrona no registro não pode impedir a resposta 500.
-    }
-    return problem(500, "INTERNAL_ERROR");
+  app.onError((error, c) => {
+    // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno, que nunca
+    // impede a resposta 500.
+    reportUnexpected(onUnexpectedError, error);
+    // IN8: o caminho do erro marca o próprio desfecho; o emissor não deduz o ERROR do 500.
+    return rejectWrite(c, "ERROR", 500, "INTERNAL_ERROR");
   });
 
   return app;

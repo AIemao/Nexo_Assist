@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.11** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.12** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -679,6 +679,7 @@ Regras **[Premissa]**:
 
 - **Só operações que produziram efeito sobre um chamado são registradas.** Operação rejeitada (ex.: versão desatualizada) não gera registro; a chave não é consumida e a nova tentativa reavalia a operação (o resultado pode mudar se o estado do chamado mudar).
 - **Resultado original:** com a chave existente, devolve o `result` armazenado, sem reavaliar a operação nem consultar o estado atual do chamado. A única leitura do chamado é a do `requesterId`, imutável (§3.2), para a verificação abaixo.
+- **Criação × repetição:** o caso de uso distingue internamente a criação (`CREATED`) da devolução do resultado original (`REPLAYED`) em todos os caminhos de repetição, inclusive na concorrência e no conflito recuperável abaixo; o HTTP não expõe essa distinção (contrato HTTP §3: 201 com o `ticket`, sem marcador), e o snapshot persistido continua `{ ok: true, ticket }`.
 - **Chave reutilizada:** com a chave existente, confere `operationType` e o solicitante (`IdempotencyRecord.ticketId` → `Ticket.requesterId`). Se a operação ou o solicitante não corresponderem, responde `IDEMPOTENCY_KEY_CONFLICT`, sem revelar o `result` armazenado. Não há comparação do conteúdo da requisição (fingerprint do payload). PENDENTE (operação `TRANSFER`): como a verificação de solicitante se aplica quando o ator é `SYSTEM`.
 - **Snapshot:** o `result` é a resposta original da operação. Na leitura, a validação é rasa: `ok === true`, `ticket` é objeto, `ticket.id` é string e igual a `IdempotencyRecord.ticketId`. Se falhar, lança exceção. O restante do objeto não é validado contra a estrutura atual de `Ticket`: o snapshot preserva a resposta original mesmo depois que o modelo evoluir.
 - **Ordem:** a chave é verificada antes de `expectedTicketVersion`; a consulta é repetida dentro da transação antes da validação de versão.
@@ -1307,8 +1308,16 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.9   | v2.8; Bloco 3 (persistência do `Ticket`) | Premissas de persistência do `Ticket` (§3.2): `id` gerado pelo ticket-service com gerador injetado; `version` começa em 1; datas como `DateTime` (instante preservado, deslocamento normalizado em UTC); `createdAt`, `updatedAt` e `status` fornecidos pelo ticket-service, sem default no schema; FK para `Employee` em migração posterior; regras fora do schema validadas antes da gravação; sem `CHECK` no SQLite (experimento no ADR-008). |
 | v2.10  | v2.9; Bloco 3 (`TicketEvent` e idempotência) | Catálogo `TicketEventType` (§3.9) com o produtor previsto de cada tipo e revisão no Bloco 8; `CREATED` com `changes` vazio e `summary` fixo; `ActorType`; persistência do `TicketEvent` (`actor` em duas colunas, `changes` em JSON, FK para `Ticket`); `TicketOperationType` (§3.16) com FK de `IdempotencyRecord.ticketId`; catálogos distintos; contrato de `changes` PENDENTE até a operação `UPDATED`; tipo `Actor`; prioridade e prazo do draft (§3.3, inconsistência comprovada); geração do `id` por contador; imutabilidade de `requesterId`; chave reutilizada, snapshot e conflito (§3.16). |
 | v2.11  | v2.10; Bloco 3 (contrato HTTP, ADR-010) | Pendências de retry (README §12 #7) e de consulta pela chave (README §12 #8) resolvidas em §3.16 e removidas do §10: o retry pertence ao cliente web/BFF, com a mesma chave e o mesmo corpo, sem laço no ticket-service; a consulta pela chave é opcional, e o retry do `POST` reconcilia. Ajustes de coerência em §8.4, §9 (lacuna #11) e §10: responsabilidade decidida, detalhamento operacional PENDENTE até o web existir. Nenhuma outra alteração. |
+| v2.12  | v2.11; Bloco 3 (instrumentação das escritas, `01-evaluation-scenarios.md` §1.1, IN7) | §3.16: o caso de uso distingue internamente criação (`CREATED`) e repetição (`REPLAYED`) em todos os caminhos de repetição; o HTTP não expõe a distinção e o snapshot persistido não muda. Nenhuma outra alteração. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.11 para a v2.12
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Criação × repetição (instrumentação das escritas, Bloco 3) | 3.16 | Nova regra: o caso de uso distingue internamente `CREATED` e `REPLAYED` em todos os caminhos de repetição (verificação prévia, verificação na transação, recuperação após chave duplicada); o HTTP não expõe a distinção (contrato HTTP §3) e o snapshot persistido continua `{ ok: true, ticket }` |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.12 |
 
 ### Alterações da v2.10 para a v2.11
 

@@ -2,6 +2,7 @@
 // Compila, migra bancos temporários e sobe `node dist/main.js` como processo filho.
 // Etapa 1: duas requisições com a mesma chave e encerramento com SIGTERM, esperando código 0.
 // Etapa 2 (cenários §2.2, FS8): reinício do servidor entre a gravação e a repetição, mesmo banco.
+// Nas duas etapas, confere os registros das escritas no stdout de cada processo (cenários §1.1).
 // Roda com `node scripts/smoke.ts` (remoção de tipos do Node); só usa módulos do Node
 // e o better-sqlite3 (nada de src/).
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -12,6 +13,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { deepStrictEqual } from "node:assert/strict";
 
@@ -41,6 +43,8 @@ interface ChildExit {
   signal: NodeJS.Signals | null;
 }
 
+type JsonRecord = { [key: string]: unknown };
+
 interface RunningChild {
   label: string;
   process: ChildProcess;
@@ -48,6 +52,10 @@ interface RunningChild {
   baseUrl: string;
   stderrLine(pattern: RegExp): Promise<string>;
   step<T>(label: string, promise: Promise<T>): Promise<T>;
+  // Cenários §1.1: registros das escritas lidos do stdout, na ordem de chegada.
+  writeRecords: readonly JsonRecord[];
+  waitForWriteRecords(stepLabel: string, count: number): Promise<void>;
+  stdoutClosed: Promise<void>;
 }
 
 // Filhos ainda vivos, para o finally garantir que nenhum fique para trás.
@@ -142,16 +150,89 @@ async function startChild(label: string, databaseUrl: string, faultEnv: NodeJS.P
     return withTimeout(Promise.race([labelled, untilChildDies(stepLabel)]), STEP_TIMEOUT_MS, stepLabel);
   };
 
+  // Cenários §1.1, IN2: registro é só a linha JSON com event "ticket_write"; as linhas
+  // de texto ("ouvindo em…", encerramento) ficam de fora.
+  const writeRecords: JsonRecord[] = [];
+  const stdout = createInterface({ input: spawned.stdout });
+  const stdoutClosed = new Promise<void>((resolve) => stdout.once("close", resolve));
   const listening = new Promise<string>((resolve) => {
-    createInterface({ input: spawned.stdout }).on("line", (line) => {
+    stdout.on("line", (line) => {
       console.log(`[${label}] ${line}`);
+      const record = parseWriteRecord(line);
+      if (record !== undefined) writeRecords.push(record);
       const match = /ouvindo em (\S+)/.exec(line);
       if (match?.[1] !== undefined) resolve(match[1]);
     });
   });
   const baseUrl = await step(`${label}: esperando a linha de 'ouvindo'`, listening);
   log(`${label} pronto em ${baseUrl}`);
-  return { label, process: spawned, exited, baseUrl, stderrLine, step };
+
+  let exitInfo: ChildExit | undefined;
+  void exited.then((exit) => {
+    exitInfo = exit;
+  });
+  // Espera os registros aparecerem antes de encerrar o filho, para não depender do
+  // flush no encerramento. A falha diz o passo, o processo e o que chegou.
+  const waitForWriteRecords = async (stepLabel: string, count: number): Promise<void> => {
+    const deadline = Date.now() + STEP_TIMEOUT_MS;
+    while (writeRecords.length < count) {
+      const missing = `esperados ${count} registro(s) ticket_write no stdout de ${label}, recebidos ${writeRecords.length}: ${JSON.stringify(writeRecords)}`;
+      if (exitInfo !== undefined) throw new Error(`${stepLabel}: ${label} terminou antes; ${missing}`);
+      if (Date.now() > deadline) throw new Error(`${stepLabel}: tempo limite de ${STEP_TIMEOUT_MS} ms; ${missing}`);
+      await sleep(50);
+    }
+  };
+
+  return { label, process: spawned, exited, baseUrl, stderrLine, step, writeRecords, waitForWriteRecords, stdoutClosed };
+}
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseWriteRecord(line: string): JsonRecord | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  return isJsonRecord(value) && value["event"] === "ticket_write" ? value : undefined;
+}
+
+// Cenários §1.1, IN4: cada registro tem `at` em ISO 8601 e, sem o `at`, exatamente as
+// chaves e os valores esperados para o seu desfecho (nada de título, descrição, ator ou
+// corpo). `where` diz a etapa e o processo.
+function assertWriteRecords(where: string, records: readonly JsonRecord[], expected: readonly JsonRecord[]): void {
+  if (records.length !== expected.length) {
+    throw new Error(
+      `${where}: esperados exatamente ${expected.length} registro(s) ticket_write, recebidos ${records.length}: ${JSON.stringify(records)}`,
+    );
+  }
+  records.forEach((record, index) => {
+    const { at, ...rest } = record;
+    if (typeof at !== "string" || Number.isNaN(Date.parse(at)) || new Date(at).toISOString() !== at) {
+      throw new Error(`${where}: registro ${index + 1} sem 'at' ISO 8601 válido: ${JSON.stringify(record)}`);
+    }
+    try {
+      deepStrictEqual(rest, expected[index]);
+    } catch {
+      throw new Error(
+        `${where}: registro ${index + 1} diverge do esperado (IN4).\n` +
+          `  esperado (sem at): ${JSON.stringify(expected[index])}\n` +
+          `  recebido:          ${JSON.stringify(record)}`,
+      );
+    }
+  });
+}
+
+// Corpo do 201: o smoke só precisa do id e do tipo do chamado.
+function ticketIdentity(stepLabel: string, body: string): { id: string; type: string } {
+  const ticket: unknown = JSON.parse(body);
+  if (!isJsonRecord(ticket) || typeof ticket["id"] !== "string" || typeof ticket["type"] !== "string") {
+    throw new Error(`${stepLabel}: corpo sem id ou type: ${body}`);
+  }
+  return { id: ticket["id"], type: ticket["type"] };
 }
 
 async function stopChild(child: RunningChild): Promise<void> {
@@ -171,6 +252,9 @@ async function stopChild(child: RunningChild): Promise<void> {
     }
     log(`${child.label} encerrado com código 0`);
   }
+  // A contagem exata dos registros é feita depois do encerramento: espera o stdout do
+  // filho fechar para nenhuma linha já escrita ficar de fora.
+  await withTimeout(child.stdoutClosed, STEP_TIMEOUT_MS, `${child.label}: fechamento do stdout`);
 }
 
 const draft = {
@@ -218,8 +302,18 @@ async function smokeCreateAndReplay(tempDir: string): Promise<void> {
   assertStatus("segundo POST /tickets", second.status, 201, second.body);
   deepStrictEqual(JSON.parse(second.body), JSON.parse(first.body), "a repetição deve devolver o mesmo corpo");
   log(`segundo POST /tickets (mesma chave) → ${second.status}, corpo idêntico`);
+  const ticket = ticketIdentity("etapa 1, primeiro POST /tickets", first.body);
 
+  await server.waitForWriteRecords("etapa 1, servidor: registros antes do SIGTERM", 2);
   await stopChild(server);
+
+  // Cenários §1.1: criação e repetição, as duas entregues, com o mesmo ticketId.
+  const success = { event: "ticket_write", operation: "CREATE", status: 201, idempotencyKey, ticketId: ticket.id };
+  assertWriteRecords("etapa 1, servidor", server.writeRecords, [
+    { ...success, outcome: "CREATED", responseDisposition: "SENT" },
+    { ...success, outcome: "REPLAYED", responseDisposition: "SENT" },
+  ]);
+  log(`etapa 1: registros CREATED e REPLAYED de ${ticket.id}, SENT, sem fault`);
 }
 
 // Etapa 2 (FS8): A grava e perde a resposta (F-DROP-AFTER); B, sem falha e no mesmo banco,
@@ -252,7 +346,20 @@ async function smokeRestartBetweenWriteAndRetry(tempDir: string): Promise<void> 
   log("(b) POST em A: conexão encerrada sem resposta HTTP");
 
   // (c)
+  await a.waitForWriteRecords("etapa 2, A: registro do corte antes do SIGTERM", 1);
   await stopChild(a);
+
+  // Cenários §1.1: A gravou e cortou a resposta (CREATED com o 201 que seria enviado).
+  const cut = a.writeRecords[0];
+  const cutTicketId = cut?.["ticketId"];
+  if (typeof cutTicketId !== "string") {
+    throw new Error(`etapa 2, A: registro do corte sem ticketId: ${JSON.stringify(a.writeRecords)}`);
+  }
+  const success = { event: "ticket_write", operation: "CREATE", status: 201, idempotencyKey, ticketId: cutTicketId };
+  assertWriteRecords("etapa 2, A", a.writeRecords, [
+    { ...success, outcome: "CREATED", fault: "F-DROP-AFTER", responseDisposition: "DROPPED" },
+  ]);
+  log(`etapa 2, A: registro CREATED de ${cutTicketId}, F-DROP-AFTER, DROPPED`);
 
   // (d)
   const b = await startChild("B", databaseUrl, {});
@@ -260,14 +367,22 @@ async function smokeRestartBetweenWriteAndRetry(tempDir: string): Promise<void> 
   // (e)
   const retry = await b.step("(e) POST /tickets em B (mesma chave e corpo)", postTicket(b.baseUrl, idempotencyKey));
   assertStatus("(e) POST /tickets em B", retry.status, 201, retry.body);
-  const ticket: unknown = JSON.parse(retry.body);
-  if (typeof ticket !== "object" || ticket === null || !("id" in ticket) || typeof ticket.id !== "string" || !("type" in ticket) || typeof ticket.type !== "string") {
-    throw new Error(`(e) POST /tickets em B: corpo sem id ou type: ${retry.body}`);
-  }
+  const ticket = ticketIdentity("(e) POST /tickets em B", retry.body);
   log(`(e) POST em B → 201, chamado ${ticket.id}`);
 
   // (f)
+  await b.waitForWriteRecords("etapa 2, B: registro da repetição antes do SIGTERM", 1);
   await stopChild(b);
+
+  // B repete com a mesma chave: REPLAYED, entregue, com o MESMO ticketId do registro de A
+  // (e o mesmo do corpo HTTP de B).
+  if (ticket.id !== cutTicketId) {
+    throw new Error(`etapa 2: B devolveu ${ticket.id}, mas o registro do corte em A tem ticketId ${cutTicketId}`);
+  }
+  assertWriteRecords("etapa 2, B", b.writeRecords, [
+    { ...success, outcome: "REPLAYED", responseDisposition: "SENT" },
+  ]);
+  log(`etapa 2, B: registro REPLAYED de ${ticket.id}, SENT, sem fault`);
 
   // (g)
   const db = new Sqlite(databasePath, { readonly: true, fileMustExist: true });

@@ -15,8 +15,10 @@ import type { IdempotencyRecord } from "../persistence/idempotency-record-reposi
 import type { UnitOfWork, UnitOfWorkRepositories } from "../persistence/unit-of-work.js";
 import { toJsonValue } from "./to-json-value.js";
 
+// DM §3.16 ("Criação × repetição"); cenários §1.1, IN7: só o caso de uso sabe se criou
+// ou devolveu o resultado original. O HTTP não expõe o outcome (contrato §3).
 export type CreateTicketResult =
-  | { ok: true; ticket: Ticket }
+  | { ok: true; outcome: "CREATED" | "REPLAYED"; ticket: Ticket }
   | {
       ok: false;
       error:
@@ -97,15 +99,18 @@ export function createCreateTicket({ unitOfWork, eventIdGenerator, clock }: Crea
           };
           await repos.ticketEvents.create(event);
 
-          const result: CreateTicketResult = { ok: true, ticket };
+          // IN7: o snapshot é montado à parte e nunca leva o outcome. Se levasse, toda
+          // repetição devolveria o "CREATED" da execução original, e o snapshot deixaria
+          // de ser { ok: true, ticket } (DM §3.16; contrato §3).
+          const snapshot = { ok: true, ticket };
           await repos.idempotencyRecords.create({
             key: idempotencyKey,
             operationType: "CREATE",
             ticketId: ticket.id,
-            result: toJsonValue(result),
+            result: toJsonValue(snapshot),
             createdAt: now,
           });
-          return result;
+          return { ok: true, outcome: "CREATED", ticket };
         });
       } catch (error) {
         if (!(error instanceof IdempotencyKeyAlreadyExists)) throw error;
@@ -132,18 +137,21 @@ async function findReplay(
   }
   if (ticket.requesterId !== requesterId) return { ok: false, error: "IDEMPOTENCY_KEY_CONFLICT" };
 
-  return readSnapshot(record);
+  // IN7: os três chamadores (verificação prévia, verificação na transação e releitura
+  // após IdempotencyKeyAlreadyExists) são caminhos de repetição. O outcome vem daqui,
+  // do caminho atual, e nunca do snapshot.
+  return { ok: true, outcome: "REPLAYED", ticket: readSnapshotTicket(record) };
 }
 
 // DM §3.16: validação rasa; o restante do snapshot não é conferido contra o Ticket atual.
-function readSnapshot(record: IdempotencyRecord): CreateTicketResult {
+function readSnapshotTicket(record: IdempotencyRecord): Ticket {
   const { result } = record;
   if (isJsonObject(result) && result["ok"] === true) {
     const ticket = result["ticket"];
     if (isJsonObject(ticket) && typeof ticket["id"] === "string" && ticket["id"] === record.ticketId) {
       // Único ponto com type assertion: o snapshot é histórico e só passou pela
       // validação rasa acima; tipá-lo como Ticket é uma promessa, não uma verificação.
-      return { ok: true, ticket: ticket as unknown as Ticket };
+      return ticket as unknown as Ticket;
     }
   }
   throw new CorruptedRecordError("IdempotencyRecord", record.key, "snapshot inválido");
