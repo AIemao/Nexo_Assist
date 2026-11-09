@@ -8,6 +8,7 @@ import { createCreateTicket } from "./application/create-ticket.js";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
 import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
+import type { WriteRecord } from "./http/write-record.js";
 import { createUnitOfWork } from "./persistence/unit-of-work.js";
 
 interface Config {
@@ -53,6 +54,13 @@ function describeFault(fault: SimulatedFault): string {
   return fault.mode === "F-SLOW" ? `${fault.mode} (${fault.delayMs} ms)` : fault.mode;
 }
 
+// Cenários §1.1, IN2 e IN4: uma linha JSON por registro de escrita no stdout, com o
+// instante da emissão (`at`) carimbado aqui, e não no app. O formato de `at` é o mesmo
+// dos instantes do domínio (DM §3.2): ISO 8601 em UTC, com milissegundos.
+function writeRecordLine(record: WriteRecord): void {
+  process.stdout.write(`${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`);
+}
+
 function formatAddress(info: AddressInfo): string {
   const host = info.family === "IPv6" ? `[${info.address}]` : info.address;
   return `http://${host}:${info.port}`;
@@ -80,7 +88,7 @@ function main(): void {
     eventIdGenerator: { generate: randomUUID },
     clock: { now: () => new Date().toISOString() },
   });
-  const app = createApp({ createTicket, simulatedFault: fault });
+  const app = createApp({ createTicket, simulatedFault: fault, recordWrite: writeRecordLine });
 
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`ticket-service ouvindo em ${formatAddress(info)}`);
