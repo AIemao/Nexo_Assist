@@ -73,21 +73,33 @@ function problem(status: ProblemStatus, code: string, errors?: ValidationError[]
 // Registro das escritas (cenários §1.1). Quem decide o desfecho deixa estes metadados
 // no contexto (IN8); o emissor só os lê, sem deduzir o desfecho pelo status da resposta.
 
-interface WriteOutcome {
-  outcome: WriteRecord["outcome"];
-  status: number;
-  code?: string;
-  ticketId?: string;
-}
+// O registro sem `event`, `operation` e `idempotencyKey`, que o emissor completa.
+export type WriteOutcome = Omit<WriteRecord, "event" | "operation" | "idempotencyKey">;
+
+// IN6: a marca vive no contexto da requisição, nunca em estado da instância; sob
+// concorrência, cada requisição carrega a sua.
+type WriteVariables = { writeOutcome?: WriteOutcome };
+
+// Ambiente mínimo do emissor: só as variáveis de escrita, sem os bindings do Node, para
+// que ele funcione também num Hono que não é o deste app.
+export type WriteEnv = { Variables: WriteVariables };
 
 type AppEnv = {
   Bindings: HttpBindings;
-  Variables: { writeOutcome?: WriteOutcome };
+  Variables: WriteVariables;
 };
 
 type AppContext = Context<AppEnv>;
 
-function markWrite(c: AppContext, writeOutcome: WriteOutcome): void {
+type UnexpectedErrorHandler = (error: unknown) => void | Promise<void>;
+
+// O contexto visto só pelo que a marca usa. A classe Context do Hono não é atribuível
+// entre ambientes diferentes; este tipo aceita o contexto de qualquer app cujas variáveis
+// incluam a marca (o real e o mínimo dos testes), sem type assertion.
+type WriteMarkTarget = { set(key: "writeOutcome", value: WriteOutcome): void };
+
+// Único mecanismo de marca do desfecho.
+export function markWrite(c: WriteMarkTarget, writeOutcome: WriteOutcome): void {
   c.set("writeOutcome", writeOutcome);
 }
 
@@ -99,8 +111,19 @@ function rejectWrite(
   code: string,
   errors?: ValidationError[],
 ): Response {
-  markWrite(c, { outcome, status, code });
+  markWrite(c, { outcome, status, code, responseDisposition: "SENT" });
   return problem(status, code, errors);
+}
+
+// Repassa um erro ao registro interno sem nunca alterar a resposta: falha síncrona ou
+// promessa rejeitada do próprio onUnexpectedError são descartadas.
+function reportUnexpected(onUnexpectedError: UnexpectedErrorHandler, error: unknown): void {
+  try {
+    // Sem await: a resposta não espera o registro.
+    void Promise.resolve(onUnexpectedError(error)).catch(() => {});
+  } catch {
+    // Uma falha síncrona no registro não pode alterar a resposta.
+  }
 }
 
 type Rejection = Extract<CreateTicketResult, { ok: false }>["error"];
@@ -243,15 +266,28 @@ const requireJson: MiddlewareHandler<AppEnv> = async (c, next) => {
 // captura a exceção na camada do handler, chama o onError e só então devolve o controle).
 // Só observa: não decide regra de negócio (ADR-010, condição 5).
 
-function writeRecorder(recordWrite: ((record: WriteRecord) => void) | undefined): MiddlewareHandler<AppEnv> {
+export interface WriteRecorderOptions {
+  // Ausente: nada é emitido, mas o diagnóstico de caminho sem marca continua ativo.
+  recordWrite?: ((record: WriteRecord) => void) | undefined;
+  onUnexpectedError: UnexpectedErrorHandler;
+}
+
+export function writeRecorder({ recordWrite, onUnexpectedError }: WriteRecorderOptions): MiddlewareHandler<WriteEnv> {
   return async (c, next) => {
     await next();
-    if (recordWrite === undefined) return;
 
     const writeOutcome = c.get("writeOutcome");
-    // Sem desfecho marcado: só as falhas simuladas que encerram a conexão (FS2, FS3),
-    // ainda não registradas (NOT_EXECUTED e DROPPED entram com o teste de transporte).
-    if (writeOutcome === undefined) return;
+    // IN8: todo caminho marca o próprio desfecho. Um caminho sem marca é defeito da
+    // instrumentação: não se inventa um desfecho (seria mentir sobre o que aconteceu),
+    // mas o defeito aparece no registro interno em vez de a linha sumir em silêncio.
+    if (writeOutcome === undefined) {
+      reportUnexpected(
+        onUnexpectedError,
+        new Error(`${c.req.method} ${c.req.path} terminou sem desfecho registrado (cenários §1.1, IN8).`),
+      );
+      return;
+    }
+    if (recordWrite === undefined) return;
 
     // IN4: a chave entra em qualquer desfecho, só se for válida pelo mesmo schema da
     // validação de cabeçalhos, sem depender da ordem dos validadores. Inválida: omitida.
@@ -260,19 +296,16 @@ function writeRecorder(recordWrite: ((record: WriteRecord) => void) | undefined)
     const record: WriteRecord = {
       event: "ticket_write",
       operation: "CREATE",
-      outcome: writeOutcome.outcome,
-      status: writeOutcome.status,
-      ...(writeOutcome.code === undefined ? {} : { code: writeOutcome.code }),
+      ...writeOutcome,
       ...(key.success ? { idempotencyKey: key.data } : {}),
-      ...(writeOutcome.ticketId === undefined ? {} : { ticketId: writeOutcome.ticketId }),
-      responseDisposition: "SENT",
     };
 
-    // IN8: falha do gravador nunca altera a resposta nem o resultado de negócio.
+    // IN8: falha do gravador nunca altera a resposta nem o resultado de negócio. O erro
+    // vai para o registro interno, e nenhum segundo registro é emitido.
     try {
       recordWrite(record);
-    } catch {
-      // Engolida de propósito.
+    } catch (error) {
+      reportUnexpected(onUnexpectedError, error);
     }
   };
 }
@@ -303,7 +336,7 @@ export function createApp({
   app.post(
     "/tickets",
     // IN3: só esta rota de escrita registra; o emissor envolve todo o resto da cadeia.
-    writeRecorder(recordWrite),
+    writeRecorder({ recordWrite, onUnexpectedError }),
     requireJson,
     // Genéricos explícitos: o zValidator não infere o ambiente (E) a partir do hook, e o
     // rejectInvalid precisa do contexto tipado para marcar o desfecho.
@@ -335,8 +368,10 @@ export function createApp({
       // (Content-Type, cabeçalhos e corpo) e antes do caso de uso. As regras de negócio
       // ficam dentro do caso de uso e nunca são avaliadas quando a falha age; nada é gravado.
       // Sem await entre a verificação e a atribuição: no event loop, as duas são atômicas.
+      // IN4: marcado antes de agir. Sem status nem code: nada foi produzido.
       if (faultPending && simulatedFault?.mode === "F-DROP-BEFORE") {
         faultPending = false;
+        markWrite(c, { outcome: "NOT_EXECUTED", fault: simulatedFault.mode, responseDisposition: "DROPPED" });
         return dropConnection(c.env.outgoing);
       }
 
@@ -347,24 +382,30 @@ export function createApp({
       });
 
       if (result.ok) {
+        // IN7: CREATED ou REPLAYED vem do caso de uso; 201 é o status produzido ou, no
+        // F-DROP-AFTER, o que seria enviado (IN4).
+        const success = { outcome: result.outcome, status: 201, ticketId: result.ticket.id };
+
         // FS3: F-DROP-AFTER age aqui, depois do commit da Unit of Work (o caso de uso já
         // devolveu sucesso, inclusive no replay) e fora dela: perder a resposta antes do
-        // commit reverteria a transação e seria outro caso.
+        // commit reverteria a transação e seria outro caso. Marcado antes de agir.
         if (faultPending && simulatedFault?.mode === "F-DROP-AFTER") {
           faultPending = false;
+          markWrite(c, { ...success, fault: simulatedFault.mode, responseDisposition: "DROPPED" });
           return dropConnection(c.env.outgoing);
         }
         // FS4: F-SLOW espera aqui, depois do execute, com a transação já encerrada.
         // Nunca dentro da Unit of Work: com a conexão única (ADR-008), uma espera
         // dentro da transação seguraria todas as outras requisições.
-        // A falha é consumida antes do await, para outra requisição não a ver pendente.
+        // A falha é consumida e marcada antes do await, para outra requisição não a ver
+        // pendente; a resposta sai depois da espera (SENT, IN5).
         if (faultPending && simulatedFault?.mode === "F-SLOW") {
           faultPending = false;
+          markWrite(c, { ...success, fault: simulatedFault.mode, responseDisposition: "SENT" });
           await sleep(simulatedFault.delayMs);
+        } else {
+          markWrite(c, { ...success, responseDisposition: "SENT" });
         }
-        // IN7: CREATED ou REPLAYED vem do caso de uso. Marcado depois das falhas
-        // simuladas: o F-DROP-AFTER sai antes daqui e ainda não é registrado.
-        markWrite(c, { outcome: result.outcome, status: 201, ticketId: result.ticket.id });
         // Contrato §3: o corpo é só o ticket; `ok` e `outcome` não são expostos.
         return c.json(result.ticket, 201);
       }
@@ -373,13 +414,9 @@ export function createApp({
   );
 
   app.onError((error, c) => {
-    // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno.
-    try {
-      // Sem await: a resposta 500 não espera o registro, e uma rejeição é descartada.
-      void Promise.resolve(onUnexpectedError(error)).catch(() => {});
-    } catch {
-      // Uma falha síncrona no registro não pode impedir a resposta 500.
-    }
+    // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno, que nunca
+    // impede a resposta 500.
+    reportUnexpected(onUnexpectedError, error);
     // IN8: o caminho do erro marca o próprio desfecho; o emissor não deduz o ERROR do 500.
     return rejectWrite(c, "ERROR", 500, "INTERNAL_ERROR");
   });
