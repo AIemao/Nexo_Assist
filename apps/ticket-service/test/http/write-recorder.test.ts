@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { writeRecorder } from "../../src/http/app.js";
+import { markWrite, writeRecorder, type WriteEnv } from "../../src/http/app.js";
 import type { WriteRecord } from "../../src/http/write-record.js";
 
 // Cenários §1.1, IN8: o emissor isolado, num app mínimo cuja rota responde sem marcar o
@@ -57,5 +57,53 @@ describe("writeRecorder (emissor isolado)", () => {
         expect(response.status).toBe(201);
         expect(await response.json()).toStrictEqual({ resposta: "do handler" });
         expect(registros).toStrictEqual([]);
+    });
+
+    // IN8: falha do gravador nunca altera a resposta; o erro vai para o registro interno
+    // e nenhum segundo registro é emitido. A rota marca pelo mesmo mecanismo do app real.
+    it("gravador que lança: resposta intacta, erro no onUnexpectedError e uma única tentativa", async () => {
+        const falhaDoGravador = new Error("gravador quebrado");
+        const tentativas: WriteRecord[] = [];
+        const erros: unknown[] = [];
+
+        const app = new Hono<WriteEnv>();
+        app.post(
+            "/escrita",
+            writeRecorder({
+                recordWrite: (record) => {
+                    tentativas.push(record);
+                    throw falhaDoGravador;
+                },
+                onUnexpectedError: (error) => {
+                    erros.push(error);
+                },
+            }),
+            (c) => {
+                markWrite(c, {
+                    outcome: "CREATED",
+                    status: 201,
+                    ticketId: "INC-1",
+                    responseDisposition: "SENT",
+                });
+                return c.json({ resposta: "do handler" }, 201);
+            },
+        );
+
+        const response = await app.request("/escrita", { method: "POST" });
+
+        expect(response.status).toBe(201);
+        expect(await response.json()).toStrictEqual({ resposta: "do handler" });
+        expect(tentativas).toStrictEqual([
+            {
+                event: "ticket_write",
+                operation: "CREATE",
+                outcome: "CREATED",
+                status: 201,
+                ticketId: "INC-1",
+                responseDisposition: "SENT",
+            },
+        ]);
+        expect(erros).toHaveLength(1);
+        expect(erros[0]).toBe(falhaDoGravador);
     });
 });
