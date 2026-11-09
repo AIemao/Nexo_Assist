@@ -1,10 +1,10 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1.5 · **Data:** 2026-11-08 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.6 · **Data:** 2026-11-09 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste nem contratos novos; as premissas da instrumentação das escritas estão em §1.1, as do seed em §2.1 e as do mecanismo das falhas simuladas, em §2.2.
 
-**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.12), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.4), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
+**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.13), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.5), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
 
 ---
 
@@ -52,7 +52,13 @@ Premissas da instrumentação que observa as escritas no ticket-service de fora 
 
 ## 2. Fixtures
 
-Todas **sem dados reais**. **Materializar no seed (Bloco 3).** Os nomes abaixo são os usados nos cenários.
+Todas **sem dados reais**. Os nomes abaixo são os usados nos cenários. Materialização, por grupo:
+
+- **Chamados** (`TKT-A1`, `TKT-A2`, `TKT-B1`; `TKT-X` por S9): materializados no seed (§2.1, PR #25).
+- **Funcionários** (`EMP-A`, `EMP-B`, `ANALYST-1`): Bloco 4, com o model `Employee` e o seed dos funcionários (S7, S8).
+- **Artigos** (`ART-*`): **[Premissa]** Bloco 4, junto com o `searchArticles` (primeiro cenário executável: SC-01 e SC-02).
+- **Estados de conversa** (`CONV-*`): o dono é o bloco do primeiro cenário que usa cada um. `CONV-DRAFT-UPDATE`: Bloco 5 (SC-16). `CONV-DRAFT-OPEN`, `CONV-OP-PROCESSING` e `CONV-FOCUS-A1`: Bloco 7 (SC-13, SC-14, SC-20). A forma de montagem é `PENDENTE` e decidida nesse bloco.
+- **Falhas simuladas** (`F-*`): mecanismo em §2.2.
 
 | Fixture | Descrição |
 | --- | --- |
@@ -342,7 +348,7 @@ Notas gerais:
 - **Não devem existir (A e B):** segunda `OperationExecution` para a mesma operação lógica; segunda `PendingAction`; novo pedido de confirmação ao funcionário. Durante `OUTCOME_UNKNOWN`, novo fluxo de escrita fica bloqueado (AF D16).
 - **Métricas:** chamado duplicado, escrita sem confirmação.
 - **Verificação:** determinística.
-- **Executável:** Bloco 3 (no ticket-service: "retry após timeout não duplica chamado") e Bloco 5 (de ponta a ponta com o agent).
+- **Executável:** Bloco 3 (no ticket-service: "retry após timeout não duplica chamado"; casos A e B automatizados, com os testes listados em README §13, "Evidência do pronto do Bloco 3") e Bloco 5 (de ponta a ponta com o agent).
 
 ### SC-18 — Duplicidade durante a criação (AF D13)
 
@@ -432,9 +438,8 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | Bloco | Pendência | Cenários afetados |
 | --- | --- | --- |
 | 2 | `TicketStatus` e janela de reabertura (README §12 #2) | SC-06 |
-| 3 | ~~Seed das fixtures (§2)~~ (concluído, PR #25: `TKT-A1`, `TKT-A2`, `TKT-B1`; premissas em §2.1). Falhas simuladas (`F-*`): mecanismo definido em §2.2, implementação concluída (`F-DROP-BEFORE`, `F-DROP-AFTER`, `F-SLOW` e reinício no smoke) | todos que usam fixtures; SC-14, SC-17, SC-20 |
-| 3 | Instrumentação para observar escritas no ticket-service de fora do agent: premissas definidas em §1.1 (IN1–IN9); implementação concluída (registro JSON por escrita no stdout) | todos de classe (a), exceto as leituras de SC-04, SC-05 e SC-19 (Bloco 4) |
 | 4 | Instrumentação de leituras (§1.1, IN3; README §12 #21) | SC-04, SC-05, SC-19 |
+| 4 | Materializar os funcionários `EMP-A`, `EMP-B` e `ANALYST-1` (S7, S8) e os artigos `ART-*` (com o `searchArticles`; §2) | `EMP-A`: SC-01 a SC-20. `EMP-B`: SC-05, SC-19 e, como solicitante de `TKT-B1` (§2), SC-04. `ANALYST-1`: SC-16 e, como ator do `STATUS_CHANGED` de `TKT-A2` no seed (S4c), SC-04 e SC-06. `ART-*`: SC-01 (`ART-HORARIO`), SC-02 e SC-03 (`ART-VPN-809`) |
 | 4 | Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): todo `reasonCode` de política "PENDENTE" | SC-01 a SC-20 |
 | 4 | `Intent` do turno 1 de SC-03 (relato que o artigo não cobre); `Intent` dos turnos de resposta de SC-18 | SC-03, SC-18 |
 | 4 | Nome da tool de consulta detalhada de chamado | SC-05, SC-19 |
@@ -444,11 +449,13 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | 5 | Local de persistência de `dismissedIds` (AF P-B, §10). Critério de duplicidade, candidato × duplicidade confirmada e discordância: resolvidos no DM v2.5 §8.5.1 | SC-18 |
 | 5 | Se confirmação e retry geram `DecisionRecord` | SC-17 |
 | 5 | Cruzamento do registro das escritas com `OperationExecution.attempts`; quem sobe o ticket-service e captura o stdout dele a partir do Bloco 5 (§1.1, IN10; README §12 #24) | SC-17 |
+| 5 | Forma de montagem de `CONV-DRAFT-UPDATE` (§2) | SC-16 |
 | 5 | Classificação de erros transitórios × definitivos (rejeição por versão desatualizada é falha definitiva?). Do cliente web/BFF (DM v2.11 §8.4); movida do Bloco 3 na v1.2: é o bloco da primeira escrita do web e da operação `UPDATE` | SC-16 |
 | 6 | Redação da resposta a id inválido (AF P-C); representação de "Sim, resolvido / Ainda não" (L7) | SC-19, SC-15 |
 | 7 | Mensagem de handoff com `TRANSFER_TICKET` em `FAILED` ou `OUTCOME_UNKNOWN` (AF §7) | SC-20 (caso C) |
 | 7 | Reconciliação do `TRANSFER_TICKET` que não resolve (DM §12, C7) | SC-14 |
 | 7 | Instante de recebimento no registro das escritas, se o SC-14 precisar (§1.1, IN10; README §12 #23) | SC-14 |
+| 7 | Forma de montagem de `CONV-DRAFT-OPEN`, `CONV-OP-PROCESSING` e `CONV-FOCUS-A1` (§2) | SC-13, SC-14, SC-20 |
 | 7 | Se o encaminhamento de impacto crítico é automático ou ofertado, e sua relação com a `PendingAction` de criação | SC-09 |
 
 ---
@@ -484,8 +491,8 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.12: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
-- Agent Flow v1.4: D13, D16, D17, D18, D19, D20, D23; §5.4, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
+- Domain Model v2.13: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Agent Flow v1.5: D13, D16, D17, D18, D19, D20, D23; §5.4, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
 - ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`).
 
 ## 9. Histórico
@@ -498,3 +505,4 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | v1.3 | Nova §2.1 "Seed das fixtures", com as premissas S1–S9 (todas **[Premissa]**): criação pelo `createTicket` com clock injetado no instante de criação; fixtures que mudam de estado com dois instantes, criação e transição (`TKT-A2`: referência − 6 e − 4 dias); `Idempotency-Key` fixa por fixture; rótulo distinto do id alocado; transição excepcional de `WAITING_ANALYST` (DM §8.5) para `RESOLVED` numa Unit of Work própria, idempotente pelo status e com `STATUS_CHANGED` de `ANALYST-1` (`changes` e `summary` provisórios: contrato de `changes` PENDENTE, DM §3.9; a transição altera só `status`, `resolvedAt` e `updatedAt`); duas idempotências com teste próprio; reexecução segura sem renovar datas; seed do Bloco 3 só com chamados (`Employee` no Bloco 4); `employeeId` igual ao rótulo do funcionário, coincidindo em `Employee.id`, `requesterId` e ator; `TKT-X` = `INC-999999`. §2 com os dados de criação de `TKT-A1`, `TKT-A2` e `TKT-B1` (tipo, categoria, título, descrição, `impactAssessment` e prioridade derivada, status e instantes; `TKT-B1` como controle negativo do filtro por solicitante); S1 com os instantes dos chamados abertos perto da referência. Frase de escopo do topo ajustada (o documento passa a conter as premissas do seed). O seed segue `PENDENTE (Bloco 3)`. Matriz de cobertura inalterada. Sem novos cenários |
 | v1.4 | Nova §2.2 "Mecanismo das falhas simuladas", com as premissas FS1–FS8 (todas **[Premissa]**): ativação só por configuração do processo (`SIMULATED_FAULT`, `SIMULATED_FAULT_DELAY_MS`), sem header, rota ou corpo, com vazio equivalente a ausente e atraso de 1 a 2_147_483_647, só algarismos; `F-DROP-BEFORE` depois da validação HTTP e antes do caso de uso; `F-DROP-AFTER` depois do commit, na camada HTTP; `F-SLOW` com espera depois do commit, nunca dentro da transação; conexão encerrada sem resposta, sem código HTTP novo; cada falha consumida pela primeira requisição elegível do processo, com estado em memória; o harness faz o papel do cliente no Bloco 3; teste de reinício com dois processos no mesmo banco, na etapa do smoke, e testes de transporte no Vitest com servidor no mesmo processo na porta 0; "timeout" nas fixtures, no SC-17 e no README §9 descreve o que o cliente vive (nenhuma resposta), produzido pela conexão encerrada. §2 e §6 remetem à §2.2 no lugar do PENDENTE do mecanismo; §6 marca o seed como concluído (PR #25) e a implementação das falhas simuladas como concluída (`F-DROP-BEFORE`, `F-DROP-AFTER`, `F-SLOW` e reinício no smoke); SC-16 sai da lista de cenários afetados pelas `F-*` (nenhuma fixture dele é `F-*`). Instrumentação das escritas segue `PENDENTE (Bloco 3)`. Frase de escopo do topo cita a §2.2. Matriz de cobertura inalterada. Sem novos cenários |
 | v1.5 | Nova §1.1 "Instrumentação das escritas", com as premissas IN1–IN9 (todas **[Premissa]**) e as pendências da IN10: estado persistido, resposta HTTP e instrumentação como evidências distintas ("nenhuma escrita efetivada" ≠ "nenhuma tentativa recebida"; `IdempotencyRecord` e `TicketEvent` não são registro de chamadas); uma linha JSON por requisição de escrita no stdout, emitida uma vez quando o desfecho é conhecido, sempre ligada, com `"event": "ticket_write"`, sem tabela, endpoint ou biblioteca de log; escopo só nas rotas de escrita (leituras no Bloco 4); campos `event`, `operation` (valor do `TicketOperationType`, hoje `"CREATE"`, o mesmo de `IdempotencyRecord.operationType`), `outcome` (`CREATED`, `REPLAYED`, `REJECTED`, `INVALID`, `ERROR`, `NOT_EXECUTED`), `status`, `code`, `idempotencyKey` (em qualquer desfecho, só se for UUID válido pelo mesmo schema da validação de cabeçalhos, sem depender da ordem dos validadores; ausente ou inválida, omitida, sem registrar o valor inválido), `ticketId`, `fault`, `responseDisposition` (`SENT`/`DROPPED`, sem afirmar recebimento pelo cliente) e `at`; fora do registro: corpo, snapshot e id do funcionário, com a chave sem hash e reavaliação se os logs forem encaminhados a outros leitores; `createTicket` distingue internamente `CREATED` e `REPLAYED`, com o snapshot persistido inalterado (`{ ok: true, ticket }`, sem `outcome`) e `REPLAYED` em toda repetição, sem mudar o contrato HTTP; emissor único num middleware, exatamente uma emissão por requisição, falha do gravador sem efeito na resposta; o registro vive no fluxo capturado pelo harness (FS8), e a falha simulada continua do processo (FS6). IN10: instante de recebimento `PENDENTE (Bloco 7)`, se o SC-14 precisar; cruzamento com `OperationExecution.attempts` e quem sobe o ticket-service e captura o stdout dele a partir do Bloco 5, `PENDENTE (Bloco 5)`. §1 remete à §1.1 no lugar do PENDENTE. §6: linha do Bloco 3 com as premissas definidas e a implementação concluída (registro JSON por escrita no stdout), excluindo as leituras de SC-04, SC-05 e SC-19; novas linhas: instrumentação de leituras (Bloco 4), cruzamento com `attempts` e captura do stdout do ticket-service (Bloco 5) e instante de recebimento (Bloco 7). Frase de escopo do topo cita a §1.1. Convenções e §8 passam a citar o DM v2.12 (§8 acrescenta §3.9 e §3.16); remissões a regras datadas ("DM v2.11 §…") preservadas. Matriz de cobertura inalterada. Sem novos cenários |
+| v1.6 | Fechamento do Bloco 3 (README v2.26). §2: "Materializar no seed (Bloco 3)" é substituído pela materialização por grupo: chamados no seed (§2.1, PR #25); funcionários no Bloco 4 (S7, S8); `ART-*` no Bloco 4, com o `searchArticles` (**[Premissa]**: primeiro cenário executável, SC-01 e SC-02); `CONV-*` com o dono no bloco do primeiro cenário que usa cada um (`CONV-DRAFT-UPDATE`: Bloco 5; `CONV-DRAFT-OPEN`, `CONV-OP-PROCESSING` e `CONV-FOCUS-A1`: Bloco 7), com a forma de montagem `PENDENTE` nesse bloco. §6: removidas as duas linhas do Bloco 3, já resolvidas (seed das fixtures, PR #25; falhas simuladas, PR #26; instrumentação das escritas, PR #27); novas linhas: materialização de funcionários e artigos (Bloco 4, com a associação fixture → cenários conferida contra a linha "Fixtures" de cada cenário, incluindo as dependências indiretas: `EMP-B` como solicitante de `TKT-B1` e `ANALYST-1` como ator do `STATUS_CHANGED` de `TKT-A2`), montagem de `CONV-DRAFT-UPDATE` (Bloco 5) e montagem dos outros três `CONV-*` (Bloco 7). SC-17, "Executável": aponta para README §13, "Evidência do pronto do Bloco 3", sem repetir a lista de testes. Convenções e §8 passam a citar o DM v2.13 e o AF v1.5. Matriz de cobertura inalterada. Sem novos cenários |
