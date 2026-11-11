@@ -1,0 +1,17 @@
+{
+  // Independente do monorepo: mesmas opções do tsconfig.base.json da raiz, sem estendê-lo.
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    // Os scripts rodam com `node arquivo.ts` (remoção de tipos do Node 26), que exige a extensão .ts nos imports.
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

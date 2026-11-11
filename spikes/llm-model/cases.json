@@ -1,0 +1,284 @@
+{
+  "version": "spike-adr009-v3",
+  "frozenAt": "congelado em 2026-11-11",
+  "notes": [
+    "Entradas do spike do ADR-009. Não constituem baseline (CRITERIA.md).",
+    "Fontes: docs/evaluation/01-evaluation-scenarios.md v1.6 (cenários), docs/architecture/01-domain-model.md v2.13 (DM), docs/architecture/03-agent-flow.md v1.5 (AF), README.md v2.26.",
+    "O funcionário da sessão é EMP-A em todos os casos (cenários §2).",
+    "history: turnos anteriores gravados, idênticos em todas as repetições e modelos; só o turno 'input' é avaliado. Nenhum caso condensa turnos numa mensagem. A interpretação avaliada extrai as entidades do turno atual, com o histórico como contexto.",
+    "state: estado da conversa que o histórico representa no turno avaliado (DM §8.1, §3.13, §3.5); não é enviado ao modelo. Verificado pelo check-cases contra o histórico: pendingAction (id, version e status iguais ao resultado da última proposeTicketDraft gravada; type CREATE_TICKET, porque a proposta vem da proposeTicketDraft; null exige que não haja proposta gravada). Metadado do cenário, sem verificação pelo histórico: conversationStatus e focusTicketId.",
+    "Campos de entities sem regra são ignorados. 'equals' compara valores de catálogo exatamente; 'normalized-contains-any' compara texto livre depois de normalizeText (src/fixtures.ts)."
+  ],
+  "cases": [
+    {
+      "id": "C1",
+      "scenario": "SC-01",
+      "derivation": {
+        "kind": "faithful",
+        "notes": ["Frase redigida a partir da descrição da entrada do SC-01, que não traz texto literal."]
+      },
+      "history": [],
+      "state": { "conversationStatus": "AI_ACTIVE", "pendingAction": null, "focusTicketId": null },
+      "input": "Qual é o horário de atendimento do service desk?",
+      "inputSource": "SC-01, Entrada: '1 turno: pergunta o horário do service desk.'",
+      "expected": {
+        "intent": "ANSWER_KB",
+        "entities": [],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "searchArticles",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            {
+              "path": "query",
+              "presence": "required",
+              "rule": { "match": "normalized-contains-any", "values": ["horario", "atendimento", "expediente", "funcionamento", "servicedesk"] }
+            }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent ANSWER_KB", "source": "SC-01, Interpretação: ANSWER_KB" },
+        { "claim": "Tool searchArticles e nenhuma outra", "source": "SC-01, Execução: 'chamada: searchArticles. Não chamadas: qualquer propose*, requestHandoff'" },
+        { "claim": "Palavras-chave aceitas em query: horario, atendimento, expediente, funcionamento, servicedesk (formas normalizadas). A lista é idêntica às keywords de ART-HORARIO em src/fixtures.ts: uma query aceita encontra o artigo na busca lexical, e só uma query que encontra o artigo é aceita", "source": "SC-01, Política: evidence contém ARTICLE → ART-HORARIO; busca lexical (ADR-003); src/fixtures.ts" },
+        { "claim": "missingFields vazio: dúvida respondida por artigo, sem coleta", "source": "SC-01, Política: outcome ANSWER" },
+        { "claim": "Nenhum argumento de identidade", "source": "Cenários §3, notas gerais: nenhuma tool de leitura recebe parâmetro de identidade (ADR-004)" }
+      ]
+    },
+    {
+      "id": "C2",
+      "scenario": "SC-02",
+      "derivation": {
+        "kind": "faithful",
+        "notes": ["Frase redigida a partir da descrição da entrada do SC-02. SC-02 escolhido no lugar do SC-03 porque a intent do turno 1 do SC-03 é PENDENTE (Bloco 4)."]
+      },
+      "history": [],
+      "state": { "conversationStatus": "AI_ACTIVE", "pendingAction": null, "focusTicketId": null },
+      "input": "Minha VPN está dando erro 809. Uso Windows 10.",
+      "inputSource": "SC-02, Entrada: '1 turno: relata erro 809 de VPN e informa que usa Windows 10.'",
+      "expected": {
+        "intent": "ANSWER_KB",
+        "entities": [
+          {
+            "path": "operatingSystem",
+            "presence": "required",
+            "rule": { "match": "normalized-contains-any", "values": ["windows10", "win10"] }
+          },
+          {
+            "path": "category",
+            "presence": "optional",
+            "rule": { "match": "equals", "values": ["NETWORK_VPN"] }
+          },
+          {
+            "path": "problem",
+            "presence": "optional",
+            "rule": { "match": "normalized-contains-any", "values": ["vpn", "809"] }
+          }
+        ],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "searchArticles",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            {
+              "path": "query",
+              "presence": "required",
+              "rule": { "match": "normalized-contains-any", "values": ["vpn", "809"] }
+            }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent ANSWER_KB", "source": "SC-02, Interpretação: ANSWER_KB" },
+        { "claim": "operatingSystem obrigatório; aceito quando o texto normalizado contém 'windows10' ou 'win10' (ex.: 'Windows 10', 'windows-10', 'Win10', 'Windows 10 Pro'); 'Windows 11' é recusado", "source": "SC-02, Interpretação: entities.operatingSystem = Windows 10; DM §3.11 (applicability por sistema operacional)" },
+        { "claim": "category opcional; se presente, só NETWORK_VPN", "source": "DM §3.2 (TicketCategory: NETWORK_VPN = 'Rede e VPN'); README §2, Anexo A" },
+        { "claim": "problem opcional; se presente, o texto normalizado contém 'vpn' ou '809' (o problema relatado)", "source": "SC-02, Entrada (erro 809 de VPN); DM §3.12 (entities.problem)" },
+        { "claim": "Tool searchArticles e nenhuma outra", "source": "SC-02, Execução: 'chamada: searchArticles. Não chamadas: propose*, requestHandoff'" },
+        { "claim": "query obrigatória; aceita quando o texto normalizado contém 'vpn' ou '809', as keywords de ART-VPN-809 em src/fixtures.ts (uma query aceita encontra o artigo na busca lexical)", "source": "SC-02, Política: evidence contém ARTICLE → ART-VPN-809; ADR-003; src/fixtures.ts" },
+        { "claim": "missingFields vazio", "source": "SC-02, Política: outcome ANSWER" }
+      ]
+    },
+    {
+      "id": "C3",
+      "scenario": "SC-04",
+      "derivation": { "kind": "faithful", "notes": ["Frase literal do SC-04."] },
+      "history": [],
+      "state": { "conversationStatus": "AI_ACTIVE", "pendingAction": null, "focusTicketId": null },
+      "input": "Qual o status do meu chamado?",
+      "inputSource": "SC-04, Entrada: frase literal do cenário.",
+      "expected": {
+        "intent": "LIST_MY_TICKETS",
+        "entities": [],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "listMyTickets",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent LIST_MY_TICKETS", "source": "SC-04, Interpretação: LIST_MY_TICKETS (listagem; DM §3.12)" },
+        { "claim": "Tool listMyTickets, sem parâmetro de identidade", "source": "SC-04, Execução: 'chamada: listMyTickets, sem parâmetro de identidade'; ADR-004" },
+        { "claim": "missingFields vazio", "source": "SC-04, Política: outcome ANSWER" }
+      ]
+    },
+    {
+      "id": "C4",
+      "scenario": "SC-08",
+      "derivation": {
+        "kind": "derived",
+        "differences": [
+          "A sequência de turnos do funcionário é a do SC-08, caso A (pedido e respostas por campo), mas as perguntas do assistente no histórico são sintéticas: o cenário não traz o texto delas. Histórico sintético aprovado pelo autor em 2026-11-10.",
+          "[Premissa do spike] Ordem das perguntas: workImpact → commitmentRisk → affectedScope, a ordem em que o DM §4 torna cada campo relevante (regra 0; regra 5, fora de BLOCKED; alcance obrigatório para abrir o chamado fora de BLOCKED). A ordem das perguntas de impacto continua PENDENTE no AF (P-D).",
+          "Só o último turno do funcionário é avaliado; a interpretação avaliada extrai as entidades desse turno, com o histórico como contexto. O caso B do SC-08 (edição do rascunho) não é exercitado."
+        ]
+      },
+      "history": [
+        { "role": "user", "content": "Preciso de um segundo monitor." },
+        { "role": "assistant", "content": "Posso registrar esse pedido para você. Sem o segundo monitor, como fica o seu trabalho: você fica parado, consegue trabalhar de outro jeito ou o trabalho não é afetado?" },
+        { "role": "user", "content": "Não afeta o meu trabalho." },
+        { "role": "assistant", "content": "Entendi. Tem algum compromisso seu em risco hoje por causa disso?" },
+        { "role": "user", "content": "Não." },
+        { "role": "assistant", "content": "Certo. O pedido é só para você, para a sua equipe ou para a empresa toda?" }
+      ],
+      "state": { "conversationStatus": "AI_ACTIVE", "pendingAction": null, "focusTicketId": null },
+      "input": "Só para mim.",
+      "inputSource": "SC-08, caso A, turnos seguintes: respostas por campo (impacto no trabalho: nenhum; risco de compromisso: não; alcance: só eu). O turno avaliado é a resposta do alcance.",
+      "expected": {
+        "intent": "CREATE_TICKET",
+        "entities": [
+          { "path": "impact.affectedScope", "presence": "required", "rule": { "match": "equals", "values": ["SELF"] } },
+          { "path": "impact.workImpact", "presence": "optional", "rule": { "match": "equals", "values": ["NONE"] } },
+          { "path": "impact.commitmentRisk", "presence": "optional", "rule": { "match": "equals", "values": ["NO"] } },
+          { "path": "category", "presence": "optional", "rule": { "match": "equals", "values": ["HARDWARE"] } },
+          { "path": "problem", "presence": "optional", "rule": { "match": "normalized-contains-any", "values": ["monitor", "tela"] } }
+        ],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "proposeTicketDraft",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            { "path": "type", "presence": "required", "rule": { "match": "equals", "values": ["REQ"] } },
+            { "path": "category", "presence": "required", "rule": { "match": "equals", "values": ["HARDWARE"] } },
+            { "path": "impactAssessment.affectedScope", "presence": "required", "rule": { "match": "equals", "values": ["SELF"] } },
+            { "path": "impactAssessment.workImpact", "presence": "required", "rule": { "match": "equals", "values": ["NONE"] } },
+            { "path": "impactAssessment.commitmentRisk", "presence": "required", "rule": { "match": "equals", "values": ["NO"] } },
+            { "path": "title", "presence": "required", "rule": { "match": "normalized-contains-any", "values": ["segundomonitor", "monitoradicional", "outromonitor", "segundatela", "telaadicional", "monitorextra", "monitorsecundario", "maisummonitor"] } },
+            { "path": "description", "presence": "required", "rule": { "match": "normalized-contains-any", "values": ["segundomonitor", "monitoradicional", "outromonitor", "segundatela", "telaadicional", "monitorextra", "monitorsecundario", "maisummonitor"] } }
+          ],
+          "forbidden": ["priority", "firstResponseDueAt", "requesterId", "userId", "employeeId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent CREATE_TICKET no turno avaliado: o fluxo de abertura continua", "source": "SC-08, caso A, Interpretação: CREATE_TICKET; AF §8.1, passos 1 e 2" },
+        { "claim": "A interpretação avaliada extrai as entidades do turno atual, com o histórico como contexto: affectedScope SELF é obrigatório (é o dado deste turno); workImpact NONE e commitmentRisk NO, informados em turnos anteriores, são opcionais, porque o backend acumula o collectedData a partir das entidades de cada turno", "source": "SC-08, Entrada (alcance: só eu; impacto: nenhum; risco: não); AF §2: 'o backend o preenche [collectedData] a partir das entidades do DecisionRecord'" },
+        { "claim": "missingFields vazio: com o alcance, o rascunho fica completo", "source": "SC-08, caso A, Política: PROPOSE_ACTION ao completar; DM §4 (regra 8, LOW, NO_WORK_IMPACT; alcance obrigatório para abrir)" },
+        { "claim": "Tool proposeTicketDraft e nenhuma outra", "source": "SC-08, caso A, Execução: proposeTicketDraft; AF §8.1, passos 3 a 5" },
+        { "claim": "Argumentos com o impacto completo SELF + NONE + NO, reunido dos turnos do histórico", "source": "SC-08, Entrada; tool proposeTicketDraft (src/tools.ts)" },
+        { "claim": "type REQ", "source": "SC-08, caso A: 'tipo REQ no rascunho'; README §2, Anexo A: REQ = pedido de equipamento" },
+        { "claim": "category HARDWARE (nos argumentos, obrigatória; nas entidades, opcional). [Inferência do spike], aprovada pelo autor em 2026-11-10: o SC-08 não nomeia a categoria; um monitor é equipamento de hardware", "source": "README §2, Anexo A (categoria Hardware); DM §3.2" },
+        { "claim": "title e description: critério semântico 'refere-se ao item pedido, um monitor a mais'. Cada um deve conter, depois de normalizado, pelo menos um dos termos 'segundo monitor', 'monitor adicional', 'outro monitor', 'segunda tela', 'tela adicional', 'monitor extra', 'monitor secundário' ou 'mais um monitor' (formas normalizadas: segundomonitor, monitoradicional, outromonitor, segundatela, telaadicional, monitorextra, monitorsecundario, maisummonitor). Só 'monitor' não basta", "source": "SC-08, Entrada ('pede um segundo monitor'); DM §3.3 (o rascunho tem título e descrição); critério definido pelo autor em 2026-11-10, ampliado em 2026-11-11" },
+        { "claim": "Sem prioridade nem prazo nos argumentos", "source": "SC-08: 'prioridade LOW e prazo vêm do ticket-service (DM §7.1, invariante 3)'; ADR-007" },
+        { "claim": "Histórico gravado, sem condensar turnos", "source": "SC-08, caso A, Entrada: turno 1 e turnos seguintes com respostas por campo" }
+      ]
+    },
+    {
+      "id": "C5",
+      "scenario": "SC-13",
+      "derivation": {
+        "kind": "derived",
+        "differences": [
+          "O estado CONV-DRAFT-OPEN é representado só como histórico gravado, com o estado explícito em 'state': conversa AI_ACTIVE; PendingAction CREATE_TICKET PA-SPIKE-1, versão 1, em PENDING_CONFIRMATION (o resultado da proposeTicketDraft gravada no último turno do assistente); nenhum chamado em foco. Não há PendingAction real nem backend.",
+          "O conteúdo do rascunho não é definido pelas fixtures (cenários §2 só definem o estado); o spike usa a conversa do C4 (SC-08) como rascunho aberto. [Premissa do spike]",
+          "As perguntas e a apresentação do rascunho pelo assistente são sintéticas; a apresentação não traz prioridade nem prazo, porque o spike não tem a classificação do ticket-service.",
+          "Avaliados só a interpretação e a tool do último turno. As expectativas de backend do SC-13 (conversa em WAITING_ANALYST, PendingAction CANCELLED com HANDOFF, ConversationEvent com summary, LLM não acionado depois do handoff) não são avaliadas."
+        ]
+      },
+      "history": [
+        { "role": "user", "content": "Preciso de um segundo monitor." },
+        { "role": "assistant", "content": "Posso registrar esse pedido para você. Sem o segundo monitor, como fica o seu trabalho: você fica parado, consegue trabalhar de outro jeito ou o trabalho não é afetado?" },
+        { "role": "user", "content": "Não afeta o meu trabalho." },
+        { "role": "assistant", "content": "Entendi. Tem algum compromisso seu em risco hoje por causa disso?" },
+        { "role": "user", "content": "Não." },
+        { "role": "assistant", "content": "Certo. O pedido é só para você, para a sua equipe ou para a empresa toda?" },
+        { "role": "user", "content": "Só para mim." },
+        {
+          "role": "assistant",
+          "content": "Preparei o rascunho do pedido: segundo monitor, tipo REQ, categoria Hardware, só para você, sem impacto no trabalho e sem compromisso em risco hoje. Ele está aguardando a sua confirmação.",
+          "toolCalls": [
+            {
+              "tool": "proposeTicketDraft",
+              "args": {
+                "title": "Segundo monitor",
+                "description": "Pedido de um segundo monitor para o funcionário. Não afeta o trabalho e não há compromisso em risco hoje.",
+                "type": "REQ",
+                "category": "HARDWARE",
+                "impactAssessment": { "affectedScope": "SELF", "workImpact": "NONE", "commitmentRisk": "NO" }
+              },
+              "result": { "pendingActionId": "PA-SPIKE-1", "version": 1, "status": "PENDING_CONFIRMATION" }
+            }
+          ]
+        }
+      ],
+      "state": { "conversationStatus": "AI_ACTIVE", "pendingAction": { "type": "CREATE_TICKET", "id": "PA-SPIKE-1", "version": 1, "status": "PENDING_CONFIRMATION" }, "focusTicketId": null },
+      "input": "Quero falar com um atendente humano, por favor.",
+      "inputSource": "SC-13, Entrada: '1 turno, sobre a conversa em CONV-DRAFT-OPEN: pede para falar com um analista.' Frase redigida para o spike.",
+      "expected": {
+        "intent": "HANDOFF",
+        "entities": [],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "requestHandoff",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            { "path": "reason", "presence": "optional", "rule": { "match": "any" } }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId", "conversationId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent HANDOFF", "source": "SC-13, Interpretação: HANDOFF" },
+        { "claim": "Tool requestHandoff e nenhuma outra; o rascunho aberto não pode ser confirmado nem reproposto pelo modelo", "source": "SC-13, Execução: 'chamada: requestHandoff (só emite a intenção; o backend executa)'; README §6; DM §7.1, invariante 7 (uma pendente por conversa)" },
+        { "claim": "missingFields vazio", "source": "SC-13, Política: outcome HANDOFF" },
+        { "claim": "Histórico e 'state' representam CONV-DRAFT-OPEN: conversa AI_ACTIVE; PendingAction CREATE_TICKET em PENDING_CONFIRMATION; nenhum chamado em foco; montada por turnos de roteiro", "source": "Cenários §2, fixture CONV-DRAFT-OPEN ('AI_ACTIVE com uma PendingAction CREATE_TICKET em PENDING_CONFIRMATION (sem chamado em foco). Montada por turnos de roteiro')" }
+      ]
+    },
+    {
+      "id": "C6",
+      "scenario": "SC-10",
+      "derivation": { "kind": "faithful", "notes": ["Frase literal do SC-10, num turno único, como no cenário ('1 turno')."] },
+      "history": [],
+      "state": { "conversationStatus": "AI_ACTIVE", "pendingAction": null, "focusTicketId": null },
+      "input": "Parou tudo!",
+      "inputSource": "SC-10, Entrada: '1 turno: \"Parou tudo!\", sem informar o alcance.'",
+      "expected": {
+        "intent": "CREATE_TICKET",
+        "entities": [
+          { "path": "impact.workImpact", "presence": "required", "rule": { "match": "equals", "values": ["BLOCKED"] } },
+          { "path": "impact.affectedScope", "presence": "absent" },
+          { "path": "impact.commitmentRisk", "presence": "optional", "rule": { "match": "equals", "values": ["NOT_ASKED"] } },
+          { "path": "problem", "presence": "optional", "rule": { "match": "normalized-contains-any", "values": ["parou", "parad", "tudo"] } }
+        ],
+        "missingFields": { "mode": "includes", "required": ["AFFECTED_SCOPE"], "forbidden": ["WORK_IMPACT", "COMMITMENT_RISK"] },
+        "expectedTool": "none",
+        "allowedExtraTools": [],
+        "toolArgs": null
+      },
+      "justification": [
+        { "claim": "Intent CREATE_TICKET, e não CLARIFY", "source": "SC-10, Interpretação: CREATE_TICKET; AF §8.1, passo 1 ('o funcionário descreve o problema. DecisionRecord: intent CREATE_TICKET'). CLARIFY só aparece no catálogo do DM §3.12, sem semântica em nenhum documento" },
+        { "claim": "workImpact BLOCKED. Declarado pelo SC-10, não inferido: a Política do cenário fixa o rascunho com esse valor. O DM §5.1 é apoio, não a fonte", "source": "SC-10, Política: 'classifyPriority sobre o rascunho workImpact: BLOCKED sem alcance devolve status NEEDS_CLARIFICATION'; DM §5.1 (exemplo 'Notebook parou' → BLOCKED)" },
+        { "claim": "affectedScope ausente: o alcance não foi informado e não pode ser presumido ('tudo' não diz quem é afetado)", "source": "SC-10, Entrada: 'sem informar o alcance'; DM §5.1 (campo ausente = ainda não coletado)" },
+        { "claim": "AFFECTED_SCOPE é o campo que falta: com BLOCKED e sem alcance, a primeira regra que casa é a 1", "source": "DM §4, regra 1 (BLOCKED + affectedScope ausente → AFFECTED_SCOPE_MISSING); a regra 0 não casa porque workImpact foi informado; SC-10: 'missingFields inclui AFFECTED_SCOPE'. Cenários §7.1, X1: a pergunta nasce de missingFields, não da classificação" },
+        { "claim": "missingFields no modo includes: AFFECTED_SCOPE obrigatório; os demais campos do rascunho incompleto (TITLE, DESCRIPTION, TYPE, CATEGORY) são aceitos", "source": "DM §3.12 (a interpretação não tem a regra de campo único, que é do resultado da classifyPriority, DM §4); AF §8.1, passo 2" },
+        { "claim": "WORK_IMPACT proibido: o impacto foi informado", "source": "SC-10, Política (workImpact BLOCKED)" },
+        { "claim": "COMMITMENT_RISK proibido; commitmentRisk ausente ou NOT_ASKED", "source": "DM §4: 'Com BLOCKED, a pergunta sobre compromisso é dispensada; o chamado grava commitmentRisk: NOT_ASKED'; DM §5.1 (NOT_ASKED = não foi necessário perguntar)" },
+        { "claim": "problem opcional (o cenário não o exige; a entrada só traz o sintoma); se presente, o texto normalizado contém 'parou', 'parad' ou 'tudo' (preso às palavras da entrada)", "source": "SC-10, Entrada; DM §3.12 (entities.problem)" },
+        { "claim": "Nenhuma tool: o próximo passo é perguntar o alcance (ASK); proposeTicketDraft só com o rascunho completo; não há tool de escrita", "source": "SC-10, Política: outcome ASK; Execução: 'nenhuma tool de escrita' e 'não devem existir PendingAction'; AF §8.1, passos 2 a 5" },
+        { "claim": "[Inferência] Tools de leitura também contam como incorretas: o SC-10 não lista nenhuma tool, e a pergunta do alcance não depende de consulta", "source": "SC-10, Execução; AF §8.1, passo 2" }
+      ]
+    }
+  ]
+}
