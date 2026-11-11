@@ -1,0 +1,80 @@
+{
+  "type": "probe",
+  "model": "ollama qwen3:4b-instruct",
+  "provider": "ollama",
+  "at": "2026-11-11T13:04:48.930Z",
+  "note": "Sondagem fora dos casos C1–C6 e do denominador de 18. Seed transmitido não prova determinismo.",
+  "callA": {
+    "input": "Responda em uma frase curta: qual é a capital do Brasil?",
+    "reasoningParam": {
+      "key": "reasoning_effort",
+      "value": "none",
+      "providerOptions": {
+        "ollama": {
+          "reasoningEffort": "none"
+        }
+      }
+    },
+    "reasoningTransmitted": true,
+    "accepted": true,
+    "httpStatus": 200,
+    "error": null,
+    "seedTransmitted": true,
+    "evidence": {
+      "reasoningFieldPresent": false,
+      "reasoningLength": 0,
+      "thinkTagInContent": false,
+      "reasoningTokensReported": null,
+      "mastraReasoningSeparate": false,
+      "finishReason": "stop",
+      "usage": {
+        "prompt_tokens": 43,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens": 9,
+        "total_tokens": 52
+      }
+    },
+    "reasoningVerdict": "NO_REASONING_OBSERVED",
+    "payload": {
+      "model": "qwen3:4b-instruct",
+      "max_tokens": 256,
+      "temperature": 0,
+      "seed": 42,
+      "reasoning_effort": "none",
+      "messages": "[2 mensagem(ns) omitida(s)]"
+    }
+  },
+  "callB": {
+    "input": "Escreva os números de 1 a 300 em português por extenso, um por linha, sem mais nada.",
+    "limit": 16,
+    "limitParamTransmitted": {
+      "key": "max_tokens",
+      "value": 16
+    },
+    "httpStatus": 200,
+    "error": null,
+    "finishReason": "length",
+    "completionTokensReported": 16,
+    "usage": {
+      "prompt_tokens": 56,
+      "prompt_tokens_details": {
+        "cached_tokens": 22
+      },
+      "completion_tokens": 16,
+      "total_tokens": 72
+    },
+    "stoppedByLimit": true,
+    "limitVerdict": "LIMIT_ENFORCED",
+    "payload": {
+      "model": "qwen3:4b-instruct",
+      "max_tokens": 16,
+      "temperature": 0,
+      "seed": 42,
+      "reasoning_effort": "none",
+      "messages": "[2 mensagem(ns) omitida(s)]"
+    }
+  },
+  "retryAfterSeconds": null
+}

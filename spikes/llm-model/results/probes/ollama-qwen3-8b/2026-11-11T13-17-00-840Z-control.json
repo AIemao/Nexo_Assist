@@ -1,0 +1,59 @@
+{
+  "type": "probe-control",
+  "model": "ollama qwen3:8b",
+  "at": "2026-11-11T13:17:00.840Z",
+  "note": "Chamada de controle fora dos casos C1–C6: igual à chamada A, sem reasoning_effort. Conteúdo de raciocínio nunca gravado.",
+  "apiShow": {
+    "httpStatus": 200,
+    "capabilities": [
+      "completion",
+      "tools",
+      "thinking"
+    ],
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen3",
+      "families": [
+        "qwen3"
+      ],
+      "parameter_size": "8.2B",
+      "quantization_level": "Q4_K_M"
+    },
+    "contextLength": 40960
+  },
+  "control": {
+    "input": "Responda em uma frase curta: qual é a capital do Brasil?",
+    "httpStatus": 200,
+    "error": null,
+    "reasoningParamInPayload": false,
+    "seedTransmitted": true,
+    "evidence": {
+      "reasoningFieldPresent": true,
+      "reasoningLength": 327,
+      "thinkTagInContent": false,
+      "reasoningTokensReported": null,
+      "mastraReasoningSeparate": true,
+      "completionTokens": 93,
+      "contentLength": 31,
+      "finishReason": "stop"
+    },
+    "reasoningObserved": true,
+    "payload": {
+      "model": "qwen3:8b",
+      "max_tokens": 256,
+      "temperature": 0,
+      "seed": 42,
+      "messages": "[2 mensagem(ns) omitida(s)]"
+    }
+  },
+  "reference": {
+    "file": "2026-11-11T13-05-24-099Z.json",
+    "reasoningVerdict": "NO_REASONING_OBSERVED",
+    "reasoningEffortInPayload": "none",
+    "reasoningFieldPresent": false,
+    "completionTokens": 5
+  },
+  "comparison": "EFFECT_DEMONSTRATED",
+  "retryAfterSeconds": null
+}

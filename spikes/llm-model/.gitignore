@@ -1,0 +1,4 @@
+# results/ é versionável (registros sem segredos). Logs brutos e capturas cruas, não.
+# O .env já é ignorado pelo .gitignore da raiz.
+*.log
+results/**/raw/
