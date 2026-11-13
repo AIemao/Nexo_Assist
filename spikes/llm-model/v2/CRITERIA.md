@@ -1,6 +1,37 @@
 # Spike do ADR-009, V2: protocolo e limites de aprovação
 
-**Estado: CONGELADO em 2026-11-12**, antes de qualquer execução de modelo real na V2. Os SHA-256 da seção "Arquivos" conferem o congelamento; a CLI da V2 e o `identity.test.ts` os verificam. Mudar o protocolo, o prompt, as tools, as fixtures ou os casos depois do congelamento invalida a comparação.
+**Estado: V2.1 CONGELADA em 2026-11-13**, antes de qualquer rodada oficial. A V2 original (congelada em 2026-11-12) fica reproduzível pelo commit `e0469db`; a diferença está na seção "V2.1". Os SHA-256 da seção "Arquivos" conferem o congelamento; a CLI da V2 e o `identity.test.ts` os verificam. Mudar o protocolo, o prompt, as tools, as fixtures ou os casos depois do congelamento invalida a comparação.
+
+## V2.1 (2026-11-13): retry interno do Mastra × verificação de truncamento
+
+**Motivo.** Na V2 (`e0469db`), a verificação de truncamento contava **todos** os passos do turno. Um passo `retry`, que é a nova tentativa interna do Mastra depois de um erro do provider (HTTP 500 ou 429), não tem inferência nem `usage`, e fica com `inputTokens` null. Por isso um **único** 500 transitório, mesmo recuperado, marcava o turno como não verificado (`UNKNOWN`). Pela regra dos 18 em `NOT_DETECTED`, isso deixava o requisito de truncamento inconclusivo para o candidato inteiro. A medição está no commit `dbe9a82` (`mastra-behavior.test.ts`).
+
+**Regra nova (`contextCheckFromCalls`, em `v2/src/run.ts`):**
+
+- Só passos **com inferência** contam. Passos com `finishReason` `retry` ou `error` ficam fora da verificação de completude **e** do cálculo do maior `inputTokens` reportado.
+- Passo de inferência (`tool-calls`, `stop` etc.) com `inputTokens` null: `UNKNOWN`.
+- Nenhum passo de inferência com `usage` observável (inclusive sem passo de inferência): `UNKNOWN`.
+- Nenhum token ausente é imputado, e nenhum valor é copiado de outro passo.
+- As regras de `DETECTED` (acima de 7680), do orçamento e da suspeita de corte silencioso (abaixo de metade da estimativa local) não mudam (`contextCheckOf`).
+
+**Diferença em relação à V2:** só o conjunto de passos que entra na verificação. Sem passos `retry` ou `error`, o resultado é idêntico ao da V2, o que o teste (f) confere.
+
+**Evidências** (`v2/src/context-check.test.ts`, sem modelo real):
+
+| Teste | Cenário | Resultado V2.1 |
+| --- | --- | --- |
+| (a) | 500 → retry (null) → tool de negócio com usage → submissão aceita com usage, pelo caminho real do Ollama com HTTP fabricado | `NOT_DETECTED` (a regra da V2 dava `UNKNOWN`) |
+| (b) | retry (null) seguido de passo de inferência com null | `UNKNOWN` |
+| (c) | nenhum passo de inferência com usage (sem passos; só retry/error; inferência só com null) | `UNKNOWN` |
+| (d) | retry sem usage e passo de inferência acima do orçamento | `DETECTED`; retry fora do maior valor |
+| (e) | passo 1 com usage, passo 2 `error` (turno `EXEC_*`), em função pura e caminho real | `NOT_DETECTED` nesse turno |
+| (f) | sem retry/error | idêntico à V2 |
+| (g) | suspeita de corte silencioso, com e sem retry; limite exato; `DETECTED` prevalece | regras inalteradas |
+| (h) | identidade (`identity.test.ts`, "manifesto da V2.1"): tabelas de manifesto no formato do `verifyManifest` | exatamente uma, a da V2.1, com 29 arquivos distintos, todos os hashes iguais |
+
+O `mastra-behavior.test.ts` (fora do manifesto) passa a afirmar `NOT_DETECTED` no cenário medido, com o comentário de que a V2 (`e0469db`) dava `UNKNOWN`. O `identity.test.ts` passa a exigir uma única tabela ativa de manifesto, a da V2.1, com 29 arquivos.
+
+**O que não muda:** protocolo, prompt, tools, schema, invariantes, pontuação, limites, `REASONING_CONTROL` e a V1. O `aggregate` da V1 é reutilizado sem mudança.
 
 ## Relação com a V1
 
@@ -343,6 +374,7 @@ Sem modelo real, com o `MastraLanguageModelV2Mock` e respostas HTTP fabricadas:
     - prompt igual ao da V1, exceto as duas linhas documentadas.
 15. Importação dos módulos da V1 sem efeito colateral.
 16. Digest do Ollama lido de `/api/tags` do mesmo servidor (resposta fabricada); `null` quando o modelo não aparece.
+17. V2.1: verificação de truncamento só com passos de inferência, testes (a)–(g) em `context-check.test.ts` e (h) em `identity.test.ts` (seção "V2.1").
 
 ## Limitações declaradas
 
@@ -355,6 +387,7 @@ Sem modelo real, com o `MastraLanguageModelV2Mock` e respostas HTTP fabricadas:
 - **Reconciliação por multiconjunto:** quando usada, só confere contagens (I4).
 - **Caminhos declarados (`leak.ts`):** só `properties` do JSON Schema são percorridos; `items`, `anyOf`/`oneOf` e `$ref` não. O efeito possível é remoção a mais, nunca a menos (seção "Segurança").
 - **O manifesto não congela o typecheck:** os `tsconfig` (V1 e V2) ficam fora. Um typecheck diferente não muda execução nem pontuação.
+- **Turno `EXEC_*` sem nenhuma inferência continua `UNKNOWN` (V2.1):** por exemplo, um turno cujo único passo é `error`. Pela regra dos 18 em `NOT_DETECTED`, isso reprova o requisito de truncamento mesmo dentro da tolerância de 17/18 de outros limites. O `aggregate` da V1 é reutilizado sem mudança, e não se imputa `NOT_DETECTED` sem evidência.
 - **Groq fora da aprovação** (E4), como na V1.
 
 ## Ordem de trabalho
@@ -367,12 +400,13 @@ Sem modelo real, com o `MastraLanguageModelV2Mock` e respostas HTTP fabricadas:
 
 ## Arquivos (manifesto)
 
-**Congelado em 2026-11-12** (fins de linha LF, como fixa o `.gitattributes` da raiz). Entram:
+**V2.1, congelada em 2026-11-13** (fins de linha LF, como fixa o `.gitattributes` da raiz). A tabela da V2 original (28 arquivos, congelada em 2026-11-12) não está mais neste arquivo no formato lido pelo `verifyManifest`; ela fica no commit `e0469db` (`git show e0469db:spikes/llm-model/v2/CRITERIA.md`). Na V2.1 mudam `v2/src/run.ts` (regra nova) e `v2/src/identity.test.ts` (uma única tabela ativa), e entra `v2/src/context-check.test.ts`: 29 arquivos. Entram:
 
 - **Da V1, importados sem cópia:**
   - com o SHA-256 do manifesto da V1: `src/prompt.ts` (o run da V1 o importa), `src/schema.ts`, `src/models.ts`, `src/fixtures.ts`, `src/tools.ts`, `src/cases-schema.ts`, `cases.json`, `package.json`, `package-lock.json`, `.npmrc`;
   - fora do manifesto da V1, idênticos ao commit `2182d6b`: `src/run-record.ts`, `src/run.ts`, `src/score.ts`.
-- **Novos:** `v2/src/prompt.ts`, `v2/src/protocol.ts`, `v2/src/leak.ts`, `v2/src/record.ts`, `v2/src/run.ts`, `v2/src/score.ts`, `v2/src/test-helpers.ts` e os testes.
+- **Novos:** `v2/src/prompt.ts`, `v2/src/protocol.ts`, `v2/src/leak.ts`, `v2/src/record.ts`, `v2/src/run.ts`, `v2/src/score.ts`, `v2/src/test-helpers.ts` e os testes (inclusive `v2/src/context-check.test.ts`, da V2.1).
+- **Fora, auxiliares:** `v2/src/probe.ts` e `v2/src/probe.test.ts` (sondagens P1–P4) e `v2/src/mastra-behavior.test.ts` (medições do Mastra). Não fazem parte do instrumento das rodadas; a CLI da sondagem exige este manifesto íntegro (29/29).
 - **Fora:**
   - **`src/check-cases.ts`**, que está no manifesto da V1: a V2 não o importa nem o executa. Os casos que ele valida (`cases.json`) entram no manifesto com o hash da V1, e o `cases-schema.ts` que os valida também.
   - **Nenhum dos dois `tsconfig`, nem o da V1 (`tsconfig.json`) nem o da V2 (`v2/tsconfig.json`):** só servem ao typecheck (`noEmit`). O Node executa os `.ts` removendo os tipos e não lê `tsconfig`, então nenhum dos dois afeta a execução nem a pontuação. O `v2/tsconfig.json` estende o da V1; congelar um sem o outro não garantiria o mesmo typecheck.
@@ -396,11 +430,12 @@ Sem modelo real, com o `MastraLanguageModelV2Mock` e respostas HTTP fabricadas:
 | `v2/src/protocol.ts` | `d4012db65e215f7f75b0820a8249de40956501133a278231901dc0a27eabb6ba` |
 | `v2/src/leak.ts` | `88821444d5f250fbbd148c3933fb5728ca561d5e20327320e9929b8983b42213` |
 | `v2/src/record.ts` | `c1d51d4474331eb76a98d08a7a11ca0f23473d72bdb01689826d36867259eb85` |
-| `v2/src/run.ts` | `f81a0f8a7328ee0fdc547713edba1befbceafbf00258939e7f9f6c337e37b341` |
+| `v2/src/run.ts` | `5d3504c7ae4a9bb4b278129efe11f3448ed9734013782c72215b2ec18afa7527` |
 | `v2/src/score.ts` | `00a90e712c18ad1ee30a006eed81d362c7ee531e2f4a4feb38b112007dc7e13e` |
 | `v2/src/test-helpers.ts` | `1b51142d054d377cf4453ca79f0c3ae3c3419878a328ab67a7569916b4d526b5` |
+| `v2/src/context-check.test.ts` | `c3728d9529a84eda55a2f1062b00013bba500dcef66406aa974c14a8eef5fbdf` |
 | `v2/src/hook-input.test.ts` | `dcde0da3e0632be4908c9f95966fe4530409443a8eb0fba3ecf2dbf9732addf5` |
-| `v2/src/identity.test.ts` | `d777fffe0800734911c62f6e14a07a39b25fa582d08acc4b40f55e2fd37f2837` |
+| `v2/src/identity.test.ts` | `ca6f8bd8d6a996d38c6831c2275b3e414c1bc6fb0d915f95703427869ffeae6b` |
 | `v2/src/leak.test.ts` | `6b1e541583a14eb32a2671f62966b5642f82778cda1c20d0cf75d87df84811f9` |
 | `v2/src/protocol.test.ts` | `7202adfc880bab1742b151970dc3b8aa9b79fc035a4633f947843551be7fd65d` |
 | `v2/src/provider-path.test.ts` | `511548b3bddf3073934ac55555821e525c1daa93f83c007cd27265a90e2c5ef3` |
@@ -408,6 +443,6 @@ Sem modelo real, com o `MastraLanguageModelV2Mock` e respostas HTTP fabricadas:
 | `v2/src/retry.test.ts` | `ecd352684ccd932167395d53bf9294fe856d653f71e7220598188faa6b366d1a` |
 | `v2/src/score.test.ts` | `b653532cfdc63cf278bf86bab8aefb6aa067c269d208bfa6336499459a08a6e1` |
 
-Conferência, na pasta `spikes/llm-model/`: `sha256sum -c` sobre as linhas `<hash>  <arquivo>` desta tabela, ou o `identity.test.ts` ("manifesto da V2").
+Conferência, na pasta `spikes/llm-model/`: `sha256sum -c` sobre as linhas `<hash>  <arquivo>` desta tabela, ou o `identity.test.ts` ("manifesto da V2.1").
 
 **Escopo do manifesto:** congela os **artefatos de execução e de pontuação** (o que roda no turno, o que pontua e o que os testes do dublê exercitam), **não o typecheck**. Este arquivo e o `v2/README.md` ficam fora, como na V1. A CLI da V2 só executa com a tabela presente e todos os hashes iguais.

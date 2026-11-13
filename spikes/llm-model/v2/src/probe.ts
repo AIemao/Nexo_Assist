@@ -54,7 +54,8 @@ export const PROBE_INPUTS = [
 ] as const;
 
 export const GROQ_PAUSE_MS = 60_000;
-const EXPECTED_MANIFEST_FILES = 28;
+// V2.1: 29 arquivos (a V2 original, com 28, fica no commit e0469db).
+const EXPECTED_MANIFEST_FILES = 29;
 const EXPECTED_SERVER_CONTEXT = 8192;
 // Padrões que nunca podem ir para disco (CRITERIA da V1 e da V2, "Registros").
 export const FORBIDDEN = /authorization|bearer|gsk_|x-ratelimit/i;
@@ -542,7 +543,7 @@ async function main(): Promise<void> {
   const manifest = verifyManifest();
   const okCount = manifest.filter((m) => m.ok).length;
   if (manifest.length !== EXPECTED_MANIFEST_FILES || okCount !== manifest.length) {
-    console.error(`Manifesto da V2 divergente (${okCount}/${manifest.length}; esperado ${EXPECTED_MANIFEST_FILES}). Sondagem recusada.`);
+    console.error(`Manifesto da V2.1 divergente (${okCount}/${manifest.length}; esperado ${EXPECTED_MANIFEST_FILES}). Sondagem recusada.`);
     process.exitCode = 1;
     return;
   }

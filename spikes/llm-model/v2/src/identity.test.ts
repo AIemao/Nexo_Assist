@@ -90,10 +90,35 @@ describe("importação dos módulos da V1 sem efeito colateral", () => {
   });
 });
 
-describe("manifesto da V2", () => {
-  it("congelado: tabela presente no CRITERIA da V2, com os 28 arquivos, e todos os SHA-256 iguais (verifyManifest, o mesmo da CLI)", () => {
+// V2.1: a tabela da V2 (28 arquivos) saiu do formato lido pelo verifyManifest; a V2 fica reproduzível
+// pelo commit e0469db. Este teste (antes "manifesto da V2", 28 arquivos) passa a exigir uma única
+// tabela ativa, a da V2.1, com 29 arquivos (+ v2/src/context-check.test.ts).
+const MANIFEST_ROW = /^\| `([^`]+)` \| `([0-9a-f]{64})` \|$/;
+
+describe("manifesto da V2.1", () => {
+  it("exatamente UMA tabela ativa no formato do verifyManifest, com 29 arquivos distintos", () => {
+    const lines = v2Criteria.split("\n");
+    const runs: number[] = [];
+    let current = 0;
+    for (const line of lines) {
+      if (MANIFEST_ROW.test(line)) current += 1;
+      else if (current > 0) {
+        runs.push(current);
+        current = 0;
+      }
+    }
+    if (current > 0) runs.push(current);
+    assert.deepEqual(runs, [29], "uma tabela ativa, de 29 linhas");
     const rows = verifyManifest();
-    assert.equal(rows.length, 28);
-    assert.deepEqual(rows.filter((r) => !r.ok).map((r) => r.file), []);
+    assert.equal(rows.length, 29, "o verifyManifest lê as mesmas 29 linhas");
+    assert.equal(new Set(rows.map((r) => r.file)).size, 29, "nenhum arquivo repetido");
+  });
+
+  it("congelado: todos os SHA-256 iguais (verifyManifest, o mesmo da CLI)", () => {
+    assert.deepEqual(verifyManifest().filter((r) => !r.ok).map((r) => r.file), []);
+  });
+
+  it("a V2 original (28 arquivos) só aparece como referência em texto ao commit e0469db", () => {
+    assert.ok(v2Criteria.includes("e0469db"));
   });
 });

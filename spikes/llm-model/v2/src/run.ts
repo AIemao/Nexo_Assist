@@ -68,7 +68,24 @@ export function estimateInputTokens(messages: MessageListInput): number {
   return Math.ceil(chars / 4);
 }
 
-// Estado da verificação de truncamento (V1, contextCheckOf).
+// V2.1 (v2/CRITERIA.md, "V2.1"): só passos COM inferência contam na verificação de truncamento.
+// Passos "retry" (nova tentativa interna do Mastra depois de erro do provider) e "error" não são
+// inferência: ficam fora da completude (unverified) E do maior inputTokens reportado. Nenhum valor é
+// imputado nem copiado de outro passo. Na V2 (e0469db), todo passo contava, e um único retry sem
+// usage deixava o turno UNKNOWN (mastra-behavior.test.ts).
+export const NON_INFERENCE_FINISH_REASONS: readonly string[] = ["retry", "error"];
+
+export function contextCheckFromCalls(calls: readonly ModelCallRecord[], estimatedInputTokens: number): ContextCheck {
+  const inference = calls.filter((c) => !NON_INFERENCE_FINISH_REASONS.includes(c.finishReason ?? ""));
+  const reported = inference.map((c) => c.inputTokens).filter((v): v is number => v !== null);
+  const maxReportedInputTokens = reported.length > 0 ? Math.max(...reported) : null;
+  // Sem passo de inferência, ou algum passo de inferência sem inputTokens: não verificado (UNKNOWN).
+  const unverified = inference.length === 0 || inference.some((c) => c.inputTokens === null);
+  return contextCheckOf(maxReportedInputTokens, estimatedInputTokens, unverified);
+}
+
+// Estado da verificação de truncamento (V1, contextCheckOf). Regras de DETECTED, orçamento e suspeita
+// de corte silencioso inalteradas na V2.1.
 export function contextCheckOf(maxReportedInputTokens: number | null, estimatedInputTokens: number, unverified: boolean): ContextCheck {
   const overBudget = maxReportedInputTokens !== null && maxReportedInputTokens > INPUT_TOKEN_BUDGET;
   const suspectedSilentTruncation = maxReportedInputTokens !== null && maxReportedInputTokens < estimatedInputTokens * 0.5;
@@ -203,8 +220,6 @@ export async function runAttempt(input: TurnInput, attempt: number): Promise<Att
     };
   });
   const totalUsage = asLoose(result["totalUsage"]);
-  const reported = calls.map((c) => c.inputTokens).filter((v): v is number => v !== null);
-  const maxReportedInputTokens = reported.length > 0 ? Math.max(...reported) : null;
 
   // Texto de todos os passos: não avaliado; só a checagem de vazamento.
   const text = steps.map((step) => (typeof step["text"] === "string" ? step["text"] : "")).filter(Boolean).join("\n");
@@ -241,7 +256,7 @@ export async function runAttempt(input: TurnInput, attempt: number): Promise<Att
     totalOutputTokens: numberOrNull(totalUsage["outputTokens"]),
     turnLatencyMs,
     finishReason: typeof result["finishReason"] === "string" ? result["finishReason"] : null,
-    contextCheck: contextCheckOf(maxReportedInputTokens, estimatedInputTokens, calls.length === 0 || calls.some((c) => c.inputTokens === null)),
+    contextCheck: contextCheckFromCalls(calls, estimatedInputTokens),
     externalRequests: monitored.external,
   };
   return { record, error };

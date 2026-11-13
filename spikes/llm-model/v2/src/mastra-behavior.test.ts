@@ -79,7 +79,11 @@ describe("novas tentativas internas do Mastra por status HTTP", () => {
 });
 
 describe("retry interno e a classificação de truncamento (contextCheck)", () => {
-  it("500 → retry com tool de negócio → submissão aceita: o passo retry tem inputTokens null e o turno fica UNKNOWN", async () => {
+  // V2 (commit e0469db): o contextCheck contava TODOS os passos; o passo retry, sem usage, deixava o
+  // turno UNKNOWN (medido e registrado no commit dbe9a82). V2.1: passos retry/error ficam fora da
+  // verificação; o mesmo cenário dá NOT_DETECTED. O passo retry continua com inputTokens null (fato do
+  // Mastra; nada é imputado).
+  it("500 → retry com tool de negócio → submissão aceita: o passo retry tem inputTokens null; na V2.1 o turno fica NOT_DETECTED", async () => {
     // Uso informado nas respostas 200 (prompt_tokens 900): a única lacuna é o passo retry.
     const withUsage = (calls: [string, string, unknown][]) => ({ ...completion(calls), usage: { prompt_tokens: 900, completion_tokens: 20, total_tokens: 920 } });
     const { record, requests } = await attemptWith([e500, ok(withUsage([["L1", "listMyTickets", {}]])), ok(withUsage([["S1", "submitInterpretation", VALID.C3]]))]);
@@ -97,13 +101,12 @@ describe("retry interno e a classificação de truncamento (contextCheck)", () =
       { index: 2, finishReason: "tool-calls", inputTokens: 900 },
     ]);
     assert.deepEqual(record.terminal, { step: 2, cause: "ACCEPTED" });
-    // run.ts congelado: unverified = calls.length === 0 || calls.some((c) => c.inputTokens === null),
-    // e contextCheckOf devolve UNKNOWN quando unverified (sem DETECTED). Um único retry interno basta.
-    assert.equal(record.contextCheck.unverified, true);
+    // V2.1 (contextCheckFromCalls): só passos de inferência contam; o retry fica fora.
+    assert.equal(record.contextCheck.unverified, false);
     assert.equal(record.contextCheck.overBudget, false);
     assert.equal(record.contextCheck.suspectedSilentTruncation, false);
     assert.equal(record.contextCheck.maxReportedInputTokens, 900);
-    assert.equal(record.contextCheck.status, "UNKNOWN");
+    assert.equal(record.contextCheck.status, "NOT_DETECTED");
     assert.deepEqual(checkInvariants(record), []);
   });
 });
