@@ -1,6 +1,6 @@
 # Spike do ADR-009, V3: interpretação em chamada separada (D1)
 
-**Estado: APROVADO em 2026-11-13 (não congelado).** Sem código, sem manifesto gravado, sem rodada. O congelamento (manifesto com SHA-256 e commit) vem depois da implementação, dos testes com o dublê e das sondagens Q1 e Q2. As decisões vêm da consolidação aprovada depois do levantamento da V3, da revisão 1, dos ajustes finais e do último ajuste (seções "Decisões da revisão 1" e "Decisões dos ajustes finais").
+**Estado: CONGELADO em 2026-11-14**, antes de qualquer rodada oficial. Critérios aprovados em 2026-11-13, com os ajustes da implementação de 2026-11-14 (seção "Ajustes da implementação"). Os SHA-256 da seção "Arquivos (manifesto)" conferem o congelamento; a CLI da V3 e o `identity.test.ts` os verificam. Mudar o desenho, o prompt, as tools, as fixtures, os casos ou o instrumento depois do congelamento invalida a comparação e exige novo manifesto.
 
 ## Pergunta da V3
 
@@ -452,6 +452,17 @@ Também: violação no aquecimento aborta antes dos turnos, e violação numa te
 
 **Se a Q2 mostrar que o Ollama recusa a forma da fase 2, o desenho é revisto antes de congelar.**
 
+**Resultado (2026-11-14): Q1 e Q2 positivas nos dois modelos.** Arquivos em `v3/results/probes/`.
+
+| Rodada | Modelo | Q1 e Q2a (fase 2 isolada) | Q2b (turno completo) | Código da V3 |
+| --- | --- | --- | --- | --- |
+| 13:49 | `qwen3:4b-instruct` | 5/5 com HTTP 200, JSON puro (sem cerca nem prosa) e Zod válido; Q2a com mensagem `tool` e sem `tools` declaradas | 2/2 concluídos, Q2 exercitada, Zod válido, sem invariante violada nem falha do instrumento | **o congelado**: o SHA-256 dos 6 arquivos de código de `v3/src/` registrado na sondagem é igual ao da tabela |
+| 13:50 | `qwen3:8b` | idem | idem | **o congelado** (idem) |
+| 13:22 | `qwen3:4b-instruct` | idem | idem | **anterior** aos dois últimos ajustes (item 10 de "Ajustes da implementação": delimitação dos passos pelas requisições e identificação da requisição de inferência pelo endpoint); diverge em `phase2.ts`, `record.ts`, `run.ts` e `test-helpers.ts` |
+| 13:23 | `qwen3:8b` | idem | idem | **anterior** (idem) |
+
+O registro da sondagem guarda o SHA-256 do código de `v3/src/` (sem os testes). Os arquivos importados da V1 e da V2.1 são os dos manifestos deles, sem mudança. O script da sondagem (`v3/probe/`) fica fora do manifesto.
+
 ## Riscos e limitações declaradas
 
 - **Prefill:** uma conversa que termina em `assistant` pode ser tratada pelo servidor como resposta a continuar. É mitigado ao excluir o texto final da fase 1, e não foi medido com modelo real.
@@ -501,29 +512,131 @@ Resolvem os quatro pontos para revisão da revisão 1.
 
 Nenhum ponto para revisão pendente.
 
+## Ajustes da implementação (2026-11-14)
+
+O que mudou em relação ao texto aprovado em 2026-11-13, depois da implementação e da revisão dela. **Onde houver diferença, esta seção prevalece sobre o texto acima.** Nenhuma mudança afeta a V1 nem a V2.1, que continuam sem alteração.
+
+1. **Host indeterminado é bloqueado, não delegado.** A camada da V3 marca o latch e **não delega** a requisição: nem ao monitor da V2.1, nem ao `fetch` original. Por isso o monitor da V2.1 **não** registra essa requisição como externa, o que substitui as frases "O monitor da V2.1 continua registrando a requisição como externa" ("Reutilização") e "o registro de externa do monitor da V2.1" ("Falha do instrumento" e plano de testes). Testes: na fase 1 e na fase 2, `InstrumentDefect`, nenhuma requisição no servidor fabricado, nada em `externalRequests` e, no caso da fase 1, a fase 2 não roda.
+2. **Latch bloqueia as requisições seguintes.** Com o latch marcado por qualquer falha do instrumento (host indeterminado, corpo ilegível, exceção da camada, falha do monitor), nenhuma requisição seguinte é delegada, inclusive as repetições internas do Mastra. A requisição recusada lança `InstrumentBlocked` ao Mastra, e a tentativa termina como `InstrumentDefect`.
+3. **Monitor injetável e sentinela abaixo dele.** A ordem é: captura da V3 (topo) → monitor → sentinela da V3 (base) → `fetch` original. O monitor é uma dependência injetável só para testes; o padrão é o `withRequestMonitor` da V2.1, sem alteração.
+   - Uma exceção que volta ao topo **sem** ter chegado à sentinela é falha do monitor (`InstrumentDefect`), nunca `EXEC_PROVIDER_ERROR`, `EXEC_RATE_LIMIT` ou `EXEC_EXTERNAL_EFFECT`.
+   - Um monitor que responde sem delegar ao `fetch` também é falha do monitor.
+   - Um erro que chegou à sentinela é de rede ou do provider, e segue a classificação da V1 (`EXEC_*`).
+   - Uma exceção que escapa do próprio monitor, fora de uma requisição, também é falha do monitor.
+4. **I4 por contagem total.** Na fase 2, as requisições capturadas são **iguais ao total de passos** (todos os `finishReason`: inferência, `retry` e `error`). A exceção é a fase 2 cancelada por tempo (`finishReason` `"aborted"`): aí, capturas ≥ passos. Substitui a conferência "capturas ≥ passos de inferência". Mesmo quando o `generate` lança (por exemplo, 500 persistente), os passos `retry`/`error` chegam pelo `onStepFinish`, e a igualdade vale. Testes comparam a contagem do servidor fabricado com a da captura: sucesso (1), 500 → `retry` → sucesso (2), 500 persistente (3) e cancelamento (≥).
+5. **Cancelamento por tempo.** No Mastra 1.81.0, quando o sinal de cancelamento dispara, o `generate` **não lança**: devolve `finishReason: "aborted"`, sem passos e sem `error` (medido). A V3 trata esse resultado como falha, classificada pelo motivo do sinal (`TimeoutError`) como `EXEC_TIMEOUT`, nas duas fases. O mesmo comportamento existe no caminho da V1 e da V2.1, que não o detectam. Elas não foram alteradas, e as rodadas registradas da V2.1 ficaram muito abaixo dos 180 s.
+6. **Exceção de uma camada do instrumento:** fica registrada no latch e é relançada ao Mastra pelo `fetch`, sem delegar a requisição.
+7. **Sondagem fora da suíte oficial.** O script e os testes das sondagens Q1 e Q2 ficam em `v3/probe/` (`probe.ts`, `probe.test.ts`), fora do manifesto e fora da suíte oficial (`v3/src/*.test.ts`). Comandos próprios: `node --env-file=.env v3/probe/probe.ts --model "<rótulo>"` e `node --test v3/probe/probe.test.ts`. O fecho de imports da suíte oficial continua com 29 arquivos.
+8. **Ganchos só para testes** (`TEST_HOOKS`: `phase2Model`, `timeoutMs`, `fault`, `monitor`, `invariantCheck`). A CLI monta as opções da rodada por `cliRunOptions`, que não contém nenhum gancho, e o cabeçalho da rodada grava `testHooksUsed` (numa rodada real, vazio). Testes provam as duas coisas.
+9. **Dublê × HTTP fabricado.** A captura só vê o `fetch`, e o `MastraLanguageModelV2Mock` não passa por ele. Por isso o plano de testes usa respostas HTTP fabricadas pelo caminho real do Ollama, e o dublê só no I1 (atraso de chunks no stream).
+10. **`onStepFinish` fora de ordem: passos da fase 1 delimitados pelas requisições.**
+    - **Achado.** Na rodada do Groq na V2.1 (2026-11-14, C1, repetição 2), as chamadas foram `0:tool-calls`, `1:retry` (10.012 ms), `2:retry` (1 ms) e `3:tool-calls` (1 ms). O `TurnProtocol` registrou a submissão no passo 1, mas `result.steps` a mostra no índice 3.
+    - **Medição** (HTTP fabricado, caminhos do Groq e do model router):
+      - Sem cabeçalho de limite de taxa, com 429 ou 500 seguidos de sucesso: os `onStepFinish` chegam em ordem, e o passo do protocolo é igual ao índice.
+      - Quando uma resposta traz `x-ratelimit-remaining-tokens` entre 1 e 1999, o Mastra adia em cerca de 10 s **todos os `onStepFinish` seguintes**, mas o laço continua: as requisições e os chunks `tool-call` dos passos seguintes chegam antes. Isso acontece **com ou sem 429/500**.
+      - Como o `TurnProtocol` avança o passo no `onStepFinish`, passos distintos se fundem: num roteiro tool → 500 → tool → tool, as duas últimas chamadas ficaram no mesmo passo.
+      - Na V3 sem correção, isso deu **falsa I1** (chunk "depois do selo") e **falsa I10** (2 passos com emissões contra 3 na transcrição), e a latência do `retry` subiu para 10.011 ms.
+      - Nas sondagens da V2.1, o Groq devolveu o cabeçalho em 4 de 4 respostas, e o Ollama local em 0 de 6 e 0 de 5. A V3, só com Ollama, não fica exposta na prática; a correção é defensiva.
+    - **Correção.** A V3 avança o passo do `TurnProtocol` no **início de cada requisição** da fase 1, visto em tempo real pela camada de captura. Uma requisição por passo (inferência, `retry` ou `error`) faz o passo do protocolo coincidir com o índice em `result.steps`. O `TurnProtocol` da V2.1 não muda: a V3 só decide quando chamar o `onStepFinish()` dele. Dois cuidados:
+      - **Só a requisição de inferência avança o passo:** o método POST para a URL de inferência do provider da fase (`inferenceEndpointOf`). Também só ela entra na contagem por fase (I4, latência), dá o `N` e tem o corpo lido na fase 2.
+        - **Derivação da URL, a partir do código instalado:**
+          - Ollama: `createOpenAICompatible({ baseURL: config.url }).chatModel(...)` (`@mastra/core/dist/llm-CSHDOVui.js:8914-8924`) monta `new URL(\`${withoutTrailingSlash(baseURL)}${path}\`)` (`netlify-CAH5VW8O.js:4269-4283`), com `path: "/chat/completions"` no `doGenerate` (`netlify-CAH5VW8O.js:3307-3310`). Resultado: a `url` de `src/models.ts` + `/chat/completions`.
+          - Groq: `\`${withoutTrailingSlash(baseURL) ?? "https://api.groq.com/openai/v1"}${path}\`` (`@ai-sdk/groq/dist/index.js:886-897`), com o mesmo `path` (`index.js:453-456`). O modelo expõe essa função em `config.url`, e a V3 a chama.
+          - Confirmado nos testes com HTTP fabricado: todas as requisições observadas são POST para a URL derivada, nos caminhos do Ollama e do Groq.
+        - **Outra rota no mesmo host permitido** (ex.: `GET /api/tags`): não avança passo e não entra na captura; segue ao monitor da V2.1 como qualquer requisição (host permitido: não é externa).
+        - **Host externo:** registrado pelo monitor da V2.1, sem bloqueio (`EXEC_EXTERNAL_EFFECT`).
+        - **Testes:**
+          - outra rota no mesmo host no meio da fase 1: emissões alinhadas (`0:L1, 1:A1`), capturas = chamadas, sem externa nem defeito;
+          - outra rota no mesmo host no meio da fase 2: fora da I4 e da comparação B, sem falsa violação;
+          - requisição a host externo no meio da fase 1 e da fase 2: emissões alinhadas, `EXEC_EXTERNAL_EFFECT`, sem defeito;
+          - classificação pela camada: só POST para a URL de inferência da fase conta (outro método, outra rota e outro host, não);
+          - comprovação: contando toda requisição com host determinado, os testes de outra rota falham, com as emissões deslocadas para `1:L1, 2:A1`.
+      - **O último passo da fase 1 é fechado em `finally`**, também quando o `generate` lança. Testes: tool seguida de 401, e tool seguida de 500 persistente (o `generate` lança). Nos dois, a emissão fica no passo 0, há um passo do protocolo por chamada, e nenhuma invariante dispara.
+    - **Testes** em `v3/src/provider-path.test.ts`, os dois com o cabeçalho de limite baixo:
+      - tool → 500 → tool → tool → texto: emissões nos passos 0, 2 e 3, iguais aos índices; sem chunk atrasado; sem violação;
+      - tool → tool → tool → texto, sem erro: passos 0, 1 e 2, sem fusão.
+    - **Pontos que supõem "passo do protocolo = índice"** e a robustez de cada um:
+
+      | Ponto | Robusto à troca de ordem? |
+      | --- | --- |
+      | Passo das emissões, eventos e `steps` do `TurnProtocol` | Não, pelo `onStepFinish`; **sim**, com a correção |
+      | I1 (chunk depois do selo) | Não (falsa I1); **sim**, com a correção |
+      | I10-A (emissões agrupadas por passo) | Não (falsa I10); **sim**, com a correção |
+      | I3 (chave passo + id) | Sim: emissões e eventos usam o mesmo contador. Num passo fundido com ids repetidos, iria ao modo alternativo; não vai mais, com a correção |
+      | I2, I4, I5, I7, I9 (contagens de `result.steps` e da captura) | Sim |
+      | I10-B (transcrição × corpo) | Sim: não usa o passo do protocolo |
+      | Vista V1 (ordem global das emissões) e C6 | Sim |
+      | Truncamento (`usage` por índice em `result.steps`) | Sim |
+      | Latência por chamada (pelos `onStepFinish`) | Não; corrigido no item 11 |
+      | Sondagens (Q2b usa o registro da V3) | Herdam a correção |
+11. **Latência por chamada pelas requisições.** Com uma requisição por passo, a latência de cada chamada vai do início da sua requisição ao início da próxima (inclui a execução das tools e a espera de nova tentativa); no último passo, vai até o fim da resposta. Sem essa correspondência, continua a medida pelos `onStepFinish`. Só a latência do turno entra nos critérios classificatórios.
+12. **Limitação da V2.1 (não corrigida; Groq fora da aprovação).** O `TurnProtocol` da V2.1 avança o passo no `onStepFinish`. Com a pausa de limite de taxa:
+    - a I1 da V2.1, que confere `calls` com índice maior que o passo de término, acusa falsamente gerações depois do aceite quando as novas tentativas internas são avisadas fora de ordem. Foi o que abortou a rodada do Groq de 2026-11-14 (C1, repetição 2);
+    - passos distintos podem se fundir, e a guarda de passo pode tratar como do mesmo passo chamadas que o modelo emitiu em passos diferentes.
+
 ## Ordem de trabalho
 
 1. Critérios → revisão e aprovação (feita em 2026-11-13).
-2. Implementação e testes com o dublê; **sondagens Q1 e Q2** com os dois modelos (diagnósticas) → revisão. Se a Q2 for negativa, volta ao item 1.
-3. Manifesto e commit de congelamento.
+2. Implementação e testes com o dublê; **sondagens Q1 e Q2** com os dois modelos (diagnósticas) → revisão (feitas; Q1 e Q2 positivas em 2026-11-14).
+3. Manifesto (gravado em 2026-11-14) e commit de congelamento.
 4. Rodadas: `qwen3:4b-instruct`, depois `qwen3:8b`.
 
-## Arquivos (manifesto previsto, sem hashes)
+## Arquivos (manifesto)
 
-A tabela com SHA-256 só será gravada no congelamento. A lista abaixo não está no formato lido pelo `verifyManifest`.
+**Congelado em 2026-11-14** (fins de linha LF, como fixa o `.gitattributes` da raiz). 33 arquivos: os 29 do fecho de imports e mais `cases.json`, `package.json`, `package-lock.json` e `.npmrc`. A tabela está no fim desta seção.
 
 **Critério:** participa do manifesto todo arquivo **carregado na execução ou nos testes** da V3.
 
-**Fecho previsto:** calculado em 2026-11-13 pelo fecho estático das importações relativas, a partir do que a V3 **prevê** importar (`src/tools.ts`, `src/schema.ts`, `src/prompt.ts`, `src/models.ts`, `src/cases-schema.ts`, `src/run-record.ts`, `src/run.ts`, `src/score.ts`, `v2/src/protocol.ts`, `v2/src/leak.ts`, `v2/src/run.ts`, `v2/src/score.ts`). O fecho previsto tem 15 arquivos de código: os 12 de partida, mais `src/fixtures.ts` (pelas tools e pelo score da V1) e `v2/src/prompt.ts` e `v2/src/record.ts` (o `protocol.ts` importa os dois).
+**Fecho previsto e confirmado:** calculado em 2026-11-13 pelo fecho estático das importações relativas, a partir do que a V3 **prevê** importar (`src/tools.ts`, `src/schema.ts`, `src/prompt.ts`, `src/models.ts`, `src/cases-schema.ts`, `src/run-record.ts`, `src/run.ts`, `src/score.ts`, `v2/src/protocol.ts`, `v2/src/leak.ts`, `v2/src/run.ts`, `v2/src/score.ts`). O fecho previsto tem 15 arquivos de código: os 12 de partida, mais `src/fixtures.ts` (pelas tools e pelo score da V1) e `v2/src/prompt.ts` e `v2/src/record.ts` (o `protocol.ts` importa os dois).
 
-**A confirmação real** é o teste do fecho, depois da implementação: ele refaz o fecho a partir dos arquivos da V3 (código e testes) e o compara com a tabela gravada no congelamento (seção "Pontuação e identidade").
+**Confirmação:** o teste do fecho (`identity.test.ts`, "manifesto da V3") refaz o fecho a partir dos arquivos de `v3/src/` (código e testes), confere que ele é igual ao código da tabela gravada (29 arquivos) e que o resto da tabela é `cases.json`, `package.json`, `package-lock.json` e `.npmrc`. Também confere que os 19 arquivos herdados têm na tabela da V3 o mesmo SHA-256 dos manifestos da V1 e da V2.1.
 
 - **Da V1, importados sem cópia, com o hash do manifesto da V1:** `src/prompt.ts`, `src/schema.ts`, `src/models.ts`, `src/fixtures.ts`, `src/tools.ts`, `src/cases-schema.ts`, `cases.json` (lido na execução), `package.json`, `package-lock.json`, `.npmrc` (versões das dependências).
 - **Da V1, fora do manifesto da V1, idênticos ao commit `2182d6b`:** `src/run-record.ts`, `src/run.ts`, `src/score.ts`.
 - **Da V2.1, importados sem cópia, com o hash do manifesto da V2.1:** `v2/src/protocol.ts`, `v2/src/leak.ts`, `v2/src/run.ts`, `v2/src/score.ts`, `v2/src/record.ts`, `v2/src/prompt.ts`.
-- **Novos (previstos):**
+- **Novos:**
   - código: `v3/src/record.ts`, `v3/src/transcript.ts` (filtro e fidelidade), `v3/src/phase2.ts` (leitura crua, classificação e captura do corpo), `v3/src/score.ts` (vista V1, truncamento combinado e invariantes), `v3/src/run.ts` (orquestração, tempo, novas tentativas e CLI), `v3/src/test-helpers.ts`;
   - testes: `transcript.test.ts`, `phase2.test.ts`, `provider-path.test.ts`, `invariants.test.ts`, `score.test.ts`, `retry.test.ts`, `context-check.test.ts`, `identity.test.ts`.
 - **Não entram:** os arquivos de teste da V2.1 (inclusive `v2/src/test-helpers.ts`). Os testes da V3 não os importam; se algum passar a importar, o teste do fecho exige que entre no manifesto.
 - **Não entra `v2/CRITERIA.md`:** o `verifyManifest` da V2.1 só o lê pelo valor padrão, e a V3 passa o próprio texto.
-- **Fora:** este arquivo, o `v3/README.md`, os `tsconfig`, o `src/check-cases.ts` e o script das sondagens Q1 e Q2, como na V2.1.
+- **Fora:** este arquivo, o `v3/README.md`, os `tsconfig`, o `src/check-cases.ts` e a pasta `v3/probe/` (script e testes das sondagens Q1 e Q2), como na V2.1.
+
+| Arquivo | SHA-256 |
+| --- | --- |
+| `src/prompt.ts` | `2d9054d371d893e2c4deca6b91f82e3a6d7ddc0ecc7a811da8ad382937d84638` |
+| `src/schema.ts` | `c8e63fb1037a4c5bdb2d0d47a6a82c891110e6ddd5097aa2aefa173876be30ee` |
+| `src/models.ts` | `3c6325afd35001c74c9e5cee5de156db6eb0273d817a6afc5defa9a9412fcb13` |
+| `src/fixtures.ts` | `86d119a67a973c93b0be7511b9372771b462c156eb54b53d35dff62d530d1a30` |
+| `src/tools.ts` | `5e62f88c67469dd950c9fdb3a5abedd43fe657397a35a7b1150753ea67de4b6f` |
+| `src/cases-schema.ts` | `00f691ef2a5d7fa5e9e4f37bbc6ebacd13f387dbd3b6fd9a352f3f00821eb651` |
+| `cases.json` | `1be41676436e7ad525daebfe664d8aae3f8f433a18df5b5c79af9146e14db8b1` |
+| `package.json` | `bad59360700c962a51defbf1fb16c3a453695958871094e2a5a18e8373d9df3c` |
+| `package-lock.json` | `45dbd0a87570ac072dc55f88c7691b342cec044537e1739dc695111a57b96d41` |
+| `.npmrc` | `5930232d94754837f39a55b068e2deeefd8f1adea88bd8c55e205f0e832bb32f` |
+| `src/run-record.ts` | `cc84367577b246570bc624f799c233db41bf7b0cfecf205d80f57c35f1570aad` |
+| `src/run.ts` | `76ff80eed6f0980cd9d1596590b6589af26b1b03c4eaf6796e5bd7aaddd90472` |
+| `src/score.ts` | `69289cfab64a150bad79036a13ae457fd796d93a8fbe9aa1cbbf3ff09d6d4719` |
+| `v2/src/protocol.ts` | `d4012db65e215f7f75b0820a8249de40956501133a278231901dc0a27eabb6ba` |
+| `v2/src/leak.ts` | `88821444d5f250fbbd148c3933fb5728ca561d5e20327320e9929b8983b42213` |
+| `v2/src/run.ts` | `5d3504c7ae4a9bb4b278129efe11f3448ed9734013782c72215b2ec18afa7527` |
+| `v2/src/score.ts` | `00a90e712c18ad1ee30a006eed81d362c7ee531e2f4a4feb38b112007dc7e13e` |
+| `v2/src/record.ts` | `c1d51d4474331eb76a98d08a7a11ca0f23473d72bdb01689826d36867259eb85` |
+| `v2/src/prompt.ts` | `00e77722405ef730e2d7ccee78e956692e7c26057b6a1096179f380bb1df7214` |
+| `v3/src/record.ts` | `9ded4ba9a245b45003cd53ffa43f11f2d490501015c00cd43cc741f55d4ecdb0` |
+| `v3/src/transcript.ts` | `54782ae2ce0191f3b68ae89a65d1b363f070f61fc36c495d005eeee2e540d69f` |
+| `v3/src/phase2.ts` | `0d9594b17056210ede32288e3713b25e85a74bd5a7475ed1ea350c916d1b0cbf` |
+| `v3/src/score.ts` | `5a4b20df823b1ad797dcffef05382d4ade8a223a2dcb3908c23919e88752355a` |
+| `v3/src/run.ts` | `55e035f1d6097230b527a08ad3947b622b4dad7f13ef084183c19ac479005741` |
+| `v3/src/test-helpers.ts` | `94a26a2f9119e378d3d29aadc3b5618213031fed07b6704716d8080573fcee5d` |
+| `v3/src/context-check.test.ts` | `7d508dbebbdf7be94993e909d660fa0894481ec43b07c00eb24140e906095dec` |
+| `v3/src/identity.test.ts` | `b867f866298486c5be7d2797488f8f62c08a542e580ee8645198b572e6d0f550` |
+| `v3/src/invariants.test.ts` | `6779f8e126bf321d7aa8d63140d6455597ec61c0dfbde711bfc443106e1b6ff4` |
+| `v3/src/phase2.test.ts` | `2612b36801751ab084b66a0c30218e4f0f70f079b6a6d277029abc9f08f95352` |
+| `v3/src/provider-path.test.ts` | `e6f44a875810da1c9684bf183600652e936f7b36064308b10dcf4dc421375d29` |
+| `v3/src/retry.test.ts` | `da2e012c0fbb76bf4bba5226b8dd1958e25d1cdee8ddf608dc58b5bbb1b921fa` |
+| `v3/src/score.test.ts` | `0f8c832481f6034a8d8a6acfdbcbaf57578fc5d12fcecd2d01300d3fa58e5530` |
+| `v3/src/transcript.test.ts` | `5f8259f8581cbc5b5abe6b5bfa80918c8715f785c5c8a8badcb9789d61ee2d86` |
+
+Conferência, na pasta `spikes/llm-model/`: `sha256sum -c` sobre as linhas `<hash>  <arquivo>` desta tabela, o `verifyManifestV3()` de `v3/src/run.ts` (o mesmo que a CLI usa) ou o `identity.test.ts` ("manifesto da V3").
+
+**Escopo do manifesto:** congela os **artefatos de execução e de pontuação** (o que roda no turno, o que pontua e o que os testes do dublê exercitam), **não o typecheck**. Este arquivo, o `v3/README.md`, os `tsconfig` e a pasta `v3/probe/` ficam fora. A CLI da V3 só executa com a tabela presente e todos os hashes iguais.

@@ -1,0 +1,6 @@
+{
+  // Typecheck da V3: mesmas opções da V1 (../tsconfig.json, não alterado), incluindo os módulos
+  // da V1 e da V2.1 que a V3 importa. Uso, na pasta spikes/llm-model/: npx tsc -p v3
+  "extends": "../tsconfig.json",
+  "include": ["src", "probe", "../src", "../v2/src"]
+}
