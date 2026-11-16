@@ -1,0 +1,6 @@
+{
+  // Typecheck da linha de base da V4. O v4/tsconfig.json está congelado (só inclui v4/src); este
+  // arquivo cobre v4/baseline com as mesmas opções. Uso, na pasta spikes/llm-model/: npx tsc -p v4/baseline
+  "extends": "../../tsconfig.json",
+  "include": [".", "../src", "../../src", "../../v2/src", "../../v3/src"]
+}
