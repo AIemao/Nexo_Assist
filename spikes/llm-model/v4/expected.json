@@ -1,0 +1,214 @@
+{
+  "version": "spike-adr009-v4",
+  "frozenAt": "congelado em 2026-11-16 (etapa 1)",
+  "notes": [
+    "Gabarito da V4 (v4/CRITERIA.md, 'Gabarito da V4'). Não constitui baseline.",
+    "Composto com ../cases.json: scenario, history, state, input e inputSource vêm da raiz (V1, sem cópia); expected, justification e, no C2, derivation vêm deste arquivo (v4/src/cases.ts).",
+    "Fontes: docs/architecture/03-agent-flow.md v1.6, com o esclarecimento da D25 de 2026-11-16 ([AF]); docs/evaluation/01-evaluation-scenarios.md v1.7 ([Cenário]); docs/architecture/01-domain-model.md v2.13 ([DM]); README, anexos ([PRD]). [Premissa do spike]: escolha do spike, sem fonte na especificação. PENDENTE: ausente da especificação.",
+    "Diferenças em relação ao gabarito da V3: só o expected do C6, a derivation do C2 e as justificativas (v4/CRITERIA.md, 'Diferenças em relação ao gabarito da V3').",
+    "Campos de entities sem regra são ignorados. 'equals' compara valores de catálogo exatamente; 'normalized-contains-any' compara texto livre depois de normalizeText (src/fixtures.ts)."
+  ],
+  "cases": [
+    {
+      "id": "C1",
+      "expected": {
+        "intent": "ANSWER_KB",
+        "entities": [],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "searchArticles",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            {
+              "path": "query",
+              "presence": "required",
+              "rule": { "match": "normalized-contains-any", "values": ["horario", "atendimento", "expediente", "funcionamento", "servicedesk"] }
+            }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent ANSWER_KB", "source": "[Cenário] SC-01, Interpretação: ANSWER_KB" },
+        { "claim": "Tool searchArticles e nenhuma outra", "source": "[Cenário] SC-01, Execução: 'chamada: searchArticles. Não chamadas: qualquer propose*, requestHandoff'. A D25 não se aplica: dúvida não é relato de falha ([AF] D25, escopo)" },
+        { "claim": "Termos aceitos em query: as palavras-chave de ART-HORARIO em src/fixtures.ts (uma query aceita encontra o artigo na busca lexical)", "source": "[Premissa do spike]; [Cenário] SC-01, Política: evidence contém ARTICLE → ART-HORARIO" },
+        { "claim": "missingFields vazio: dúvida respondida por artigo, sem coleta", "source": "[Cenário] SC-01, Política: outcome ANSWER" },
+        { "claim": "Nenhum argumento de identidade", "source": "[Cenário] §3, notas gerais (nenhuma tool de leitura recebe parâmetro de identidade)" }
+      ]
+    },
+    {
+      "id": "C2",
+      "derivation": {
+        "kind": "faithful",
+        "notes": [
+          "Frase redigida a partir da descrição da entrada do SC-02. Na V3, o SC-02 foi escolhido no lugar do SC-03 porque a intent do turno 1 do SC-03 era PENDENTE (Bloco 4); a D25 do AF v1.6 resolveu essa pendência (SC-03, turno 1 → CREATE_TICKET), e o caso continua no SC-02 por decisão do autor."
+        ]
+      },
+      "expected": {
+        "intent": "ANSWER_KB",
+        "entities": [
+          {
+            "path": "operatingSystem",
+            "presence": "required",
+            "rule": { "match": "normalized-contains-any", "values": ["windows10", "win10"] }
+          },
+          {
+            "path": "category",
+            "presence": "optional",
+            "rule": { "match": "equals", "values": ["NETWORK_VPN"] }
+          },
+          {
+            "path": "problem",
+            "presence": "optional",
+            "rule": { "match": "normalized-contains-any", "values": ["vpn", "809"] }
+          }
+        ],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "searchArticles",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            {
+              "path": "query",
+              "presence": "required",
+              "rule": { "match": "normalized-contains-any", "values": ["vpn", "809"] }
+            }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent ANSWER_KB: busca concluída com artigo aplicável (trata do problema e passa o filtro de applicability)", "source": "[Cenário] SC-02, Interpretação: ANSWER_KB; [AF] D25, item 2 (SC-02 é exemplo da D25)" },
+        { "claim": "operatingSystem obrigatório; regra igual à da V3: normalized-contains-any com 'windows10' ou 'win10', depois de normalizeText; 'Windows 11' é recusado", "source": "[Cenário] SC-02, Interpretação: entities.operatingSystem = Windows 10; [DM] §3.11" },
+        { "claim": "category opcional; se presente, só NETWORK_VPN", "source": "[DM] §3.2; [PRD] Anexo A" },
+        { "claim": "problem opcional; se presente, contém 'vpn' ou '809'", "source": "[Premissa do spike]; [DM] §3.12 (entities.problem)" },
+        { "claim": "Tool searchArticles e nenhuma outra", "source": "[Cenário] SC-02, Execução: 'chamada: searchArticles. Não chamadas: propose*, requestHandoff'; [AF] D25, item 1" },
+        { "claim": "Termos aceitos em query: 'vpn' ou '809', as palavras-chave de ART-VPN-809 em src/fixtures.ts", "source": "[Premissa do spike]; [Cenário] SC-02, Política: evidence contém ARTICLE → ART-VPN-809" },
+        { "claim": "missingFields vazio", "source": "[Cenário] SC-02, Política: outcome ANSWER" }
+      ]
+    },
+    {
+      "id": "C3",
+      "expected": {
+        "intent": "LIST_MY_TICKETS",
+        "entities": [],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "listMyTickets",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent LIST_MY_TICKETS: consulta sem número de chamado é listagem", "source": "[Cenário] SC-04, Interpretação: LIST_MY_TICKETS; [DM] §3.12; [AF] §9.1, passo 1" },
+        { "claim": "Tool listMyTickets, sem parâmetro de identidade", "source": "[Cenário] SC-04, Execução: 'chamada: listMyTickets, sem parâmetro de identidade'. A D25 não se aplica: consulta não é relato de falha ([AF] D25, escopo)" },
+        { "claim": "missingFields vazio", "source": "[Cenário] SC-04, Política: outcome ANSWER" }
+      ]
+    },
+    {
+      "id": "C4",
+      "expected": {
+        "intent": "CREATE_TICKET",
+        "entities": [
+          { "path": "impact.affectedScope", "presence": "required", "rule": { "match": "equals", "values": ["SELF"] } },
+          { "path": "impact.workImpact", "presence": "optional", "rule": { "match": "equals", "values": ["NONE"] } },
+          { "path": "impact.commitmentRisk", "presence": "optional", "rule": { "match": "equals", "values": ["NO"] } },
+          { "path": "category", "presence": "optional", "rule": { "match": "equals", "values": ["HARDWARE"] } },
+          { "path": "problem", "presence": "optional", "rule": { "match": "normalized-contains-any", "values": ["monitor", "tela"] } }
+        ],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "proposeTicketDraft",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            { "path": "type", "presence": "required", "rule": { "match": "equals", "values": ["REQ"] } },
+            { "path": "category", "presence": "required", "rule": { "match": "equals", "values": ["HARDWARE"] } },
+            { "path": "impactAssessment.affectedScope", "presence": "required", "rule": { "match": "equals", "values": ["SELF"] } },
+            { "path": "impactAssessment.workImpact", "presence": "required", "rule": { "match": "equals", "values": ["NONE"] } },
+            { "path": "impactAssessment.commitmentRisk", "presence": "required", "rule": { "match": "equals", "values": ["NO"] } },
+            { "path": "title", "presence": "required", "rule": { "match": "normalized-contains-any", "values": ["segundomonitor", "monitoradicional", "outromonitor", "segundatela", "telaadicional", "monitorextra", "monitorsecundario", "maisummonitor"] } },
+            { "path": "description", "presence": "required", "rule": { "match": "normalized-contains-any", "values": ["segundomonitor", "monitoradicional", "outromonitor", "segundatela", "telaadicional", "monitorextra", "monitorsecundario", "maisummonitor"] } }
+          ],
+          "forbidden": ["priority", "firstResponseDueAt", "requesterId", "userId", "employeeId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent CREATE_TICKET: a operação está identificada; o fluxo de abertura continua", "source": "[Cenário] SC-08, caso A, Interpretação: CREATE_TICKET; [AF] D27, exemplo ('Preciso de um segundo monitor.' → CREATE_TICKET). A D25 não se aplica: pedido de equipamento não é relato de falha ([AF] D25, escopo)" },
+        { "claim": "affectedScope SELF obrigatório: declaração direta e sem ambiguidade em resposta à pergunta do alcance", "source": "[Cenário] SC-08, Entrada (alcance: só eu); [AF] D26, exemplo ('Só para mim.' → SELF)" },
+        { "claim": "workImpact NONE, commitmentRisk NO, category HARDWARE e problem opcionais nas entidades", "source": "PENDENTE: entidades por turno ou acumuladas; valores: [Cenário] SC-08 e [AF] D26" },
+        { "claim": "missingFields vazio: campos descritivos com evidência suficiente e os três campos de impacto declarados", "source": "[DM] §4, regra 8; [AF] D26" },
+        { "claim": "Tool proposeTicketDraft e nenhuma outra: o rascunho está completo", "source": "[Cenário] SC-08, caso A, Execução: proposeTicketDraft; [AF] D26 (só com o rascunho completo)" },
+        { "claim": "type REQ: pedido de equipamento", "source": "[Cenário] SC-08, caso A ('tipo REQ no rascunho'); [AF] D26 (regra do tipo); [PRD] Anexo A" },
+        { "claim": "category HARDWARE nos argumentos (obrigatória)", "source": "[AF] D26 ('pedido de monitor → categoria HARDWARE', classificação aprovada na D26)" },
+        { "claim": "Impacto nos argumentos SELF + NONE + NO, só o declarado nos turnos do histórico", "source": "[Cenário] SC-08, Entrada; [AF] D26 (campos de impacto: só o que o funcionário declarou)" },
+        { "claim": "title e description contêm, depois de normalizados, um dos 8 termos do item pedido (um monitor a mais); só 'monitor' não basta", "source": "[Premissa do spike] (critério do autor de 2026-11-10, ampliado em 2026-11-11); [AF] D26 (sem fatos que a conversa não sustente)" },
+        { "claim": "Sem prioridade, prazo nem identidade nos argumentos", "source": "[DM] §7.1, invariante 3; [AF] D26" },
+        { "claim": "Histórico sintético e ordem das perguntas iguais aos da V3", "source": "[Premissa do spike]; PENDENTE (AF P-D, ordem das perguntas de impacto)" }
+      ]
+    },
+    {
+      "id": "C5",
+      "expected": {
+        "intent": "HANDOFF",
+        "entities": [],
+        "missingFields": { "mode": "exact", "values": [] },
+        "expectedTool": "requestHandoff",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            { "path": "reason", "presence": "optional", "rule": { "match": "any" } }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId", "conversationId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent HANDOFF", "source": "[Cenário] SC-13, Interpretação: HANDOFF" },
+        { "claim": "Tool requestHandoff e nenhuma outra", "source": "[Cenário] SC-13, Execução: 'chamada: requestHandoff (só emite a intenção; o backend executa)'" },
+        { "claim": "Sem busca prévia", "source": "[AF] D25, fora do escopo ('pedido expresso de falar com uma pessoa: HANDOFF ... sem busca prévia')" },
+        { "claim": "Sem proposta: o rascunho aberto não pode ser confirmado nem reproposto pelo modelo", "source": "[DM] §7.1, invariante 7" },
+        { "claim": "missingFields vazio", "source": "[Cenário] SC-13, Política: outcome HANDOFF" },
+        { "claim": "Histórico e state representam CONV-DRAFT-OPEN com o rascunho do C4", "source": "[Premissa do spike]; [Cenário] §2, fixture CONV-DRAFT-OPEN" }
+      ]
+    },
+    {
+      "id": "C6",
+      "expected": {
+        "intent": "CREATE_TICKET",
+        "entities": [
+          { "path": "impact.workImpact", "presence": "required", "rule": { "match": "equals", "values": ["BLOCKED"] } },
+          { "path": "impact.affectedScope", "presence": "absent" },
+          { "path": "impact.commitmentRisk", "presence": "optional", "rule": { "match": "equals", "values": ["NOT_ASKED"] } },
+          { "path": "problem", "presence": "optional", "rule": { "match": "normalized-contains-any", "values": ["parou", "parad", "tudo"] } },
+          { "path": "category", "presence": "absent" }
+        ],
+        "missingFields": { "mode": "includes", "required": ["AFFECTED_SCOPE", "CATEGORY"], "forbidden": ["WORK_IMPACT", "COMMITMENT_RISK", "TYPE"] },
+        "expectedTool": "searchArticles",
+        "allowedExtraTools": [],
+        "toolArgs": {
+          "fields": [
+            { "path": "query", "presence": "required", "rule": { "match": "any" } }
+          ],
+          "forbidden": ["userId", "employeeId", "requesterId"]
+        }
+      },
+      "justification": [
+        { "claim": "Intent CREATE_TICKET, em qualquer caso: a busca não encontra artigo aplicável; um artigo devolvido que não trata do problema conta como 'sem artigo aplicável'", "source": "[AF] D25, itens 1 e 3, e esclarecimento de 2026-11-16; [AF] D27 (CREATE_TICKET, e não CLARIFY); [Cenário] SC-10, Interpretação" },
+        { "claim": "workImpact BLOCKED obrigatório", "source": "[Cenário] SC-10, Política; [AF] D26, exemplo ('Parou tudo!' → BLOCKED)" },
+        { "claim": "affectedScope ausente: a frase não permite concluir TEAM nem COMPANY", "source": "[Cenário] SC-10, Entrada ('sem informar o alcance'); [AF] D26, exemplo" },
+        { "claim": "commitmentRisk ausente ou NOT_ASKED (estado de coleta, não valor deduzido)", "source": "[DM] §4 (com BLOCKED, a pergunta sobre compromisso é dispensada; o chamado grava NOT_ASKED)" },
+        { "claim": "problem opcional; se presente, contém 'parou', 'parad' ou 'tudo'", "source": "[Premissa do spike]; [DM] §3.12 (entities.problem)" },
+        { "claim": "category ausente: a entrada não traz evidência de categoria", "source": "[AF] D26, por derivação ('sem evidência suficiente, o campo entra no missingFields')" },
+        { "claim": "missingFields inclui AFFECTED_SCOPE", "source": "[Cenário] SC-10, Interpretação; [DM] §4, regra 1; [AF] D26" },
+        { "claim": "missingFields inclui CATEGORY", "source": "[AF] D26, por derivação ('sem evidência suficiente, o campo entra no missingFields')" },
+        { "claim": "missingFields não inclui WORK_IMPACT (declarado)", "source": "[AF] D26; [Cenário] SC-10, Política" },
+        { "claim": "missingFields não inclui COMMITMENT_RISK (dispensado com BLOCKED)", "source": "[DM] §4; [AF] D26" },
+        { "claim": "missingFields não inclui TYPE: 'algo parou' é INC pela regra do tipo", "source": "[AF] D26, por derivação (regra do tipo: INC quando algo parou ou não funciona)" },
+        { "claim": "TITLE e DESCRIPTION neutros na pontuação: o gabarito não determina se a entrada traz evidência suficiente; a regra geral da D26 continua válida", "source": "[AF] D26 (regra geral); PENDENTE (evidência na entrada do C6)" },
+        { "claim": "Tool searchArticles e nenhuma outra", "source": "[AF] D25, item 1; [Cenário] SC-10, Execução ('searchArticles antes da decisão da intenção (AF D25). Nenhuma tool de escrita')" },
+        { "claim": "query obrigatória e não vazia (o schema já exige); conteúdo não avaliado", "source": "[Premissa do spike]: 'Parou tudo!' não traz termos de busca, e a especificação não define a consulta" },
+        { "claim": "Nenhum argumento de identidade", "source": "[Cenário] §3, notas gerais" }
+      ]
+    }
+  ]
+}

@@ -167,13 +167,13 @@ Fora do C6:
 
 Para cada turno do C6, o estado da busca, em um destes valores explícitos:
 
-| Estado             | Significado                                                                        |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| `NOT_CALLED`       | nenhuma chamada da `searchArticles` na fase 1                                      |
-| `REJECTED`         | chamada recusada pela validação (não executou)                                     |
-| `NO_RESULT`        | chamada executada, sem artigo devolvido                                            |
-| `RESULTS`          | chamada executada, com artigos devolvidos; o diagnóstico diz quais (ids)           |
-| `NOT_RECALCULABLE` | a consulta registrada está indisponível ou foi alterada pela remoção de raciocínio |
+| Estado             | Significado                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NOT_CALLED`       | nenhuma chamada da `searchArticles` na fase 1                                                                                                              |
+| `REJECTED`         | chamada recusada pela validação (não executou)                                                                                                             |
+| `NO_RESULT`        | chamada executada, sem artigo devolvido                                                                                                                    |
+| `RESULTS`          | chamada executada, com artigos devolvidos; o diagnóstico diz quais (ids)                                                                                   |
+| `NOT_RECALCULABLE` | a consulta registrada está indisponível, foi alterada pela remoção de raciocínio, ou a chamada é válida sem execução registrada; o motivo fica em `reason` |
 
 - Os artigos são recalculados a partir da consulta registrada, com o mesmo filtro da tool falsa (determinístico: palavra-chave contida na consulta normalizada).
 - Com mais de uma chamada no turno, o diagnóstico lista o estado de cada uma, na ordem de emissão.
@@ -352,11 +352,40 @@ Com o dublê do Mastra, sem modelo real.
 - **Busca que falhou** (D25, item 4; AF P-G): não exercitada; a tool falsa nunca falha.
 - **Título, descrição e tipo antes da proposta** (AF P-H): não há campo na interpretação; só são conferidos nos argumentos da `proposeTicketDraft` (C4). Por isso `TITLE` e `DESCRIPTION` são neutros no C6.
 
+## Ajustes da implementação (Etapa 1)
+
+O que mudou em relação ao texto aprovado em 2026-11-16, depois da implementação da Etapa 1. **Onde houver diferença, esta seção prevalece sobre o texto acima.** Nenhum ajuste muda o gabarito, os limiares, a estrutura nem os arquivos da V1, da V2.1 e da V3.
+
+1. **Chamada válida sem execução registrada.** Uma chamada da `searchArticles` válida na captura, sem evento `EXECUTED` correspondente (por exemplo, quando a tentativa termina no meio do passo), fica `NOT_RECALCULABLE`, com o motivo "chamada válida sem execução registrada". Os três motivos de `NOT_RECALCULABLE` ficam no campo `reason` do diagnóstico: "consulta alterada pela remoção de raciocínio", "consulta indisponível" e "chamada válida sem execução registrada". A tabela de estados foi atualizada.
+2. **Remoção de raciocínio sinalizada por turno.** O registro da V3 só tem um sinal por turno (`phase1.reasoning.leakedInArgs`), não por chamada. Com o sinal marcado, todas as buscas executadas do turno ficam `NOT_RECALCULABLE`.
+3. **Consulta usada no recálculo.** O recálculo usa o argumento da execução (o que a tool falsa recebeu, `phase1.executions[].args`), e não o `rawArgs` emitido; os dois passam pela mesma remoção de raciocínio. Um teste confirma que o filtro do recálculo devolve os mesmos artigos que a tool falsa, para as mesmas consultas.
+4. **Condições 1–4 e 6 do C6.** Não são uma cópia das regras: saem do `c6Expected` do `scoreTurn` da V1, calculado sobre a vista V1 sem as chamadas de negócio (o que torna a condição 5 sempre verdadeira e deixa as demais intactas). O teste de decomposição, nos dois registros oficiais, confere que essas condições, junto com "zero tools de negócio", reproduzem o C6 oficial da V3.
+5. **Detalhes de forma:**
+   - `v4/src/cases.ts` tem um schema mínimo próprio para o `expected.json` (forma do arquivo e chaves permitidas); o caso composto é validado pelo `casesFileSchema` da V1 e pela checagem de catálogos;
+   - a regra `category: absent` do C6 está no fim da lista de entidades;
+   - o `TurnScoreV4` acrescenta o campo `c6` (segurança, demais condições e diagnóstico da busca; `null` fora do C6);
+   - os testes da V4 importam os ajudantes de `v3/src/test-helpers.ts` e o `summaryMarkdown` de `v3/src/run.ts`, sem alteração.
+6. **Prova extra na equivalência.** Além da comparação por turno e da agregação, as pontuações da V4 (com o gabarito da raiz e o C6 da V3) passam pelo `summaryMarkdown` da V3, e o resumo gerado é **idêntico byte a byte ao `*-summary.md` oficial** nos dois registros.
+
 ## Ordem de trabalho
 
 1. Este CRITERIA → revisão e aprovação.
 2. Etapa 1: gabarito composto, checagem de catálogos, pontuação, testes (inclusive a equivalência).
 3. **Congelamento do gabarito e da régua, com commit próprio**: hashes de `v4/expected.json`, `v4/src/cases.ts`, `v4/src/catalog-check.ts` e `v4/src/score.ts` registrados aqui. Vem **antes da linha de base e antes de escrever as instruções** [Premissa do spike].
+
+   **Estado: aguardando commit.** SHA-256 em 2026-11-16 (fins de linha LF), na pasta `spikes/llm-model/`:
+
+   | Arquivo | SHA-256 |
+   | --- | --- |
+   | `v4/expected.json` | `e54500ef8e823f611eabead35743352fdcc8bff06c55225bb68853293479e665` |
+   | `v4/src/cases.ts` | `d30f7d976a24f07b0867f2c468d850e7dc3ad2d42a48f6aa9e54264f3c7bab29` |
+   | `v4/src/catalog-check.ts` | `6042fcb68502b720bb15ca078c6372a698f40b6a66c3f4962d7569cf0a4bfdea` |
+   | `v4/src/score.ts` | `77c1980bc9cb7f733cee3def330fac777f70ca5dd475eed7242908ebf7be8702` |
+   | `v4/tsconfig.json` | `f5341fee9a82dbb323df727fcf12c4922612cc94d313f5298194f1b6fba7b806` |
+   | `v4/src/cases.test.ts` | `52e8dedfbd458e1ef2aeb389aae510ebe9c31bb80ca4fee823d340d87fae0fd5` |
+   | `v4/src/catalog-check.test.ts` | `10cc7e428e7719daa18f115e96f48c486224c8c668be38b542dc1ff12ceb7534` |
+   | `v4/src/score.test.ts` | `7216f9db7553be4f816d59ba842a235c36bc1f7b6a0a3eaadb1fde42e5d3343b` |
+   | `v4/src/equivalence.test.ts` | `34d643ba969b881625340e9e12cccb709913db4d7d46c5b85be952663d935d8e` |
 4. Linha de base: repontuação dos registros da V3 e relatório não oficial.
 5. Etapa 2: instruções (prompt, descrições das tools, `.describe`), cópia controlada do `run.ts`, testes, revisão humana contra vazamento.
 6. Manifesto completo da V4 e commit de congelamento.
