@@ -223,7 +223,7 @@ Regras gerais, cada uma com a fonte. As instruções da V1 que continuam válida
 11. A intenção reflete o turno inteiro, inclusive o resultado da busca num relato de falha nova: com artigo aplicável, `ANSWER_KB` [AF] D25, item 2; sem artigo aplicável, `CREATE_TICKET` [AF] D25, item 3.
 12. `CLARIFY` só quando não for possível identificar a intenção ou a operação; com a operação identificada e dados faltando, a intenção é a da operação, e os dados vão para o `missingFields` [AF] D27.
 13. O `missingFields` da interpretação lista o que falta para a ação, inclusive os campos descritivos sem evidência; não é a regra de campo único da `classifyPriority` [AF] D26; [DM] §4.
-14. Entidades: só o declarado; o impacto segue o item 9 [AF] D26.
+14. Entidades: preencher apenas o que a conversa sustenta. A categoria pode ser classificada a partir do que o funcionário descreveu, quando houver evidência suficiente; sem isso, fica ausente e entra em `missingFields`. Os campos de impacto seguem o item 9 [AF] D26.
 
 **Descrições das tools e dos argumentos:** coerentes com os itens acima. Hoje, a descrição da `searchArticles` ("Use para responder dúvidas que um artigo possa resolver.") e o `.describe` do `query` ("Palavras-chave da dúvida do funcionário.") não cobrem o relato de falha da D25.
 
@@ -247,7 +247,21 @@ As instruções ensinam regras gerais; **não contêm o gabarito** [Premissa do 
   - nenhum exemplo reproduz a resposta esperada de um caso (intenção, tool, campos, valores), nem por paráfrase;
   - nenhum exemplo do AF que coincide com um caso aparece nas instruções;
   - nenhuma regra é específica de um caso: cada uma vale para a classe de entradas descrita na fonte citada.
-- **Estado da revisão humana: PENDENTE.** Antes do congelamento das instruções, registrar aqui: a data, o revisor (o autor), os arquivos revisados e o resultado de cada item da lista de verificação.
+- **Estado da revisão humana: feita.**
+  - **Data:** 2026-11-19.
+  - **Revisor:** Celio Junior (autor).
+  - **Arquivos:** `v4/src/prompt.ts` e `v4/src/descriptions.ts`.
+  - **Método:** cada caso comparado com as regras e descrições mais próximas dele.
+  - **Nenhum exemplo reproduz a entrada de um caso, nem por paráfrase:** aprovado. O prompt e as descrições não têm exemplos.
+  - **Nenhum exemplo reproduz a resposta esperada de um caso:** aprovado. Pelo mesmo motivo; o exemplo da D26 "pedido de monitor → HARDWARE" não entrou.
+  - **Nenhum exemplo do AF que coincide com um caso aparece:** aprovado.
+  - **Nenhuma regra é específica de um caso:** aprovado, com estas observações:
+    - C1: a regra de dúvida é da V1, sem mudança, sem citar horário nem o artigo.
+    - C2: aplicabilidade e intenção em termos gerais; rede e VPN só aparecem no catálogo de categorias da V1 (NETWORK_VPN, "rede e VPN"), inalterado e permitido pelo CRITERIA.
+    - C3: a regra do `listMyTickets` ("sem informar o número") é a mais próxima de um caso; vem da história 2 do README e do AF §9.1, sem "status" nem as palavras da entrada. Aparece no prompt e na descrição da tool, como as regras da `searchArticles` e da `requestHandoff`; mantida pela simetria.
+    - C4: REQ "pedido de equipamento" é da V1; categoria e impacto em termos gerais.
+    - C5: a regra da `requestHandoff` é da V1; a V4 só acrescentou "sem buscar antes" (D25), sem "atendente" nem o rascunho aberto.
+    - C6: "mesmo que o relato traga poucos detalhes" vem quase literal da D25, item 1, e foi mantida porque descreve uma classe de relatos; "um artigo que trata de outro assunto conta como nenhum aplicável" é a regra do esclarecimento da D25, sem exemplo e sem citar horário. "Parou" e "parado" aparecem só nos significados da V1 de INC e BLOCKED, inalterados e permitidos pelo CRITERIA.
 
 ## Linha de base (repontuação da V3)
 
@@ -330,7 +344,8 @@ Com o dublê do Mastra, sem modelo real.
 **Ponta a ponta (`run.test.ts`, etapa 2):**
 
 - nome de tool inventado pelo `runAttempt` da V4, com modelo roteirizado no C6: aparece em `emitted`, vai para `otherToolCalls` na vista V1, não executa (`toolLog` vazio) e reprova a segurança do C6;
-- um turno C6 roteirizado com `searchArticles` e interpretação correta: aprovado em tudo.
+- um turno C6 roteirizado com `searchArticles` e interpretação correta: aprovado em tudo;
+- corpo da fase 2 (`phase2-body.test.ts`, criado na Etapa 2A pelo `runAttempt` da V3): na Etapa 2B, o mesmo teste passa a rodar também pelo `runAttempt` da V4, com as mesmas quatro asserções (tool call no `assistant`; mensagem `tool` com o mesmo `tool_call_id` e o resultado contendo `ART-HORARIO`; texto final ausente; `tools` ausentes na fase 2).
 
 **Instruções (etapa 2):**
 
@@ -366,6 +381,26 @@ O que mudou em relação ao texto aprovado em 2026-11-16, depois da implementaç
    - o `TurnScoreV4` acrescenta o campo `c6` (segurança, demais condições e diagnóstico da busca; `null` fora do C6);
    - os testes da V4 importam os ajudantes de `v3/src/test-helpers.ts` e o `summaryMarkdown` de `v3/src/run.ts`, sem alteração.
 6. **Prova extra na equivalência.** Além da comparação por turno e da agregação, as pontuações da V4 (com o gabarito da raiz e o C6 da V3) passam pelo `summaryMarkdown` da V3, e o resumo gerado é **idêntico byte a byte ao `*-summary.md` oficial** nos dois registros.
+
+## Ajustes da implementação (Etapa 2A)
+
+O que a Etapa 2A (prompt, descrições e verificação de vazamento) definiu ou constatou em relação ao texto acima. **Onde houver diferença, esta seção prevalece.** Nenhum ajuste muda o gabarito, os limiares, a estrutura nem os arquivos congelados.
+
+1. **Verificação 0: a fase 2 recebe os resultados das tools.** A regra 11 e a frase do prompt "com as chamadas de ferramenta e os resultados" dependem disso.
+   - **Código:** `v3/src/transcript.ts:18-31` (`filterTranscript`: mantém as mensagens `assistant` com tool calls e as mensagens `tool`, remove o raciocínio e exclui a última `assistant` sem tool call, o texto final do atendimento); `v3/src/run.ts:265` (a transcrição vem de `p1.response.messages`); `v3/src/run.ts:275` (a fase 2 recebe `[...messages, ...transcript]`).
+   - **Lacuna dos testes da V3 no item (b):** `transcript.test.ts:17-29` mostra mensagens `tool` mantidas, mas só com resultados de erro e só na transcrição; `phase2.test.ts:79-85` e `transcript.test.ts:170-180` conferem, no corpo real, só os papéis (`assistant`, `tool`), sem o conteúdo. Nenhum teste da V3 provava que o resultado da tool, com conteúdo identificável, chega ao corpo da fase 2.
+   - **Teste novo:** `v4/src/phase2-body.test.ts`, pelo `runAttempt` da V3 (HTTP fabricado, sem modelo), no C1: (a) a mensagem `assistant` do corpo da fase 2 traz o tool call da `searchArticles`; (b) a mensagem `tool` seguinte tem o mesmo `tool_call_id` e o resultado contém `ART-HORARIO`; (c) o texto final do atendimento está ausente; e o corpo da fase 2 não tem `tools`. Passa. Na Etapa 2B, roda também pelo `runAttempt` da V4 ("Plano de testes").
+2. **Item 1 da regra contra vazamento, operacionalizado:** cada entrada e cada turno do funcionário nos históricos, **inteiros e também por frase** (separada por `.`, `!` ou `?`), quando a forma normalizada tiver 8 caracteres ou mais; comparação como substring do texto normalizado.
+3. **Item 3, operacionalizado:** ids e títulos das fixtures, em qualquer tamanho, como substring. Dos conteúdos dos artigos, os trechos de **3 ou mais palavras** seguidas com forma normalizada total de **8 ou mais caracteres**:
+   - **geração:** a partir de cada palavra do conteúdo, é cadastrada a **menor** sequência que atende às duas condições (a janela é estendida palavra a palavra até atingir 3 palavras e 8 caracteres; se o conteúdo acabar antes, nada é cadastrado a partir dessa palavra);
+   - **cobertura completa:** todo trecho proibido começa em alguma palavra e contém, como prefixo, a sequência mínima cadastrada a partir dela; detectar a sequência mínima basta. Isso cobre, por exemplo, um trecho de 4 palavras com 8 caracteres cujas janelas de 3 palavras ficam abaixo de 8, que janelas fixas de 3 não pegariam;
+   - **deduplicação** pela sequência de palavras normalizadas, não pela string colada: sequências com a mesma concatenação e fronteiras diferentes ficam as duas;
+   - **comparação palavra a palavra**, que evita falso positivo de fronteira: "do service desk", na primeira linha do prompt da V1, não casa com o trecho "O service desk" do artigo só porque "do" termina em "o". Na primeira versão, comparada como substring do texto todo junto, essa fronteira reprovava o controle da V1;
+   - **o que é palavra:** um token separado por espaço em branco (`split(/\s+/)`), normalizado individualmente (`normalizeText`). Palavras com hífen ou apóstrofo viram um único token (por exemplo, "sexta-feira" → `sextafeira`); a quase-cópia com separação diferente (por exemplo, "sexta feira") não casa e fica para a revisão humana.
+4. **Limite do item 3:** fragmentos de 1 ou 2 palavras dos conteúdos não são detectados; ficam para a revisão humana. Os termos isolados que identificam casos estão no item 4. O teste tem casos de fronteira:
+   - detectados: pontuação diferente; acentos; sequência de 4 palavras com 8 caracteres e janelas de 3 abaixo de 8; duas sequências com a mesma concatenação e fronteiras diferentes (as duas);
+   - não detectados: frase abaixo de 8 caracteres; fronteira de palavra diferente ("do service desk"); fragmento de 2 palavras sem termo do item 4.
+   - Os casos de geração usam conteúdos fabricados no próprio teste; as fixtures não mudam.
 
 ## Ordem de trabalho
 
