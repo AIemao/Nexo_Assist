@@ -51,8 +51,10 @@ export interface FileCheck {
   ok: boolean;
 }
 
+// Tabela de congelamento: hash sem crases, fora do formato que a CLI lê como manifesto
+// (v4/CRITERIA.md, "Ajustes da implementação (Etapa 2B)", item 4).
 export function verifyFrozenV4(criteriaText = readFileSync(new URL("v4/CRITERIA.md", SPIKE), "utf8")): FileCheck[] {
-  const table = new Map([...criteriaText.matchAll(/\| `(v4\/[^`]+)` \| `([0-9a-f]{64})` \|/g)].map(([, file = "", hash = ""]) => [file, hash]));
+  const table = new Map([...criteriaText.matchAll(/\| `(v4\/[^`]+)` \| ([0-9a-f]{64}) \|/g)].map(([, file = "", hash = ""]) => [file, hash]));
   return FROZEN_FILES.map((file) => {
     const expected = table.get(file) ?? null;
     const actual = sha256Of(file);

@@ -30,7 +30,7 @@ describe("verificação dos arquivos congelados", () => {
   });
 
   it("hash divergente ou ausente na tabela é detectado", () => {
-    const tampered = verifyFrozenV4("| `v4/expected.json` | `" + "0".repeat(64) + "` |");
+    const tampered = verifyFrozenV4("| `v4/expected.json` | " + "0".repeat(64) + " |");
     assert.equal(tampered.find((f) => f.file === "v4/expected.json")?.ok, false);
     assert.equal(tampered.find((f) => f.file === "v4/src/score.ts")?.expected, null);
   });

@@ -402,6 +402,29 @@ O que a Etapa 2A (prompt, descrições e verificação de vazamento) definiu ou 
    - não detectados: frase abaixo de 8 caracteres; fronteira de palavra diferente ("do service desk"); fragmento de 2 palavras sem termo do item 4.
    - Os casos de geração usam conteúdos fabricados no próprio teste; as fixtures não mudam.
 
+## Ajustes da implementação (Etapa 2B)
+
+O que a Etapa 2B (ligação das instruções) definiu em relação ao texto acima. **Onde houver diferença, esta seção prevalece.** Nenhum ajuste muda o gabarito, os limiares, os arquivos congelados nem os textos aprovados na Etapa 2A.
+
+1. **Exceção controlada 3: troca dos textos nas instâncias das tools.**
+   - **Onde o Mastra (1.81.0) valida a entrada de uma tool** (conferido no código instalado; há uma única cópia de `@mastra/core` em `node_modules`):
+     - **`Tool`:** em `node_modules/@mastra/core/dist/tool-CT0-cyFQ.js`, o construtor da classe `Tool` (linha 636) guarda o `execute` original numa variável interna (`const originalExecute = …`, linha 815) e expõe um envoltório (`this.execute = async (inputData, context) => { … }`, linha 816). O envoltório chama `consumeBuilderValidatedInput(context)` (linha 818; definida nas linhas 34–40, retira o contexto de um `WeakSet`) e só valida contra `this.inputSchema` (`validateToolInput(this.inputSchema, inputData, this.id)`, linha 822) se o contexto **não** estiver marcado. O original não é exposto: não é possível recriar a tool reaproveitando-o, como previa "Estrutura > Etapa 2".
+     - **Caminho normal do Agent:** em `node_modules/@mastra/core/dist/utils-PnhSOMoG.js`, o `CoreToolBuilder` (classe na linha 622) lê o schema da instância em `getParameters()` (`this.injectedInputSchema ?? this.originalTool.inputSchema`, linhas 690–699), monta o `inputValidationSchema` (linhas 1169–1170) e, em `createExecute` (linha 817), valida a entrada (`validateToolInput(parameters, args, options.name)`, linhas 1079–1081), devolvendo o erro sem executar. Antes de chamar o `execute` da tool, marca o contexto (`markBuilderValidatedInput(toolContext)`, linha 964); o envoltório da `Tool` consome a marca e não valida de novo. **No caminho do Agent, a entrada é validada uma vez, pelo `CoreToolBuilder`, contra o schema que está na instância** (na V4, o `TOOL_INPUT_SCHEMAS_V4`).
+     - **Chamada direta** (`tool.execute(input, context)` sem a marca, como nos testes de `v4/src/tools.test.ts`): quem valida é o envoltório da `Tool`, contra `this.inputSchema`.
+     - **Alcance:** a conclusão vale para o caminho normal do Agent nesta versão (1.81.0) e nesta instalação. Não foi verificada para o caminho legado nem para cópias duplicadas do pacote.
+   - **Decisão:** `createFakeToolsV4()` chama o `createFakeTools()` da V1 e, em cada instância recém-criada, troca **só** `description` (pelos textos de `v4/src/descriptions.ts`) e `inputSchema` (pelo `TOOL_INPUT_SCHEMAS_V4`, os schemas da V1 com só os `.describe` trocados), antes de construir o Agent. Nenhum outro campo muda; a fábrica da V1, os protótipos e o Mastra não são alterados. A fábrica cria instâncias novas a cada chamada, então nada é compartilhado entre sessões.
+   - **Por que não recriar a tool sobre o envoltório (opção A):** `createTool({ …, execute: toolDaV1.execute })` põe o envoltório da V1 dentro do envoltório da tool nova. No caminho do Agent, o `CoreToolBuilder` valida e marca o contexto; o envoltório externo consome a marca; o interno (o da V1) recebe o contexto já sem a marca e valida de novo, contra o schema da V1. Seriam duas validações, num caminho diferente do da V1. Na opção B há uma só, como na V1.
+   - **Por que não copiar os `execute` (opção C):** seria uma cópia do corpo das quatro tools do `../src/tools.ts`, contrária ao "sem cópia".
+   - **Testes:** a tool da V4 difere de uma instância nova da V1 só em `description` e `inputSchema` (demais propriedades próprias iguais; o `execute`, envoltório por instância, comparado por comportamento); entrada válida executa e registra no `toolLog` uma vez, entrada inválida é recusada sem executar nem registrar; o `TOOL_INPUT_SCHEMAS` da V1 continua com os `.describe` originais; duas chamadas a `createFakeToolsV4()` não compartilham `toolLog`; o corpo capturado mostra as descrições e os `.describe` da V4 na fase 1, e o prompt da V4 sem as descrições das tools na fase 2; pelo caminho do Agent (`runAttempt` da V4 com HTTP fabricado), um argumento inválido é recusado, não executa e não registra no `toolLog`.
+2. **Registros de turno e cabeçalho da rodada.** Os registros de turno mantêm `experiment: "v3"`, porque o tipo `TurnRecordV3` da V3 fixa esse valor e mudá-lo exigiria tipos próprios, fora das diferenças autorizadas do `run.ts`. A versão é identificada pelo cabeçalho da rodada: `experiment: "v4"` e `promptVersion` (`RunHeaderV4`).
+3. **Outros pontos da cópia controlada do `run.ts`:** o prefixo de log `[spike v3]` fica igual (fora das categorias autorizadas); os comentários do topo do arquivo (linhas 1–3 e 10) foram tratados como cabeçalho.
+4. **Tabela de congelamento fora do formato do manifesto.**
+   - **Como a CLI identifica o manifesto:** o `verifyManifestV3` do `v4/src/run.ts` chama o `verifyManifest` da V2.1 (`v2/src/run.ts`, linhas 424–430) com o texto de `v4/CRITERIA.md`. Ele lê **todas** as linhas do documento no formato `` | `arquivo` | `hash de 64 hex` | ``, sem olhar a seção, e a CLI só recusa executar se não achar nenhuma linha ou se alguma divergir.
+   - **Problema:** a tabela de congelamento (passo 3 da "Ordem de trabalho") estava nesse formato; a CLI a aceitaria como manifesto e executaria sem o manifesto completo.
+   - **Correção no documento:** na tabela de congelamento, o hash vai sem crases, fora do formato lido pela CLI. O `run.ts` não mudou. Consequência no código: o `verifyFrozenV4` da linha de base (`v4/baseline/rescore.ts`), que lê a mesma tabela, passou a ler o formato novo.
+   - **Teste:** `v4/src/manifest.test.ts` lê o CRITERIA real, confere que toda linha lida pela CLI está na seção "Arquivos (manifesto)" e que, com a seção sem linhas, a CLI se recusa a executar (processo filho, sem `.env` e sem rede).
+   - **Linha de base com o formato novo:** em 2026-11-19, o `v4/baseline/rescore.ts` atual (com o `verifyFrozenV4` lendo a tabela sem crases) rodou de novo e gravou `v4/results/linha-de-base-2026-11-16.md` idêntico ao comitado: mesmo SHA-256 (`4b01f09b2cbf275e31a667519dd467476883677c108a635586ec538f79212e07`) antes e depois, e `git diff --exit-code` sem diferença. A mudança de formato não altera o relatório.
+
 ## Ordem de trabalho
 
 1. Este CRITERIA → revisão e aprovação.
@@ -412,15 +435,17 @@ O que a Etapa 2A (prompt, descrições e verificação de vazamento) definiu ou 
 
    | Arquivo | SHA-256 |
    | --- | --- |
-   | `v4/expected.json` | `e54500ef8e823f611eabead35743352fdcc8bff06c55225bb68853293479e665` |
-   | `v4/src/cases.ts` | `d30f7d976a24f07b0867f2c468d850e7dc3ad2d42a48f6aa9e54264f3c7bab29` |
-   | `v4/src/catalog-check.ts` | `6042fcb68502b720bb15ca078c6372a698f40b6a66c3f4962d7569cf0a4bfdea` |
-   | `v4/src/score.ts` | `77c1980bc9cb7f733cee3def330fac777f70ca5dd475eed7242908ebf7be8702` |
-   | `v4/tsconfig.json` | `f5341fee9a82dbb323df727fcf12c4922612cc94d313f5298194f1b6fba7b806` |
-   | `v4/src/cases.test.ts` | `52e8dedfbd458e1ef2aeb389aae510ebe9c31bb80ca4fee823d340d87fae0fd5` |
-   | `v4/src/catalog-check.test.ts` | `10cc7e428e7719daa18f115e96f48c486224c8c668be38b542dc1ff12ceb7534` |
-   | `v4/src/score.test.ts` | `7216f9db7553be4f816d59ba842a235c36bc1f7b6a0a3eaadb1fde42e5d3343b` |
-   | `v4/src/equivalence.test.ts` | `34d643ba969b881625340e9e12cccb709913db4d7d46c5b85be952663d935d8e` |
+   | `v4/expected.json` | e54500ef8e823f611eabead35743352fdcc8bff06c55225bb68853293479e665 |
+   | `v4/src/cases.ts` | d30f7d976a24f07b0867f2c468d850e7dc3ad2d42a48f6aa9e54264f3c7bab29 |
+   | `v4/src/catalog-check.ts` | 6042fcb68502b720bb15ca078c6372a698f40b6a66c3f4962d7569cf0a4bfdea |
+   | `v4/src/score.ts` | 77c1980bc9cb7f733cee3def330fac777f70ca5dd475eed7242908ebf7be8702 |
+   | `v4/tsconfig.json` | f5341fee9a82dbb323df727fcf12c4922612cc94d313f5298194f1b6fba7b806 |
+   | `v4/src/cases.test.ts` | 52e8dedfbd458e1ef2aeb389aae510ebe9c31bb80ca4fee823d340d87fae0fd5 |
+   | `v4/src/catalog-check.test.ts` | 10cc7e428e7719daa18f115e96f48c486224c8c668be38b542dc1ff12ceb7534 |
+   | `v4/src/score.test.ts` | 7216f9db7553be4f816d59ba842a235c36bc1f7b6a0a3eaadb1fde42e5d3343b |
+   | `v4/src/equivalence.test.ts` | 34d643ba969b881625340e9e12cccb709913db4d7d46c5b85be952663d935d8e |
+
+   O hash vai sem crases de propósito: assim esta tabela não é lida como manifesto pela CLI ("Ajustes da implementação (Etapa 2B)", item 4).
 4. Linha de base: repontuação dos registros da V3 e relatório não oficial.
 5. Etapa 2: instruções (prompt, descrições das tools, `.describe`), cópia controlada do `run.ts`, testes, revisão humana contra vazamento.
 6. Manifesto completo da V4 e commit de congelamento.
@@ -429,3 +454,5 @@ O que a Etapa 2A (prompt, descrições e verificação de vazamento) definiu ou 
 ## Arquivos (manifesto)
 
 A definir no congelamento, com o mesmo critério da V3: entra todo arquivo carregado na execução ou nos testes da V4, com os hashes da V1, da V2.1 e da V3 para os importados.
+
+As linhas no formato `` | `arquivo` | `hash` | `` (hash entre crases), lidas pela CLI como manifesto, ficam só nesta seção. Enquanto ela não tiver nenhuma, a CLI se recusa a executar.
