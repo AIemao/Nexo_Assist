@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.13** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.14** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -1143,7 +1143,6 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 4): modelo LLM                                                                                                                          | 4     | README §12 #9                   |
 | PENDENTE (Bloco 4): critério de "baixa confiança" para transferir                                                                                       | 4     | README §12 #10                  |
 | PENDENTE (Bloco 4): catálogo de `appliedRules`                                                                                                          | 4     | §3.15, README §12 #11           |
 | PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial)                        | 5     | README §12 #12                  |
@@ -1172,6 +1171,8 @@ A responsabilidade pela política de retry não consta mais como pendência. O d
 O endpoint de consulta pela chave de idempotência (README §12 #8) não consta mais como pendência: é opcional e fora do MVP; repetir a operação com a mesma chave reconcilia o resultado original (§3.16).
 
 O ORM e o driver do SQLite (README §12 #6) não constam mais como pendência: estão decididos no ADR-008 (infraestrutura de persistência; não altera o domínio).
+
+O modelo LLM (README §12 #9) não consta mais como pendência: está decidido no ADR-009 (`qwen3:8b` servido localmente pelo Ollama, com condições de adoção; não altera o domínio nesta versão; o achado 2 do ADR-009 (schema do §3.12 compatível com provider estrito) pode exigir mudança futura, a decidir).
 
 Os campos de prazo do `Ticket` e o momento de recálculo (README §12 #4) não constam mais como pendência: estão em §3.2 e §8.5.2. Continua PENDENTE (Bloco 7) quais eventos contam como atualização do service desk (linha acima).
 
@@ -1310,8 +1311,16 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.11  | v2.10; Bloco 3 (contrato HTTP, ADR-010) | Pendências de retry (README §12 #7) e de consulta pela chave (README §12 #8) resolvidas em §3.16 e removidas do §10: o retry pertence ao cliente web/BFF, com a mesma chave e o mesmo corpo, sem laço no ticket-service; a consulta pela chave é opcional, e o retry do `POST` reconcilia. Ajustes de coerência em §8.4, §9 (lacuna #11) e §10: responsabilidade decidida, detalhamento operacional PENDENTE até o web existir. Nenhuma outra alteração. |
 | v2.12  | v2.11; Bloco 3 (instrumentação das escritas, `01-evaluation-scenarios.md` §1.1, IN7) | §3.16: o caso de uso distingue internamente criação (`CREATED`) e repetição (`REPLAYED`) em todos os caminhos de repetição; o HTTP não expõe a distinção e o snapshot persistido não muda. Nenhuma outra alteração. |
 | v2.13  | v2.12; fechamento do Bloco 3 | Cabeçalho, "Estado": passa a listar o que está implementado no ticket-service depois dos Blocos 2 e 3 (funções de domínio, persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord`, `createTicket`). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
+| v2.14  | v2.13; ADR-009 (Bloco 4) | Pendência "modelo LLM" removida do §10, com remissão ao ADR-009. Decisão de modelo e integração; nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.13 para a v2.14
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Modelo LLM | 10 | Pendência removida, com remissão ao ADR-009 (`qwen3:8b` servido localmente pelo Ollama) |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.14 |
 
 ### Alterações da v2.12 para a v2.13
 
