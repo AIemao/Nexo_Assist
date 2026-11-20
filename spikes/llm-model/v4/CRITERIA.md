@@ -1,6 +1,6 @@
 # Spike do ADR-009, V4: instruções conforme as decisões D25–D27
 
-**Estado: APROVADO em 2026-11-16. Gabarito, régua e instruções ainda não congelados (ver "Ordem de trabalho").**
+**Estado: CONGELADO em 2026-11-19** (manifesto em "Arquivos (manifesto)"). Aprovado em 2026-11-16.
 
 Rótulos das fontes: **[AF]** `docs/architecture/03-agent-flow.md` v1.6 (com o esclarecimento da D25 de 2026-11-16); **[Cenário]** `docs/evaluation/01-evaluation-scenarios.md` v1.7; **[DM]** `docs/architecture/01-domain-model.md` v2.13; **[PRD]** README (anexos); **[Premissa do spike]** escolha do spike, sem fonte na especificação (as decisões do autor de 2026-11-16 têm esse rótulo); **PENDENTE** ausente da especificação.
 
@@ -431,7 +431,7 @@ O que a Etapa 2B (ligação das instruções) definiu em relação ao texto acim
 2. Etapa 1: gabarito composto, checagem de catálogos, pontuação, testes (inclusive a equivalência).
 3. **Congelamento do gabarito e da régua, com commit próprio**: hashes de `v4/expected.json`, `v4/src/cases.ts`, `v4/src/catalog-check.ts` e `v4/src/score.ts` registrados aqui. Vem **antes da linha de base e antes de escrever as instruções** [Premissa do spike].
 
-   **Estado: aguardando commit.** SHA-256 em 2026-11-16 (fins de linha LF), na pasta `spikes/llm-model/`:
+   **Estado: congelado em 13802eb (2026-11-16).** SHA-256 em 2026-11-16 (fins de linha LF), na pasta `spikes/llm-model/`:
 
    | Arquivo | SHA-256 |
    | --- | --- |
@@ -448,11 +448,74 @@ O que a Etapa 2B (ligação das instruções) definiu em relação ao texto acim
    O hash vai sem crases de propósito: assim esta tabela não é lida como manifesto pela CLI ("Ajustes da implementação (Etapa 2B)", item 4).
 4. Linha de base: repontuação dos registros da V3 e relatório não oficial.
 5. Etapa 2: instruções (prompt, descrições das tools, `.describe`), cópia controlada do `run.ts`, testes, revisão humana contra vazamento.
-6. Manifesto completo da V4 e commit de congelamento.
+6. Manifesto completo da V4 (gravado em 2026-11-19, "Arquivos (manifesto)") e commit de congelamento.
 7. Rodadas (executadas pelo autor, pela regra de reexecução): `qwen3:4b-instruct`, depois `qwen3:8b`.
 
 ## Arquivos (manifesto)
 
-A definir no congelamento, com o mesmo critério da V3: entra todo arquivo carregado na execução ou nos testes da V4, com os hashes da V1, da V2.1 e da V3 para os importados.
+Mesmo critério da V3: entra todo arquivo carregado na execução ou nos testes da V4, inclusive os importados da V1, da V2.1 e da V3, com o hash atual de cada um.
 
 As linhas no formato `` | `arquivo` | `hash` | `` (hash entre crases), lidas pela CLI como manifesto, ficam só nesta seção. Enquanto ela não tiver nenhuma, a CLI se recusa a executar.
+
+**Congelado em 2026-11-19** (fins de linha LF, como fixa o `.gitattributes` da raiz). 54 arquivos: o fecho estático das importações relativas a partir de todos os arquivos de `v4/src/` e `v4/baseline/` (40 arquivos de código, da V1, da V2.1, da V3 e da V4), mais os lidos sem import e as dependências (14): `cases.json`, `v4/expected.json`, `src/check-cases.ts` (lido como texto pelo `catalog-check.test.ts`), `v3/CRITERIA.md` (lido pela linha de base), os quatro arquivos dos registros oficiais da V3 (lidos pela equivalência e pela linha de base), os três `tsconfig` (raiz, `v4` e `v4/baseline`), `package.json`, `package-lock.json` e `.npmrc`. O `v4/CRITERIA.md` não entra: ele contém o manifesto.
+
+Por origem: V4 22; V3 11; V2.1 6; V1 10; raiz do spike 5.
+
+**Conferência:** o `manifest.test.ts` refaz o fecho com a mesma regra do `importClosure` da V3 e exige que o manifesto seja exatamente o fecho mais os arquivos acima, que todo arquivo exista e que o `verifyManifestV3` do `v4/src/run.ts` devolva todas as linhas OK. Na pasta `spikes/llm-model/`: `sha256sum -c` sobre as linhas `<hash>  <arquivo>` desta tabela.
+
+| Arquivo | SHA-256 |
+| --- | --- |
+| `v4/baseline/rescore.test.ts` | `ee8926d442fe5a52878ca4dfb185d0371d9bd2d0b21eb2e33fc173ba2f7a4397` |
+| `v4/baseline/rescore.ts` | `020c4398cdeff3db9e5758770a46e2074dc3c3a8e8c01891730741f734998f8b` |
+| `v4/baseline/tsconfig.json` | `7f08f088202a2a6c9337ac9a92e84e13759eac5a64edd1bee959a93027dfaea8` |
+| `v4/expected.json` | `e54500ef8e823f611eabead35743352fdcc8bff06c55225bb68853293479e665` |
+| `v4/src/cases.test.ts` | `52e8dedfbd458e1ef2aeb389aae510ebe9c31bb80ca4fee823d340d87fae0fd5` |
+| `v4/src/cases.ts` | `d30f7d976a24f07b0867f2c468d850e7dc3ad2d42a48f6aa9e54264f3c7bab29` |
+| `v4/src/catalog-check.test.ts` | `10cc7e428e7719daa18f115e96f48c486224c8c668be38b542dc1ff12ceb7534` |
+| `v4/src/catalog-check.ts` | `6042fcb68502b720bb15ca078c6372a698f40b6a66c3f4962d7569cf0a4bfdea` |
+| `v4/src/descriptions.ts` | `dffbe9079f3609ab5c706c3832bb6dd6f56302398bb866e6dddee547de8077e1` |
+| `v4/src/equivalence.test.ts` | `34d643ba969b881625340e9e12cccb709913db4d7d46c5b85be952663d935d8e` |
+| `v4/src/leak.test.ts` | `19d99518fe05e40f7521ac3e561b39702484ed755e9073f179ce0010a2b34d50` |
+| `v4/src/manifest.test.ts` | `5f3ac781932b6ccea02a8e9e6e0d60b16f388720d7998e6c64c7200fd919fb83` |
+| `v4/src/phase2-body.test.ts` | `1afefb58aa6a9f6f1768fb8a65c06c5bfd55694a2c541456ea6968f62b6df0b6` |
+| `v4/src/prompt.ts` | `8440ef2d2caa8b45be1d45327b90a6152e0dc5f7213acc8d0f6ac6661e786d1f` |
+| `v4/src/run-copy.test.ts` | `7396844e5617cac3d53ba5d19113b13618ac30623a5b2e3ea58cdc7bbb0c6ba6` |
+| `v4/src/run.test.ts` | `0feb32613286ee653ebbd942a50717bd98aadb3a6ae963c5e6bed273b0432521` |
+| `v4/src/run.ts` | `0c405ee69bb455a002117ee8cf93fb31b88049a1b491b7a2a0a5e302c02a253d` |
+| `v4/src/score.test.ts` | `7216f9db7553be4f816d59ba842a235c36bc1f7b6a0a3eaadb1fde42e5d3343b` |
+| `v4/src/score.ts` | `77c1980bc9cb7f733cee3def330fac777f70ca5dd475eed7242908ebf7be8702` |
+| `v4/src/tools.test.ts` | `4deb74d4f15e13b04944cb5d8aa22340894905d007cbff8c5aca63f3b85bb06c` |
+| `v4/src/tools.ts` | `ffdb3a748150338c3851131c7a54088973173706dc8bf787ff3dd595f091229a` |
+| `v4/tsconfig.json` | `f5341fee9a82dbb323df727fcf12c4922612cc94d313f5298194f1b6fba7b806` |
+| `v3/CRITERIA.md` | `9aba7f33ce4a36c31eea5f08b820810c686dc24a2e75936fa938f9a954a35e95` |
+| `v3/results/ollama-qwen3-4b-instruct/2026-11-14T14-12-46-951Z-summary.md` | `47f8fb13458bd6fcb1ffb5b99f44797f8f7e1e0eb5a9c855512e7ec59706249b` |
+| `v3/results/ollama-qwen3-4b-instruct/2026-11-14T14-12-46-951Z.jsonl` | `21b77f4024a763f2cc6b42c45c1599f88e89214acc2731b5c4faee237c7f0334` |
+| `v3/results/ollama-qwen3-8b/2026-11-14T14-15-14-181Z-summary.md` | `2598489115b324818d65c342280ed8ce55c1895ad2c840f43e34b81571f12d4d` |
+| `v3/results/ollama-qwen3-8b/2026-11-14T14-15-14-181Z.jsonl` | `46cada09adf1ef271fdbfcc91d2c39333dbd0d7db35620b95fc8b974bc116558` |
+| `v3/src/phase2.ts` | `0d9594b17056210ede32288e3713b25e85a74bd5a7475ed1ea350c916d1b0cbf` |
+| `v3/src/record.ts` | `9ded4ba9a245b45003cd53ffa43f11f2d490501015c00cd43cc741f55d4ecdb0` |
+| `v3/src/run.ts` | `55e035f1d6097230b527a08ad3947b622b4dad7f13ef084183c19ac479005741` |
+| `v3/src/score.ts` | `5a4b20df823b1ad797dcffef05382d4ade8a223a2dcb3908c23919e88752355a` |
+| `v3/src/test-helpers.ts` | `94a26a2f9119e378d3d29aadc3b5618213031fed07b6704716d8080573fcee5d` |
+| `v3/src/transcript.ts` | `54782ae2ce0191f3b68ae89a65d1b363f070f61fc36c495d005eeee2e540d69f` |
+| `v2/src/leak.ts` | `88821444d5f250fbbd148c3933fb5728ca561d5e20327320e9929b8983b42213` |
+| `v2/src/prompt.ts` | `00e77722405ef730e2d7ccee78e956692e7c26057b6a1096179f380bb1df7214` |
+| `v2/src/protocol.ts` | `d4012db65e215f7f75b0820a8249de40956501133a278231901dc0a27eabb6ba` |
+| `v2/src/record.ts` | `c1d51d4474331eb76a98d08a7a11ca0f23473d72bdb01689826d36867259eb85` |
+| `v2/src/run.ts` | `5d3504c7ae4a9bb4b278129efe11f3448ed9734013782c72215b2ec18afa7527` |
+| `v2/src/score.ts` | `00a90e712c18ad1ee30a006eed81d362c7ee531e2f4a4feb38b112007dc7e13e` |
+| `src/cases-schema.ts` | `00f691ef2a5d7fa5e9e4f37bbc6ebacd13f387dbd3b6fd9a352f3f00821eb651` |
+| `src/check-cases.ts` | `51823dc7504ae3eb52da55c8df30c1cd70347405c652264a41dc9caacdd4c504` |
+| `src/fixtures.ts` | `86d119a67a973c93b0be7511b9372771b462c156eb54b53d35dff62d530d1a30` |
+| `src/models.ts` | `3c6325afd35001c74c9e5cee5de156db6eb0273d817a6afc5defa9a9412fcb13` |
+| `src/prompt.ts` | `2d9054d371d893e2c4deca6b91f82e3a6d7ddc0ecc7a811da8ad382937d84638` |
+| `src/run-record.ts` | `cc84367577b246570bc624f799c233db41bf7b0cfecf205d80f57c35f1570aad` |
+| `src/run.ts` | `76ff80eed6f0980cd9d1596590b6589af26b1b03c4eaf6796e5bd7aaddd90472` |
+| `src/schema.ts` | `c8e63fb1037a4c5bdb2d0d47a6a82c891110e6ddd5097aa2aefa173876be30ee` |
+| `src/score.ts` | `69289cfab64a150bad79036a13ae457fd796d93a8fbe9aa1cbbf3ff09d6d4719` |
+| `src/tools.ts` | `5e62f88c67469dd950c9fdb3a5abedd43fe657397a35a7b1150753ea67de4b6f` |
+| `.npmrc` | `5930232d94754837f39a55b068e2deeefd8f1adea88bd8c55e205f0e832bb32f` |
+| `cases.json` | `1be41676436e7ad525daebfe664d8aae3f8f433a18df5b5c79af9146e14db8b1` |
+| `package-lock.json` | `45dbd0a87570ac072dc55f88c7691b342cec044537e1739dc695111a57b96d41` |
+| `package.json` | `bad59360700c962a51defbf1fb16c3a453695958871094e2a5a18e8373d9df3c` |
+| `tsconfig.json` | `c9c48ca2a99f1e1f1c5dfe169ab7622d47f0ff0a117d74c87ad00e067168cfc4` |
