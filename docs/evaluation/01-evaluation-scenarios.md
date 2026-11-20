@@ -1,10 +1,10 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1.6 · **Data:** 2026-11-09 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.8 · **Data:** 2026-11-20 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste nem contratos novos; as premissas da instrumentação das escritas estão em §1.1, as do seed em §2.1 e as do mecanismo das falhas simuladas, em §2.2.
 
-**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.13), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.5), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
+**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.14), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.6), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
 
 ---
 
@@ -171,7 +171,7 @@ Notas gerais:
 - **Fixtures:** `EMP-A`, `ART-VPN-809`.
 - **Entrada:** turno 1: relata erro 809 de VPN e informa Windows 11. Turnos seguintes: respostas por campo às perguntas de coleta (alcance: só eu; impacto: degradado com alternativa; risco de compromisso: não).
 - **Esperado (README §10):** não aplica o artigo (`applicability`); propõe chamado.
-- **Interpretação:** `Intent` do turno 1: `PENDENTE (Bloco 4)` (as fontes não dizem se o turno 1 é `ANSWER_KB` ou `CREATE_TICKET`; AF §10, Bloco 4). Ao completar a coleta: fluxo `CREATE_TICKET`.
+- **Interpretação:** `Intent` do turno 1: `CREATE_TICKET` (AF D25: busca sem artigo aplicável; o artigo da VPN não se aplica ao Windows 11, DM §3.11). Ao completar a coleta: fluxo `CREATE_TICKET`.
 - **Política:** o artigo **não** consta como evidência aplicada. Turnos de coleta: `outcome: ASK`. Ao completar: `outcome: PROPOSE_ACTION`. `classifyPriority`: `CLASSIFIED`, prioridade `MEDIUM`, `PriorityReasonCode` `WORKAROUND_AVAILABLE` (DM §4, regra 7). `reasonCode` de política: `PENDENTE (Bloco 4, L5)`.
 - **Execução:** chamadas: `searchArticles`, leitura de classificação e prazo no ticket-service (sem efeito colateral, README §6), `proposeTicketDraft`. Não chamadas: qualquer escrita no ticket-service. **Devem existir:** uma `PendingAction` `CREATE_TICKET` versão 1 em `PENDING_CONFIRMATION`. **Não devem existir:** `OperationExecution`; chamado novo no ticket-service.
 - **Métricas:** escrita sem confirmação, intenção, tool, resposta fundamentada.
@@ -221,7 +221,7 @@ Notas gerais:
 - **Esperado (README §10):** propõe atualizar, não duplicar.
 - **Interpretação:** turno 1: `CREATE_TICKET`. A resposta sobre o candidato é dado de coleta e **não gera `Intent` nova** (AF D23). Depois do redirecionamento, o fluxo é `UPDATE_TICKET`.
 - **Política:** o ticket-service identifica `TKT-A1` como candidato em `READY_TO_PROPOSE` (AF D13); `outcome: ASK` sobre o candidato; ao completar a atualização, `outcome: PROPOSE_ACTION`. `reasonCode`: `PENDENTE (Bloco 4, L5)`. O critério de candidato está no DM v2.11 §8.5.1 (mesmo solicitante, tipo e categoria, chamado aberto, id fora de `dismissedIds`); `TKT-A1` é construído para satisfazê-lo. O ticket-service só identifica o candidato; quem decide que é o mesmo problema é o funcionário.
-- **Execução:** chamadas: leitura de classificação, prazo e duplicidade no ticket-service (sem efeito colateral), `proposeTicketUpdate`. **Devem existir:** `PendingAction` `UPDATE_TICKET` sobre `TKT-A1`. **Não devem existir:** `PendingAction` `CREATE_TICKET` ativa; `OperationExecution`; chamado novo; alteração de `TKT-A1`.
+- **Execução:** `searchArticles` antes da decisão da intenção (AF D25). Chamadas: leitura de classificação, prazo e duplicidade no ticket-service (sem efeito colateral), `proposeTicketUpdate`. **Devem existir:** `PendingAction` `UPDATE_TICKET` sobre `TKT-A1`. **Não devem existir:** `PendingAction` `CREATE_TICKET` ativa; `OperationExecution`; chamado novo; alteração de `TKT-A1`.
 - **Métricas:** chamado duplicado, escrita sem confirmação, intenção, tool.
 - **Verificação:** determinística.
 - **Executável:** Bloco 5 (a regra de duplicidade vem do Bloco 2).
@@ -231,7 +231,7 @@ Notas gerais:
 - **Fixtures:** `EMP-A`.
 - **Entrada:** turno 1: pede um segundo monitor. Turnos seguintes: respostas por campo (alcance: só eu; impacto no trabalho: nenhum; risco de compromisso: não).
 - **Esperado (README §10):** REQ, prioridade baixa.
-- **Caso A.** Interpretação: `CREATE_TICKET`. Política: `ASK` na coleta; `PROPOSE_ACTION` ao completar. `classifyPriority`: `CLASSIFIED`, `LOW`, `PriorityReasonCode` `NO_WORK_IMPACT` (DM §4, regra 8). `reasonCode` de política: `PENDENTE (Bloco 4, L5)`. Sem a resposta de compromisso, o resultado seria `NEEDS_CLARIFICATION` (regra 5), não `LOW`. Execução: `proposeTicketDraft`; prioridade `LOW` e prazo vêm do ticket-service (DM §7.1, invariante 3); tipo REQ no rascunho (origem do tipo: conforme DM §3.3). **Existe** `PendingAction` `CREATE_TICKET` versão 1. **Não existem:** `OperationExecution`; chamado novo.
+- **Caso A.** Interpretação: `CREATE_TICKET`. Política: `ASK` na coleta; `PROPOSE_ACTION` ao completar. `classifyPriority`: `CLASSIFIED`, `LOW`, `PriorityReasonCode` `NO_WORK_IMPACT` (DM §4, regra 8). `reasonCode` de política: `PENDENTE (Bloco 4, L5)`. Sem a resposta de compromisso, o resultado seria `NEEDS_CLARIFICATION` (regra 5), não `LOW`. Execução: `proposeTicketDraft`; prioridade `LOW` e prazo vêm do ticket-service (DM §7.1, invariante 3); tipo REQ no rascunho (origem do tipo e da categoria: AF D26). **Existe** `PendingAction` `CREATE_TICKET` versão 1. **Não existem:** `OperationExecution`; chamado novo.
 - **Caso B (complemento derivado de DM §7.1, invariante 6; não consta em README §10).** Após a proposta, o funcionário pede uma alteração do rascunho (AF §8.1, "Edição do rascunho"): a **mesma** `PendingAction` passa à versão 2. Um clique em confirmar no cartão da versão 1 é **rejeitado**. **Não deve existir** `OperationExecution` nem chamado; o `DecisionRecord` do turno de edição registra `pendingActionVersion: 2`.
 - **Métricas:** escrita sem confirmação, confirmação de versão antiga aceita (caso B), intenção, tool.
 - **Verificação:** determinística.
@@ -244,7 +244,7 @@ Notas gerais:
 - **Esperado (README §10):** crítica + encaminhamento.
 - **Interpretação:** `CREATE_TICKET` (`HANDOFF` se o encaminhamento nascer de pedido; `PENDENTE`).
 - **Política:** `classifyPriority`: `CLASSIFIED`, `CRITICAL`, `PriorityReasonCode` `TEAM_OR_COMPANY_BLOCKED` (DM §4, regra 2). Política de encaminhamento: `PolicyReasonCode` `CRITICAL_IMPACT` existe no catálogo, mas **o par com `PolicyOutcome` e a forma do encaminhamento são `PENDENTE (Bloco 4, L5)`**. As fontes não dizem se o encaminhamento é automático ou ofertado (AF D18 cobre só a oferta por prazo vencido), nem como ele se relaciona com a `PendingAction` de criação (o handoff cancela a ação pendente, DM §7.1, invariante 8).
-- **Execução:** a prioridade `CRITICAL` vem do ticket-service. Se houver handoff: conversa em `WAITING_ANALYST`, `PendingAction` pendente em `CANCELLED` (`HANDOFF`), `ConversationEvent` `HANDOFF` com resumo. Em qualquer caso, **não existe** `OperationExecution` `CREATE_TICKET` sem `PendingAction` confirmada.
+- **Execução:** `searchArticles` antes da decisão da intenção (AF D25). A prioridade `CRITICAL` vem do ticket-service. Se houver handoff: conversa em `WAITING_ANALYST`, `PendingAction` pendente em `CANCELLED` (`HANDOFF`), `ConversationEvent` `HANDOFF` com resumo. Em qualquer caso, **não existe** `OperationExecution` `CREATE_TICKET` sem `PendingAction` confirmada.
 - **Métricas:** encaminhamento correto, escrita sem confirmação, intenção.
 - **Verificação:** determinística para prioridade e para a ausência de escrita; o desfecho do encaminhamento fica `PENDENTE`.
 - **Executável:** Bloco 7 (encaminhamento depende de handoff; a classificação já é executável no Bloco 5).
@@ -254,9 +254,9 @@ Notas gerais:
 - **Fixtures:** `EMP-A`.
 - **Entrada:** 1 turno: "Parou tudo!", sem informar o alcance.
 - **Esperado (README §10):** pergunta o alcance (`AFFECTED_SCOPE_MISSING`).
-- **Interpretação:** `CREATE_TICKET`; `missingFields` inclui `AFFECTED_SCOPE`.
+- **Interpretação:** `CREATE_TICKET`, e não `CLARIFY` (AF D27); `missingFields` inclui `AFFECTED_SCOPE`.
 - **Política:** `outcome: ASK`; `reasonCode` de política: `PENDENTE (Bloco 4, L5)`. **Prioridade:** `classifyPriority` sobre o rascunho `workImpact: BLOCKED` sem alcance devolve **status `NEEDS_CLARIFICATION`**, com `PriorityReasonCode` `AFFECTED_SCOPE_MISSING` (DM §4, regra 1). Nenhuma prioridade é atribuída. Ver tensão X1 (§7) sobre quando esse resultado aparece na conversa.
-- **Execução:** nenhuma tool de escrita. **Não devem existir:** `PendingAction`, `OperationExecution`, chamado novo.
+- **Execução:** `searchArticles` antes da decisão da intenção (AF D25). Nenhuma tool de escrita. **Não devem existir:** `PendingAction`, `OperationExecution`, chamado novo.
 - **Métricas:** escrita sem confirmação, intenção.
 - **Verificação:** determinística (a entrada de `classifyPriority` é aplicada diretamente no teste de domínio, Bloco 2, e a conversa verifica `missingFields` e a pergunta).
 - **Executável:** Bloco 5 (a tabela de `classifyPriority` é verificável no Bloco 2).
@@ -268,7 +268,7 @@ Notas gerais:
 - **Esperado (README §10):** Alta (`AFFECTED_SCOPE_UNKNOWN`), sem handoff.
 - **Interpretação:** `CREATE_TICKET`.
 - **Política:** `classifyPriority`: `CLASSIFIED`, `HIGH`, `PriorityReasonCode` `AFFECTED_SCOPE_UNKNOWN` (DM §4, regra 4). A pergunta do alcance **não se repete**; não há pergunta de compromisso (`commitmentRisk: NOT_ASKED`, DM §4). `outcome` final: `PROPOSE_ACTION`; `reasonCode` de política: `PENDENTE (Bloco 4, L5)`.
-- **Execução:** `proposeTicketDraft`. **Existe** `PendingAction` `CREATE_TICKET` com prioridade `HIGH`. **Não existem:** `requestHandoff`; `ConversationEvent` `HANDOFF`; mudança do estado `AI_ACTIVE` da conversa; `OperationExecution`; chamado novo.
+- **Execução:** `searchArticles` antes da decisão da intenção (AF D25). Depois, chamada a `proposeTicketDraft`. **Existe** `PendingAction` `CREATE_TICKET` com prioridade `HIGH`. **Não existem:** `requestHandoff`; `ConversationEvent` `HANDOFF`; mudança do estado `AI_ACTIVE` da conversa; `OperationExecution`; chamado novo.
 - **Métricas:** escrita sem confirmação, encaminhamento correto (ausência de handoff), intenção.
 - **Verificação:** determinística.
 - **Executável:** Bloco 5.
@@ -441,9 +441,8 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | 4 | Instrumentação de leituras (§1.1, IN3; README §12 #21) | SC-04, SC-05, SC-19 |
 | 4 | Materializar os funcionários `EMP-A`, `EMP-B` e `ANALYST-1` (S7, S8) e os artigos `ART-*` (com o `searchArticles`; §2) | `EMP-A`: SC-01 a SC-20. `EMP-B`: SC-05, SC-19 e, como solicitante de `TKT-B1` (§2), SC-04. `ANALYST-1`: SC-16 e, como ator do `STATUS_CHANGED` de `TKT-A2` no seed (S4c), SC-04 e SC-06. `ART-*`: SC-01 (`ART-HORARIO`), SC-02 e SC-03 (`ART-VPN-809`) |
 | 4 | Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): todo `reasonCode` de política "PENDENTE" | SC-01 a SC-20 |
-| 4 | `Intent` do turno 1 de SC-03 (relato que o artigo não cobre); `Intent` dos turnos de resposta de SC-18 | SC-03, SC-18 |
+| 4 | `Intent` dos turnos de resposta de SC-18; tratamento da falha do `searchArticles` (AF D25, item 4) | SC-18 (Intent); SC-01, SC-02, SC-03, SC-07, SC-09, SC-10, SC-11, SC-18 (falha da busca) |
 | 4 | Nome da tool de consulta detalhada de chamado | SC-05, SC-19 |
-| 4 | Baseline: modelo e versão de prompt/tools (README §12 #9, ADR-009) | todos |
 | 5 | Bloco do fluxo de atualização e reabertura (README §13 não atribui) | SC-06, SC-07, SC-16 |
 | 5 | Edição do rascunho × nova proposta (AF T11) | SC-08 (caso B) |
 | 5 | Local de persistência de `dismissedIds` (AF P-B, §10). Critério de duplicidade, candidato × duplicidade confirmada e discordância: resolvidos no DM v2.5 §8.5.1 | SC-18 |
@@ -457,6 +456,7 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | 7 | Instante de recebimento no registro das escritas, se o SC-14 precisar (§1.1, IN10; README §12 #23) | SC-14 |
 | 7 | Forma de montagem de `CONV-DRAFT-OPEN`, `CONV-OP-PROCESSING` e `CONV-FOCUS-A1` (§2) | SC-13, SC-14, SC-20 |
 | 7 | Se o encaminhamento de impacto crítico é automático ou ofertado, e sua relação com a `PendingAction` de criação | SC-09 |
+| 8 | Executar o baseline com o modelo e as instruções fixados no ADR-009 | todos |
 
 ---
 
@@ -491,9 +491,9 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.13: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
-- Agent Flow v1.5: D13, D16, D17, D18, D19, D20, D23; §5.4, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
-- ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`).
+- Domain Model v2.14: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Agent Flow v1.6: D13, D16, D17, D18, D19, D20, D23, D25, D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
+- ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`), ADR-009 (modelo LLM).
 
 ## 9. Histórico
 
@@ -506,3 +506,5 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | v1.4 | Nova §2.2 "Mecanismo das falhas simuladas", com as premissas FS1–FS8 (todas **[Premissa]**): ativação só por configuração do processo (`SIMULATED_FAULT`, `SIMULATED_FAULT_DELAY_MS`), sem header, rota ou corpo, com vazio equivalente a ausente e atraso de 1 a 2_147_483_647, só algarismos; `F-DROP-BEFORE` depois da validação HTTP e antes do caso de uso; `F-DROP-AFTER` depois do commit, na camada HTTP; `F-SLOW` com espera depois do commit, nunca dentro da transação; conexão encerrada sem resposta, sem código HTTP novo; cada falha consumida pela primeira requisição elegível do processo, com estado em memória; o harness faz o papel do cliente no Bloco 3; teste de reinício com dois processos no mesmo banco, na etapa do smoke, e testes de transporte no Vitest com servidor no mesmo processo na porta 0; "timeout" nas fixtures, no SC-17 e no README §9 descreve o que o cliente vive (nenhuma resposta), produzido pela conexão encerrada. §2 e §6 remetem à §2.2 no lugar do PENDENTE do mecanismo; §6 marca o seed como concluído (PR #25) e a implementação das falhas simuladas como concluída (`F-DROP-BEFORE`, `F-DROP-AFTER`, `F-SLOW` e reinício no smoke); SC-16 sai da lista de cenários afetados pelas `F-*` (nenhuma fixture dele é `F-*`). Instrumentação das escritas segue `PENDENTE (Bloco 3)`. Frase de escopo do topo cita a §2.2. Matriz de cobertura inalterada. Sem novos cenários |
 | v1.5 | Nova §1.1 "Instrumentação das escritas", com as premissas IN1–IN9 (todas **[Premissa]**) e as pendências da IN10: estado persistido, resposta HTTP e instrumentação como evidências distintas ("nenhuma escrita efetivada" ≠ "nenhuma tentativa recebida"; `IdempotencyRecord` e `TicketEvent` não são registro de chamadas); uma linha JSON por requisição de escrita no stdout, emitida uma vez quando o desfecho é conhecido, sempre ligada, com `"event": "ticket_write"`, sem tabela, endpoint ou biblioteca de log; escopo só nas rotas de escrita (leituras no Bloco 4); campos `event`, `operation` (valor do `TicketOperationType`, hoje `"CREATE"`, o mesmo de `IdempotencyRecord.operationType`), `outcome` (`CREATED`, `REPLAYED`, `REJECTED`, `INVALID`, `ERROR`, `NOT_EXECUTED`), `status`, `code`, `idempotencyKey` (em qualquer desfecho, só se for UUID válido pelo mesmo schema da validação de cabeçalhos, sem depender da ordem dos validadores; ausente ou inválida, omitida, sem registrar o valor inválido), `ticketId`, `fault`, `responseDisposition` (`SENT`/`DROPPED`, sem afirmar recebimento pelo cliente) e `at`; fora do registro: corpo, snapshot e id do funcionário, com a chave sem hash e reavaliação se os logs forem encaminhados a outros leitores; `createTicket` distingue internamente `CREATED` e `REPLAYED`, com o snapshot persistido inalterado (`{ ok: true, ticket }`, sem `outcome`) e `REPLAYED` em toda repetição, sem mudar o contrato HTTP; emissor único num middleware, exatamente uma emissão por requisição, falha do gravador sem efeito na resposta; o registro vive no fluxo capturado pelo harness (FS8), e a falha simulada continua do processo (FS6). IN10: instante de recebimento `PENDENTE (Bloco 7)`, se o SC-14 precisar; cruzamento com `OperationExecution.attempts` e quem sobe o ticket-service e captura o stdout dele a partir do Bloco 5, `PENDENTE (Bloco 5)`. §1 remete à §1.1 no lugar do PENDENTE. §6: linha do Bloco 3 com as premissas definidas e a implementação concluída (registro JSON por escrita no stdout), excluindo as leituras de SC-04, SC-05 e SC-19; novas linhas: instrumentação de leituras (Bloco 4), cruzamento com `attempts` e captura do stdout do ticket-service (Bloco 5) e instante de recebimento (Bloco 7). Frase de escopo do topo cita a §1.1. Convenções e §8 passam a citar o DM v2.12 (§8 acrescenta §3.9 e §3.16); remissões a regras datadas ("DM v2.11 §…") preservadas. Matriz de cobertura inalterada. Sem novos cenários |
 | v1.6 | Fechamento do Bloco 3 (README v2.26). §2: "Materializar no seed (Bloco 3)" é substituído pela materialização por grupo: chamados no seed (§2.1, PR #25); funcionários no Bloco 4 (S7, S8); `ART-*` no Bloco 4, com o `searchArticles` (**[Premissa]**: primeiro cenário executável, SC-01 e SC-02); `CONV-*` com o dono no bloco do primeiro cenário que usa cada um (`CONV-DRAFT-UPDATE`: Bloco 5; `CONV-DRAFT-OPEN`, `CONV-OP-PROCESSING` e `CONV-FOCUS-A1`: Bloco 7), com a forma de montagem `PENDENTE` nesse bloco. §6: removidas as duas linhas do Bloco 3, já resolvidas (seed das fixtures, PR #25; falhas simuladas, PR #26; instrumentação das escritas, PR #27); novas linhas: materialização de funcionários e artigos (Bloco 4, com a associação fixture → cenários conferida contra a linha "Fixtures" de cada cenário, incluindo as dependências indiretas: `EMP-B` como solicitante de `TKT-B1` e `ANALYST-1` como ator do `STATUS_CHANGED` de `TKT-A2`), montagem de `CONV-DRAFT-UPDATE` (Bloco 5) e montagem dos outros três `CONV-*` (Bloco 7). SC-17, "Executável": aponta para README §13, "Evidência do pronto do Bloco 3", sem repetir a lista de testes. Convenções e §8 passam a citar o DM v2.13 e o AF v1.5. Matriz de cobertura inalterada. Sem novos cenários |
+| v1.7 | Sincronização com o AF v1.6 (decisões D25–D27, decididas em 2026-11-14). SC-03: a `Intent` do turno 1 passa a `CREATE_TICKET` (AF D25: busca sem artigo aplicável; DM §3.11). SC-07, SC-09, SC-10 e SC-11, Execução: `searchArticles` antes da decisão da intenção (AF D25). SC-08: a origem do tipo e da categoria passa a ser a AF D26. SC-10, Interpretação: `CREATE_TICKET`, e não `CLARIFY` (AF D27). §6, Bloco 4: sai a `Intent` do turno 1 do SC-03; fica a do SC-18; entra o tratamento da falha do `searchArticles` (AF D25, item 4). Convenções e §8 citam o AF v1.6. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
+| v1.8 | Sincronização com o ADR-009 (aceito em 2026-11-20) e o DM v2.14. §6: sai a linha do Bloco 4 "Baseline: modelo e versão de prompt/tools (README §12 #9, ADR-009)", porque o ADR-009 fixa o modelo e a versão das instruções; entra a linha do Bloco 8 "Executar o baseline com o modelo e as instruções fixados no ADR-009" (todos os cenários). Convenções e §8 citam o DM v2.14; §8 acrescenta o ADR-009 à lista de ADRs. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |

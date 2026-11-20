@@ -1,6 +1,6 @@
 # 03 — Agent Flow
 
-> Artefato do Bloco 1, **versão 1.5** (ver seção 13, Histórico de versões).
+> Artefato do Bloco 1, **versão 1.6** (ver seção 13, Histórico de versões).
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles: define como o `InteractionContext` se move durante o atendimento (resolve a lacuna L2) e **não redefine** regras de `Conversation`, `PendingAction` ou `OperationExecution`.
 >
@@ -15,7 +15,7 @@
 | `§N.N` (sem prefixo) | Seção **deste** documento                                     |
 | `DM §N.N`            | Seção do `01-domain-model.md`                                 |
 | `README §N.N`        | Seção do `README.md`                                          |
-| `D1` a `D24`         | Decisões registradas na seção 1 (D1–D8 na v1; D9–D24 na v1.1) |
+| `D1` a `D27`         | Decisões registradas na seção 1 (D1–D8 na v1; D9–D24 na v1.1; D25–D27 na v1.6) |
 
 Prosa em português; identificadores, tipos e valores de enum em inglês.
 
@@ -24,7 +24,7 @@ Prosa em português; identificadores, tipos e valores de enum em inglês.
 | Rótulo                 | Significado                                                                                                                                                     |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **[PRD]**              | Regra vinda do PRD, como o README ou o DM a rotulam.                                                                                                            |
-| **[Premissa]**         | Decisão do projeto para completar o PRD. Aqui, as decisões D1–D24 são **[Premissa]**: foram tomadas pelo autor do projeto para este documento e não vêm do PRD. |
+| **[Premissa]**         | Decisão do projeto para completar o PRD. Aqui, as decisões D1–D27 são **[Premissa]**: foram tomadas pelo autor do projeto para este documento e não vêm do PRD. |
 | **[ADR]**              | Decisão arquitetural aceita (README §11).                                                                                                                       |
 | **[Contrato]**         | Contrato conceitual do README ou do DM.                                                                                                                         |
 | **PENDENTE (Bloco X)** | Lacuna conhecida, com o bloco em que será resolvida.                                                                                                            |
@@ -38,7 +38,7 @@ O README descreve as Telas 2 e 3 apenas em uma linha cada (README §3):
 - Tela 2 — Chat: abertura de chamado (perguntas, prioridade com prazo, rascunho para confirmação).
 - Tela 3 — Chat: consulta (seleção de chamado, prazo vencido, oferta de analista).
 
-O protótipo (Pencil) é a fonte visual e não faz parte das fontes lidas para este documento. Por isso os percursos das seções 8 e 9 seguem exatamente essas linhas e as decisões D1–D24; todo detalhe além disso (ordem das perguntas, texto, cartões) é PENDENTE.
+O protótipo (Pencil) é a fonte visual e não faz parte das fontes lidas para este documento. Por isso os percursos das seções 8 e 9 seguem exatamente essas linhas e as decisões D1–D27; todo detalhe além disso (ordem das perguntas, texto, cartões) é PENDENTE.
 
 ---
 
@@ -72,6 +72,9 @@ Todas **[Premissa]**. Cada uma é detalhada na seção indicada. A coluna "Resol
 | D22 | O registro de interação (`CREATED`, `UPDATED`, `REOPENED`; DM §3.7) ocorre quando a operação conclui com sucesso, em qualquer estado da conversa. A atualização do foco por E5/E6 só ocorre com a conversa em `AI_ACTIVE`; fora dela o registro acontece e o foco não muda.                                 | §6         | T14 (preserva D12)              |
 | D23 | A resposta do funcionário sobre o candidato a duplicado é um dado de coleta: o retorno a `COLLECTING_DETAILS` respeita D3 (há dado pendente); o LLM interpreta durante a coleta e o backend aplica o resultado e redireciona (D1, D7). Não há nova `Intent`; detalhes de interpretação e extração: Bloco 4. | §5.4       | T15                             |
 | D24 | Ao aceitar complementar o candidato, o `collectedData` da criação é descartado na transição para `UPDATE_TICKET`; o histórico (mensagens, `DecisionRecord`) é preservado; a descrição original não é copiada para `additionalInformation` (D7: revisão e coleta explícita).                                 | §5.4, §5.7 | P-B (em parte, complementa D13) |
+| D25 | Relato de falha nova: central de ajuda primeiro | §8.1 | — (Cenários §6: Intent do turno 1 do SC-03) |
+| D26 | Quem prepara cada campo do rascunho | §8.1 | — (SC-08: origem do tipo) |
+| D27 | Quando a interpretação usa CLARIFY | §5.8 | — (DM §3.12: CLARIFY sem semântica) |
 
 ---
 
@@ -270,6 +273,19 @@ A coluna "Efeito no foco" resume a tabela de §6; em caso de divergência vale �
 
 ---
 
+### 5.8 Uso de CLARIFY na interpretação (D27)
+
+**D27. Quando a interpretação usa `CLARIFY`. [Premissa]** Decidido em 2026-11-14. O DM §3.12 lista `CLARIFY` no catálogo de `Intent` sem semântica. Esta decisão define o uso no fluxo e não altera o catálogo.
+
+- `CLARIFY` só quando não é possível identificar a intenção ou a operação que o funcionário quer. Quando a operação está identificada e faltam dados, a intenção é a da operação, e os dados faltantes vão para o `missingFields`.
+- A D27, isoladamente, não altera quais tools cada cenário permite. A busca prevista no SC-10 decorre da D25 (§8.1).
+- **Exemplos:**
+  - "Pode me ajudar?", sem outro contexto → `CLARIFY`.
+  - "Parou tudo!" → `CREATE_TICKET`, `workImpact` `BLOCKED`, `AFFECTED_SCOPE` no `missingFields` (SC-10). A busca vem primeiro (D25); `proposeTicketDraft` não é chamada enquanto o alcance falta.
+  - "Preciso de um segundo monitor." → `CREATE_TICKET`, com os campos descritivos preparados pelo agent (D26).
+
+---
+
 ## 6. Foco (targetTicketId) — D5
 
 **Definição.** `targetTicketId` é o **chamado em foco do atendimento**, não o assunto da última mensagem. Pode existir com o contexto em `NONE`/`IDLE` durante o atendimento normal (D9). **[Premissa]**
@@ -326,14 +342,52 @@ PENDENTE (Bloco 7): handoff durante `CREATE_TICKET` em `PROCESSING` ou `OUTCOME_
 
 ## 8. Percurso da Tela 2 — abertura de chamado
 
-Fonte: README §3 ("perguntas, prioridade com prazo, rascunho para confirmação") e D1–D24. Os campos de cada passo usam os contratos do DM (§3.5, §3.13, §3.14). "—" = não existe. `CTX` = `InteractionContext`; `PA` = `PendingAction`; `OE` = `OperationExecution`.
+Fonte: README §3 ("perguntas, prioridade com prazo, rascunho para confirmação") e D1–D27. Os campos de cada passo usam os contratos do DM (§3.5, §3.13, §3.14). "—" = não existe. `CTX` = `InteractionContext`; `PA` = `PendingAction`; `OE` = `OperationExecution`.
 
 ### 8.1 Caminho principal
+
+**D25. Relato de falha nova: central de ajuda primeiro. [Premissa]** Decidido em 2026-11-14. A resposta pela central de ajuda (`ANSWER_KB`) fica fora do percurso descrito neste documento (§0.3); esta decisão registra só quando o relato entra neste percurso.
+
+- **Escopo:** relato de uma falha nova, sem pedido expresso de chamado nem de transferência.
+- **Fora do escopo:**
+  - relato em que o funcionário retoma um problema já tratado em chamado, como "voltou a falhar" (SC-06): segue o fluxo de reabertura; quem propõe a reabertura continua PENDENTE (README §12 #12, Bloco 5). Um candidato a duplicado identificado depois pelo ticket-service (D13, SC-07) não tira o relato do escopo desta decisão;
+  - pedido expresso de falar com uma pessoa: `HANDOFF`, pela regra de transferência existente (Anexo A; SC-13), sem busca prévia;
+  - pedido expresso de chamado: `CREATE_TICKET`, haja ou não artigo aplicável.
+- Esta decisão não altera os demais gatilhos de transferência do Anexo A (casos críticos, chamados vencidos, falta de segurança; SC-09, X4).
+- **Regra:**
+  1. A busca na central de ajuda (`searchArticles`) acontece antes da decisão da intenção, inclusive quando o relato traz pouca informação (SC-10). Esta decisão não define quem garante a busca (o modelo ou o código).
+  2. Busca concluída com artigo aplicável: a intenção é `ANSWER_KB`. Artigo aplicável é o que trata do problema relatado e passa o filtro de `applicability` (DM §3.11). O agent responde pelo artigo e oferece abrir um chamado se a orientação não resolver. Nenhum chamado é aberto nem proposto nesse turno.
+  3. Busca concluída sem artigo aplicável: a intenção é `CREATE_TICKET`, e a coleta do rascunho começa (passo 1 abaixo).
+  4. Busca que falhou (erro da tool, timeout, erro do provider) não equivale a "sem artigo aplicável" e não leva a `CREATE_TICKET`. O tratamento dessa falha fica PENDENTE (P-G; Bloco 4; Cenários §6).
+- **Exemplos:** SC-02 → `ANSWER_KB`. SC-03, turno 1 (o artigo da VPN não se aplica ao Windows 11, DM §3.11) → `CREATE_TICKET`. SC-10 → busca sem artigo aplicável, `CREATE_TICKET`. "Minha VPN caiu e quero falar com um atendente" → `HANDOFF`.
+- **Esclarecido em 2026-11-16:** o DM §3.11 define só a aplicabilidade por sistema operacional. Aqui, "aplicável" exige também que o artigo trate do problema relatado. Um artigo devolvido pela busca que não trata do problema (por exemplo, um artigo sobre horário de atendimento devolvido para um relato de falha) conta como "sem artigo aplicável". Esta decisão não define quem julga a pertinência (o modelo ou o código).
+
+**D26. Quem prepara cada campo do rascunho. [Premissa]** Decidido em 2026-11-14.
+
+- **Campos descritivos (título, descrição, tipo e categoria):**
+  - o agent redige ou classifica a partir da conversa, sem perguntar, quando ela traz evidência suficiente;
+  - título e descrição não acrescentam fatos que a conversa não sustente;
+  - o tipo segue o Anexo A: `REQ` para pedido de acesso, equipamento ou software; `INC` quando algo parou ou não funciona;
+  - classificação aprovada nesta decisão, sem fonte anterior no domínio: pedido de monitor → categoria `HARDWARE`;
+  - sem evidência suficiente, o campo entra no `missingFields` da interpretação e é perguntado;
+  - o funcionário revisa esses campos no rascunho antes de confirmar.
+- **Campos de impacto (`affectedScope`, `workImpact` e `commitmentRisk`):**
+  - só o que o funcionário declarou. Uma declaração é normalizada para o catálogo quando responde de forma direta e sem ambiguidade ao campo correspondente;
+  - um campo de impacto nunca é deduzido de outro;
+  - o que faltar entra no `missingFields` da interpretação e é perguntado. `commitmentRisk` é dispensado com `workImpact` `BLOCKED` (DM §4).
+- Esta decisão trata do `missingFields` da interpretação (DM §3.12, catálogo do DM §3.15). Não muda o `missingFields` devolvido pela `classifyPriority` (DM §4, coleta progressiva).
+- Prioridade e prazo nunca vêm do agent (DM §7.1, invariante 3). `proposeTicketDraft` só é chamada com o rascunho completo, e o backend valida a completude (D3). Propor não cria o chamado (DM §7.1, invariante 5).
+- PENDENTE (P-H; lacuna anterior a esta decisão, §2 × DM §3.12): onde título, descrição e tipo ficam antes da proposta. O `DecisionRecord.entities` tem só `problem`, `category`, `operatingSystem` e `impact`.
+- **Exemplos:**
+  - "Preciso de um segundo monitor." → `REQ` e `HARDWARE`, sem perguntar.
+  - "Só para mim.", em resposta à pergunta do alcance → `affectedScope` `SELF`.
+  - "Parou tudo!" → `workImpact` `BLOCKED` (SC-10). O alcance continua desconhecido: a frase não permite concluir `TEAM` nem `COMPANY`.
+  - "O equipamento parou para mim" (SC-11) → o alcance continua a ser perguntado: "para mim" descreve o impacto pessoal, não o alcance da interrupção.
 
 | #   | Passo                                                                                                                                                                                                                                                            | CTX (`flow`/`stage`; foco)                                                                                                      | PA                                                | OE                                                                                                                                                             |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0   | Antes de começar (conversa `AI_ACTIVE`). Se existir `OE` não terminal, o início da criação é bloqueado e o agent informa a operação em andamento (D16)                                                                                                           | `NONE`/`IDLE`; foco: o que houver                                                                                               | —                                                 | —                                                                                                                                                              |
-| 1   | O funcionário descreve o problema. `DecisionRecord`: `intent: CREATE_TICKET`                                                                                                                                                                                     | `CREATE_TICKET`/`COLLECTING_DETAILS`; foco **limpo** (E3). `collectedData` recebe o que o backend validou (D11)                 | —                                                 | —                                                                                                                                                              |
+| 1   | O funcionário descreve o problema. Para relatos de falha nova, aplica-se a D25 antes de definir a intenção. Quando o fluxo resultar em coleta de chamado, o `DecisionRecord` recebe `intent: CREATE_TICKET`                                                                                                                                                                                     | `CREATE_TICKET`/`COLLECTING_DETAILS`; foco **limpo** (E3). `collectedData` recebe o que o backend validou (D11)                 | —                                                 | —                                                                                                                                                              |
 | 2   | O agent faz **perguntas** para o que falta (`missingFields`, DM §3.15). Cada turno: `policy.outcome: ASK`                                                                                                                                                        | Permanece `CREATE_TICKET`/`COLLECTING_DETAILS`; `collectedData` evolui (título, descrição, tipo, categoria, `impactAssessment`) | —                                                 | —                                                                                                                                                              |
 | 3   | O backend considera o rascunho completo                                                                                                                                                                                                                          | `CREATE_TICKET`/`READY_TO_PROPOSE` (transitório, §5.2)                                                                          | —                                                 | —                                                                                                                                                              |
 | 4   | O backend pede ao ticket-service a **classificação e o prazo** (leitura, sem efeito colateral; README §6, DM §4) **e a verificação de duplicidade** (D13). `NEEDS_CLARIFICATION` → volta ao passo 2 com os `missingFields`. Candidato a duplicado → variante 8.2 | `READY_TO_PROPOSE` até a resposta; se faltar dado: `COLLECTING_DETAILS`                                                         | —                                                 | —                                                                                                                                                              |
@@ -370,7 +424,7 @@ Recusar a atualização (D-3c) nunca autoriza criar duplicata.
 
 ## 9. Percurso da Tela 3 — consulta
 
-Fonte: README §3 ("seleção de chamado, prazo vencido, oferta de analista") e D1–D24. Mesma notação de §8.
+Fonte: README §3 ("seleção de chamado, prazo vencido, oferta de analista") e D1–D27. Mesma notação de §8.
 
 ### 9.1 Caminho principal (alvo não informado)
 
@@ -421,6 +475,8 @@ Pendências **novas** deste documento têm identificador P-x; as herdadas do DM 
 | P-D | Ordem e texto das perguntas de coleta de impacto (alcance, impacto no trabalho, compromisso); dependem do protótipo e da `classifyPriority` (DM §4)                                                                                                                               | **PENDENTE** (inalterada)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | P-E | Oferta de analista na Tela 3 (vencido): oferta com aceite ou transferência automática; representação do aceite na `Message`                                                                                                                                                       | **Resolvida na v1.1 por D18** quanto à oferta com aceite. Em aberto: representação do aceite na `Message` (Bloco 6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | P-F | Handoff com contexto não `NONE`/`IDLE` (coleta em andamento): o que o `summary` registra dos dados de trabalho (o DM diz que `summary` é a fotografia do contexto e que a `PendingAction` guarda o rascunho estruturado, DM §3.6)                                                 | **PENDENTE** (inalterada)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| P-G | Tratamento da falha do `searchArticles` (erro da tool, timeout, erro do provider) no relato de falha nova: a falha não equivale a "sem artigo aplicável" e não leva a `CREATE_TICKET` (D25, item 4) | **PENDENTE** (nova na v1.6; Bloco 4; Cenários §6) |
+| P-H | Onde título, descrição e tipo do rascunho ficam antes da proposta: o `DecisionRecord.entities` tem só `problem`, `category`, `operatingSystem` e `impact` (DM §3.12). Lacuna §2 × DM §3.12, anterior à D26 e registrada nela | **PENDENTE** (nova na v1.6; Bloco 4) |
 
 ### Bloco 2
 
@@ -443,6 +499,8 @@ Nenhuma pendência deste documento permanece no Bloco 3 (v1.4):
 | Catálogo de `appliedRules`; mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): por exemplo, qual par aplica-se à oferta por `OVERDUE_TICKET`                                                                                 | README §12 #11; DM §3.15 |
 | Mapeamento completo `Intent` → mudança de `flow`: este documento só usa as correspondências de nome (`CREATE_TICKET`, `UPDATE_TICKET`, `REOPEN_TICKET`), `LIST_MY_TICKETS` → `TICKET_LOOKUP` e `VIEW_TICKET` (DM §3.12); ver T2 | DM §3.12                 |
 | Interpretação e extração da resposta do funcionário sobre o candidato a duplicado ("mesmo problema", "complementar", "outro problema") como **entidade durante a coleta** (D23). **Não exige nova `Intent`** (T15)              | Decisão D23              |
+| Tratamento da falha do `searchArticles` no relato de falha nova (P-G) | Decisão D25 (item 4) |
+| Onde título, descrição e tipo do rascunho ficam antes da proposta (P-H) | Decisão D26; DM §3.12 |
 
 ### Bloco 5
 
@@ -644,6 +702,7 @@ Cada item cita os dois trechos. As tensões abertas **não são resolvidas aqui*
 | v1.3   | v1.2; `01-domain-model.md` v2.5                                                        | Sincronização com o Domain Model v2.5, **sem mudança de decisão funcional** (D1–D24 inalteradas). As pendências do Bloco 2 sobre o critério de "mesmo problema", a distinção candidato x duplicidade confirmada e a discordância funcionário x ticket-service passam a remeter ao DM §8.5.1: o ticket-service só identifica candidatos, e a resposta do funcionário é final para direcionar o fluxo (§5.4, P-B, §10). Segue PENDENTE (Bloco 5) o local de persistência de `dismissedIds` (estado operacional do backend; sem presumir `collectedData`). Pendência de `TicketStatus` removida da §10 (DM v2.4 §8.5); transições mantidas com escopo (reabertura, Bloco 3; matriz do analista, Bloco 7).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | v1.4   | v1.3; `01-domain-model.md` v2.11; `README.md` v2.22                                    | Sincronização com o Domain Model v2.11 e o README v2.22, **sem mudança de decisão funcional** (D1–D24 inalteradas). **§10, Bloco 3:** o endpoint de consulta pela chave passa a resolvido (opcional, fora do MVP; DM v2.11 §3.16, README §12 #8, contrato HTTP §5). Retry, timeout, backoff e recuperação após reinício do cliente web/BFF (responsabilidade já decidida: do cliente) e a operação de reabertura vão para o **Bloco 5**, o bloco da primeira escrita do web e das operações `UPDATE` e `REOPEN`. "Reinício do cliente web/BFF" distingue esse ponto do reinício do ticket-service, já garantido pela persistência do `IdempotencyRecord` (teste com reinício do servidor pendente no Bloco 3). **§10, Bloco 2:** "Calendário de SLA e campos de prazo" passa a resolvida (DM v2.6 §8.5.2; DM v2.8 §3.2). **§5.6:** a duração do bloqueio em `OUTCOME_UNKNOWN` remete ao mecanismo decidido (mesma chave) e fica PENDENTE no Bloco 5 quanto à política do cliente. **§5.4:** referências normativas ao DM v2.5 §8.5.1 atualizadas para a v2.11. Registros históricos com a versão original (P-B em §10, §11.2, este histórico) preservados. |
 | v1.5   | v1.4; fechamento do Bloco 3 (README v2.26)                                              | **Sem mudança de decisão funcional** (D1–D24 inalteradas). **§11, T13:** a duração do bloqueio em `OUTCOME_UNKNOWN` deixa de ser "PENDENTE (Bloco 3)" e passa a remeter ao mecanismo decidido (mesma chave) e à política de retry do cliente web/BFF, PENDENTE (Bloco 5), coerente com §5.6 e §10 desde a v1.4. O teste com reinício do servidor, pendente no Bloco 3 segundo a v1.4, foi entregue: etapa 2 do smoke ("reinício entre a gravação e a repetição", cenários §2.2, FS8; PR #26). |
+| v1.6   | v1.5; decisões D25–D27 (decididas em 2026-11-14), registradas em 2026-11-16 | Registra D25–D27 como **[Premissa]**. **D25** (§8.1): relato de falha nova passa pela central de ajuda antes da decisão da intenção; com artigo aplicável, `ANSWER_KB` (fora do percurso deste documento, §0.3); sem artigo aplicável, `CREATE_TICKET`; busca que falhou não leva a `CREATE_TICKET` (tratamento PENDENTE, Bloco 4). Resolve a `Intent` do turno 1 do SC-03 (Cenários §6). **D26** (§8.1): quem prepara cada campo do rascunho (descritivos pelo agent com evidência suficiente; impacto só o declarado; categoria `HARDWARE` para pedido de monitor aprovada nesta decisão); registra PENDENTE a lacuna §2 × DM §3.12 (onde título, descrição e tipo ficam antes da proposta). **D27** (novo §5.8): uso de `CLARIFY` na interpretação, sem alterar o catálogo do DM. **§10:** novas pendências P-G (tratamento da falha do `searchArticles`, D25 item 4) e P-H (onde título, descrição e tipo ficam antes da proposta, D26; lacuna §2 × DM §3.12), as duas no Bloco 4 e também na tabela do Bloco 4; remissões a elas na D25 e na D26. D25 esclarecida em 2026-11-16 (artigo aplicável). **Seções alteradas:** cabeçalho; §0.1 e §0.2 (faixa D1–D27); §0.3 (só a faixa D1–D27; escopo declarado inalterado); §1 (linhas D25–D27; coluna "Resolve" com "—" e o motivo entre parênteses, porque nenhuma delas resolve T/P deste documento); novo §5.8; §8 (fonte D1–D27); §8.1 (D25 e D26 antes do caminho principal; passo 1 condicionado à D25); §9 (fonte D1–D27); §10 (P-G e P-H; linhas no Bloco 4). DM inalterado. |
 
 ### Ações de acompanhamento (fora deste documento)
 
