@@ -45,6 +45,8 @@ São contratos do Bloco 4. O Bloco 4 precisa implementá-las e validá-las antes
 4. **As instruções da V4 são a linha de base.** O prompt, as descrições das tools e os `.describe` da V4 (`PROMPT_VERSION` `spike-adr009-prompt-v4`) são a versão de referência para a avaliação do Bloco 8. Qualquer alteração ganha uma nova versão, sem substituir a referência.
 5. **Latência registrada como limitação.** Mediana de cerca de 43 s por turno nesta máquina (GTX 1660 Super, 6 GB, com parte do modelo na CPU). O critério de custo zero é do estudo. Com outro hardware ou outro provider, a escolha é reavaliada com o mesmo instrumento e a mesma régua.
 
+**Atualização (2026-11-20).** Nota posterior à decisão; as condições acima não mudam e nenhuma é retirada. O plano do Bloco 4 distribui a implementação entre dois blocos. No Bloco 4, a condição 2 é implementada e validada, porque vale para todo turno com o modelo, inclusive os cenários executáveis no Bloco 4; as condições 1 e 3 ficam com o contrato definido. No Bloco 5, as condições 1 e 3 são implementadas e validadas junto com a coleta e a completude do rascunho, porque atuam sobre a coleta, que nenhum cenário do Bloco 4 exercita. O fluxo completo de criação de chamados só pode ser considerado confiável depois que as condições 1 e 3 estiverem implementadas e validadas no Bloco 5.
+
 ## Alternativas consideradas
 
 ### A. `qwen3:4b-instruct` (Ollama local)

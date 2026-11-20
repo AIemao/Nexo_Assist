@@ -1,10 +1,10 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1.8 · **Data:** 2026-11-20 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.9 · **Data:** 2026-11-20 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste nem contratos novos; as premissas da instrumentação das escritas estão em §1.1, as do seed em §2.1 e as do mecanismo das falhas simuladas, em §2.2.
 
-**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.14), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.6), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
+**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.15), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.7), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
 
 ---
 
@@ -176,6 +176,7 @@ Notas gerais:
 - **Execução:** chamadas: `searchArticles`, leitura de classificação e prazo no ticket-service (sem efeito colateral, README §6), `proposeTicketDraft`. Não chamadas: qualquer escrita no ticket-service. **Devem existir:** uma `PendingAction` `CREATE_TICKET` versão 1 em `PENDING_CONFIRMATION`. **Não devem existir:** `OperationExecution`; chamado novo no ticket-service.
 - **Métricas:** escrita sem confirmação, intenção, tool, resposta fundamentada.
 - **Verificação:** determinística (a "não aplicação" do artigo é verificada pelo filtro e pela evidência, não pelo texto).
+- **Verificação parcial no Bloco 4** (README §13, linha do Bloco 4; só o turno 1): `searchArticles` foi chamada; `ART-VPN-809` foi rejeitado pelo filtro determinístico de aplicabilidade (DM §3.11); a interpretação resultou em `CREATE_TICKET`; foi apresentada uma pergunta de coleta válida, isto é, que pede informação necessária à coleta ainda não fornecida, sem repetir VPN, erro 809 e Windows 11, sem exigir ordem específica (AF P-D segue PENDENTE), sem depender da condição 1 do ADR-009 e sem tratar o `missingFields` do modelo como autoridade sobre a completude; não houve chamada a `proposeTicketDraft`; nenhuma `PendingAction` foi criada; nenhum chamado novo foi criado.
 - **Executável:** Bloco 5 (depende da busca do Bloco 4).
 
 ### SC-04 — "Qual o status do meu chamado?"
@@ -491,8 +492,8 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.14: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
-- Agent Flow v1.6: D13, D16, D17, D18, D19, D20, D23, D25, D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
+- Domain Model v2.15: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Agent Flow v1.7: D13, D16, D17, D18, D19, D20, D23, D25, D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
 - ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`), ADR-009 (modelo LLM).
 
 ## 9. Histórico
@@ -508,3 +509,4 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | v1.6 | Fechamento do Bloco 3 (README v2.26). §2: "Materializar no seed (Bloco 3)" é substituído pela materialização por grupo: chamados no seed (§2.1, PR #25); funcionários no Bloco 4 (S7, S8); `ART-*` no Bloco 4, com o `searchArticles` (**[Premissa]**: primeiro cenário executável, SC-01 e SC-02); `CONV-*` com o dono no bloco do primeiro cenário que usa cada um (`CONV-DRAFT-UPDATE`: Bloco 5; `CONV-DRAFT-OPEN`, `CONV-OP-PROCESSING` e `CONV-FOCUS-A1`: Bloco 7), com a forma de montagem `PENDENTE` nesse bloco. §6: removidas as duas linhas do Bloco 3, já resolvidas (seed das fixtures, PR #25; falhas simuladas, PR #26; instrumentação das escritas, PR #27); novas linhas: materialização de funcionários e artigos (Bloco 4, com a associação fixture → cenários conferida contra a linha "Fixtures" de cada cenário, incluindo as dependências indiretas: `EMP-B` como solicitante de `TKT-B1` e `ANALYST-1` como ator do `STATUS_CHANGED` de `TKT-A2`), montagem de `CONV-DRAFT-UPDATE` (Bloco 5) e montagem dos outros três `CONV-*` (Bloco 7). SC-17, "Executável": aponta para README §13, "Evidência do pronto do Bloco 3", sem repetir a lista de testes. Convenções e §8 passam a citar o DM v2.13 e o AF v1.5. Matriz de cobertura inalterada. Sem novos cenários |
 | v1.7 | Sincronização com o AF v1.6 (decisões D25–D27, decididas em 2026-11-14). SC-03: a `Intent` do turno 1 passa a `CREATE_TICKET` (AF D25: busca sem artigo aplicável; DM §3.11). SC-07, SC-09, SC-10 e SC-11, Execução: `searchArticles` antes da decisão da intenção (AF D25). SC-08: a origem do tipo e da categoria passa a ser a AF D26. SC-10, Interpretação: `CREATE_TICKET`, e não `CLARIFY` (AF D27). §6, Bloco 4: sai a `Intent` do turno 1 do SC-03; fica a do SC-18; entra o tratamento da falha do `searchArticles` (AF D25, item 4). Convenções e §8 citam o AF v1.6. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
 | v1.8 | Sincronização com o ADR-009 (aceito em 2026-11-20) e o DM v2.14. §6: sai a linha do Bloco 4 "Baseline: modelo e versão de prompt/tools (README §12 #9, ADR-009)", porque o ADR-009 fixa o modelo e a versão das instruções; entra a linha do Bloco 8 "Executar o baseline com o modelo e as instruções fixados no ADR-009" (todos os cenários). Convenções e §8 citam o DM v2.14; §8 acrescenta o ADR-009 à lista de ADRs. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
+| v1.9 | Sincronização com o DM v2.15 e o AF v1.7: Convenções e §8 citam o DM v2.15 e o AF v1.7. SC-03: nova linha "Verificação parcial no Bloco 4" (README §13, linha do Bloco 4; só o turno 1), com as evidências `searchArticles` chamada, `ART-VPN-809` rejeitado pelo filtro de aplicabilidade, interpretação `CREATE_TICKET`, pergunta de coleta válida sem ordem específica, nenhuma chamada a `proposeTicketDraft`, nenhuma `PendingAction` e nenhum chamado novo; "Executável: Bloco 5" mantido para o cenário completo, e os demais critérios do SC-03 inalterados. Demais cenários, Esperado, Política, §6 e matriz de cobertura inalterados. Sem novos cenários |

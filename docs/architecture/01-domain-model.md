@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.14** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.15** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -1143,7 +1143,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | Pendência                                                                                                                                               | Bloco | Origem                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
-| PENDENTE (Bloco 4): critério de "baixa confiança" para transferir                                                                                       | 4     | README §12 #10                  |
+| PENDENTE (Bloco 7): critério de "baixa confiança" para transferir; definição e calibração junto com o handoff e os cenários dele. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança | 7     | README §12 #10                  |
 | PENDENTE (Bloco 4): catálogo de `appliedRules`                                                                                                          | 4     | §3.15, README §12 #11           |
 | PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial)                        | 5     | README §12 #12                  |
 | PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta                                                           | 5     | README §7C, README §12 #13      |
@@ -1312,8 +1312,16 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.12  | v2.11; Bloco 3 (instrumentação das escritas, `01-evaluation-scenarios.md` §1.1, IN7) | §3.16: o caso de uso distingue internamente criação (`CREATED`) e repetição (`REPLAYED`) em todos os caminhos de repetição; o HTTP não expõe a distinção e o snapshot persistido não muda. Nenhuma outra alteração. |
 | v2.13  | v2.12; fechamento do Bloco 3 | Cabeçalho, "Estado": passa a listar o que está implementado no ticket-service depois dos Blocos 2 e 3 (funções de domínio, persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord`, `createTicket`). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.14  | v2.13; ADR-009 (Bloco 4) | Pendência "modelo LLM" removida do §10, com remissão ao ADR-009. Decisão de modelo e integração; nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
+| v2.15  | v2.14; plano do Bloco 4 (decisão do autor, 2026-11-20) | Pendência "baixa confiança" (README §12 #10) passa do Bloco 4 para o Bloco 7, junto com o handoff e os cenários dele: o Bloco 4 não exercita transferência por baixa confiança. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança. Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.14 para a v2.15
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Critério de "baixa confiança" | 10 | Pendência passa do Bloco 4 para o Bloco 7 (definição e calibração com o handoff e os cenários dele); o Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.15 |
 
 ### Alterações da v2.13 para a v2.14
 
