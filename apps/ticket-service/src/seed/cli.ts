@@ -3,6 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { createErrorLogger } from "../observability/error-log.js";
+import { readPrismaCode } from "../persistence/prisma-error-code.js";
 import { createUnitOfWork } from "../persistence/unit-of-work.js";
 import { seedFixtures } from "./seed-fixtures.js";
 
@@ -26,7 +28,8 @@ async function main(): Promise<void> {
       console.log(`${label} → ${id}`);
     }
   } catch (error) {
-    console.error("Falha no seed:", error);
+    // README §12 #22: o erro vai para o registro com campos permitidos, nunca inteiro.
+    createErrorLogger(readPrismaCode)("seed", error);
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect();

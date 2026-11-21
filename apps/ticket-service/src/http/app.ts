@@ -17,6 +17,7 @@ import {
   type Actor,
   type CreateTicketDraft,
 } from "../domain/index.js";
+import { createErrorLogger } from "../observability/error-log.js";
 import type { SimulatedFault } from "./simulated-fault.js";
 import type { WriteRecord } from "./write-record.js";
 
@@ -318,9 +319,18 @@ function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
 
 // ---------------------------------------------------------------------------
 
+// README §12 #22: o registro padrão só leva ao stderr os campos permitidos. Sem leitor do
+// código do Prisma (ADR-008, condição 4: o app não alcança o Prisma); quem quiser o
+// prismaCode injeta o onUnexpectedError, como o main.ts.
+const logDefaultError = createErrorLogger();
+
+function logRequestError(error: unknown): void {
+  logDefaultError("request", error);
+}
+
 export function createApp({
   createTicket,
-  onUnexpectedError = console.error,
+  onUnexpectedError = logRequestError,
   simulatedFault,
   recordWrite,
 }: AppDependencies) {

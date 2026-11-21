@@ -9,6 +9,8 @@ import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
 import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
 import type { WriteRecord } from "./http/write-record.js";
+import { createErrorLogger } from "./observability/error-log.js";
+import { readPrismaCode } from "./persistence/prisma-error-code.js";
 import { createUnitOfWork } from "./persistence/unit-of-work.js";
 
 interface Config {
@@ -61,6 +63,10 @@ function writeRecordLine(record: WriteRecord): void {
   process.stdout.write(`${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`);
 }
 
+// README §12 #22: registro de erros com campos permitidos. O leitor do código do Prisma é
+// composto aqui, na raiz de composição, e nunca importado pela camada HTTP (ADR-008, condição 4).
+const logError = createErrorLogger(readPrismaCode);
+
 function formatAddress(info: AddressInfo): string {
   const host = info.family === "IPv6" ? `[${info.address}]` : info.address;
   return `http://${host}:${info.port}`;
@@ -88,14 +94,20 @@ function main(): void {
     eventIdGenerator: { generate: randomUUID },
     clock: { now: () => new Date().toISOString() },
   });
-  const app = createApp({ createTicket, simulatedFault: fault, recordWrite: writeRecordLine });
+  const app = createApp({
+    createTicket,
+    onUnexpectedError: (error) => logError("request", error),
+    simulatedFault: fault,
+    recordWrite: writeRecordLine,
+  });
 
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`ticket-service ouvindo em ${formatAddress(info)}`);
   });
 
+  // README §12 #22: o erro vai para o registro com campos permitidos, nunca inteiro.
   server.once("error", (error) => {
-    console.error("Falha no servidor HTTP:", error);
+    logError("server", error);
     process.exit(1);
   });
 
@@ -112,7 +124,7 @@ function main(): void {
     server.close((error) => {
       if (error) {
         // Sem $disconnect: requisições ainda podem estar usando o banco.
-        console.error("Falha ao fechar o servidor HTTP:", error);
+        logError("shutdown", error);
         process.exit(1);
       }
       prisma.$disconnect().then(
@@ -120,7 +132,7 @@ function main(): void {
           console.log("ticket-service encerrado.");
         },
         (disconnectError: unknown) => {
-          console.error("Falha ao desconectar o banco:", disconnectError);
+          logError("shutdown", disconnectError);
           process.exitCode = 1;
         },
       );

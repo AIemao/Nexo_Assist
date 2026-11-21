@@ -5,6 +5,7 @@ import {
     describe,
     expect,
     it,
+    vi,
 } from "vitest";
 
 import type {
@@ -15,7 +16,10 @@ import type {
 
 import { createCreateTicket } from "../../src/application/create-ticket.js";
 import { computeDueAt } from "../../src/domain/index.js";
+import { Prisma } from "../../src/generated/prisma/client.js";
 import { createApp } from "../../src/http/app.js";
+import { createErrorLogger } from "../../src/observability/error-log.js";
+import { readPrismaCode } from "../../src/persistence/prisma-error-code.js";
 import { createUnitOfWork } from "../../src/persistence/unit-of-work.js";
 import { createTestDatabase } from "../support/test-database.js";
 
@@ -651,5 +655,85 @@ describe("POST /tickets", () => {
 
         expect(registrados).toHaveLength(1);
         expect(fake.chamadas).toHaveLength(1);
+    });
+
+    // README §12 #22: o 500 não leva ao stderr a mensagem, o meta nem as propriedades
+    // próprias do erro; a linha traz context "request" (plano da fatia 0, D7).
+    const EMAIL_PLANTADO = "ana@nexo.example";
+
+    function erroDoPrismaComEmail(): Prisma.PrismaClientKnownRequestError {
+        const erro = new Prisma.PrismaClientKnownRequestError(`falha ao consultar ${EMAIL_PLANTADO}`, {
+            code: "P2003",
+            clientVersion: "7.10.1",
+            meta: { modelName: "Ticket", value: EMAIL_PLANTADO },
+        });
+        return Object.assign(erro, { emailConsultado: EMAIL_PLANTADO });
+    }
+
+    // Envia o POST com o stderr capturado e devolve a resposta, a saída e as linhas de erro.
+    async function postComStderr(app: ReturnType<typeof createApp>) {
+        // O mockRestore limpa as chamadas: a saída é lida antes de restaurar.
+        const escrita = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+        let response: Response;
+        let stderr: string;
+        try {
+            response = await app.request("/tickets", {
+                method: "POST",
+                headers: validHeaders(),
+                body: serialize(draft),
+            });
+        } finally {
+            stderr = escrita.mock.calls.map(([trecho]) => String(trecho)).join("");
+            escrita.mockRestore();
+        }
+
+        const linhas = stderr
+            .split("\n")
+            .filter((linha) => linha.includes('"unexpected_error"'))
+            .map((linha) => JSON.parse(linha) as Record<string, unknown>);
+
+        return { response, stderr, linhas };
+    }
+
+    it("500 com o registro da raiz de composição: stderr sem o e-mail, com context request e prismaCode", async () => {
+        const fake = criarCreateTicketFalso(erroDoPrismaComEmail());
+        const logError = createErrorLogger(readPrismaCode);
+        const app = createApp({
+            createTicket: fake.createTicket,
+            onUnexpectedError: (error) => logError("request", error),
+        });
+
+        const { response, stderr, linhas } = await postComStderr(app);
+
+        const responseText = await response.clone().text();
+        await expectProblem(response, 500, "INTERNAL_ERROR");
+        expect(responseText).not.toContain(EMAIL_PLANTADO);
+
+        expect(stderr).not.toContain(EMAIL_PLANTADO);
+        expect(linhas).toHaveLength(1);
+        expect(linhas[0]).toMatchObject({
+            event: "unexpected_error",
+            context: "request",
+            errorType: "PrismaClientKnownRequestError",
+            prismaCode: "P2003",
+        });
+    });
+
+    it("500 com o registro padrão do createApp: stderr sem o e-mail e sem prismaCode", async () => {
+        const fake = criarCreateTicketFalso(erroDoPrismaComEmail());
+        const app = createApp({ createTicket: fake.createTicket });
+
+        const { response, stderr, linhas } = await postComStderr(app);
+
+        await expectProblem(response, 500, "INTERNAL_ERROR");
+
+        expect(stderr).not.toContain(EMAIL_PLANTADO);
+        expect(linhas).toHaveLength(1);
+        expect(linhas[0]).toMatchObject({
+            event: "unexpected_error",
+            context: "request",
+            errorType: "PrismaClientKnownRequestError",
+        });
+        expect(linhas[0]).not.toHaveProperty("prismaCode");
     });
 });
