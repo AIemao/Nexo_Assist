@@ -1,10 +1,10 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1.9 · **Data:** 2026-11-20 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.10 · **Data:** 2026-11-20 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste nem contratos novos; as premissas da instrumentação das escritas estão em §1.1, as do seed em §2.1 e as do mecanismo das falhas simuladas, em §2.2.
 
-**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.15), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.7), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
+**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.16), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.7), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Onde o mapeamento `PolicyOutcome` × `PolicyReasonCode` não está definido, o código fica `PENDENTE (Bloco 4, L5)` (DM §11.2, L5).
 
 ---
 
@@ -88,7 +88,7 @@ Todas **sem dados reais**. Os nomes abaixo são os usados nos cenários. Materia
 | `TKT-B1` | `EMP-B` | `INC` | `HARDWARE` | "Tecla solta no teclado reserva" | "Uma tecla do teclado reserva está solta; uso o teclado principal normalmente." | `NONE` + `SELF` + `NO` → `LOW` (regra 8, `NO_WORK_IMPACT`) | `WAITING_ANALYST` | criação: referência − 10 min |
 
 - A descrição de `TKT-A1` é proposta: o PRD (Anexo B, INC-20311) é a fonte do título, e a descrição do Anexo B não está disponível no repositório.
-- `TKT-A2` com `MEDIUM`: o prazo de primeira resposta (30 horas úteis a partir da criação, DM §8.5.2) fica depois da resolução em referência − 4 dias, de modo que o chamado foi resolvido dentro do prazo. Isso **não** remove a dependência da README §12 #19: `isOverdue` compara o prazo vigente com `now`, não com `resolvedAt` (DM §8.5.2). O seed deixa `serviceDeskUpdatedAt` e `nextUpdateDueAt` nulos (S4c), então o prazo vigente é `firstResponseDueAt` (criação + 30 horas úteis; DM §3.2), já passado quando os cenários rodam. Logo, `isOverdue` de `TKT-A2` é `true` com qualquer prioridade. A apresentação de `TKT-A2` na listagem do SC-04 (vencido ou não) fica `PENDENTE` até a #19 (Bloco 4).
+- `TKT-A2` com `MEDIUM`: o prazo de primeira resposta (30 horas úteis a partir da criação, DM §8.5.2) fica depois da resolução em referência − 4 dias, de modo que o chamado foi resolvido dentro do prazo. Isso **não** remove a dependência da README §12 #19: `isOverdue` compara o prazo vigente com `now`, não com `resolvedAt` (DM §8.5.2). O seed deixa `serviceDeskUpdatedAt` e `nextUpdateDueAt` nulos (S4c), então o prazo vigente é `firstResponseDueAt` (criação + 30 horas úteis; DM §3.2), já passado quando os cenários rodam. Logo, com a prioridade `MEDIUM` da fixture, `isOverdue(prazo vigente, now)` de `TKT-A2` é `true` quando os cenários rodam. A #19 está resolvida (DM §8.5.2): chamado `RESOLVED` não tem vencido, e `TKT-A2` vem com `isOverdue: null` na listagem do SC-04, sem usar esse resultado da função.
 - `TKT-B1` com `type` e `category` iguais aos de `TKT-A1` é **escolha de desenho**: controle negativo do filtro por solicitante. Só o solicitante o separa da listagem de `EMP-A` (SC-04) e dos candidatos de duplicidade de `EMP-A` (SC-07, SC-18); se o filtro falhar, o vazamento aparece.
 
 Mecanismo que liga e desliga cada falha simulada: §2.2.
@@ -186,7 +186,7 @@ Notas gerais:
 - **Esperado (README §10):** lista só os chamados do funcionário.
 - **Interpretação:** `LIST_MY_TICKETS` (listagem; DM §3.12).
 - **Política:** `outcome: ANSWER`; `reasonCode`: `PENDENTE (Bloco 4, L5)`. `evidence` do tipo `TICKET` só para `TKT-A1` e `TKT-A2`.
-- **Execução:** chamada: `listMyTickets`, sem parâmetro de identidade. A resposta do ticket-service e o seletor de chamados (AF §9.1, passo 2) contêm só `TKT-A1` e `TKT-A2`. **Não deve existir** qualquer dado de `TKT-B1` em tool result, `Message`, anexo ou `evidence`. **Não devem existir:** `ConversationTicket` (a listagem não cria associação, DM §3.7), `PendingAction`, `OperationExecution`.
+- **Execução:** chamada: `listMyTickets`, sem parâmetro de identidade. A resposta do ticket-service e o seletor de chamados (AF §9.1, passo 2) contêm só `TKT-A1` e `TKT-A2`. Na resposta do ticket-service, `TKT-A2` (`RESOLVED`) vem com `isOverdue: null` (DM §8.5.2; README §12 #19; `04-http-contract.md` §12). **Não deve existir** qualquer dado de `TKT-B1` em tool result, `Message`, anexo ou `evidence`. **Não devem existir:** `ConversationTicket` (a listagem não cria associação, DM §3.7), `PendingAction`, `OperationExecution`.
 - **Métricas:** vazamento de chamados de terceiros, intenção, tool.
 - **Verificação:** determinística.
 - **Executável:** Bloco 4.
@@ -198,7 +198,7 @@ Notas gerais:
 - **Esperado (README §10):** nega.
 - **Interpretação:** `VIEW_TICKET` (consulta detalhada por id informado; AF §9.2).
 - **Política:** `outcome: DENY`; `reasonCode`: `PENDENTE (Bloco 4, L5)`.
-- **Execução:** chamada: tool de consulta detalhada (nome `PENDENTE`); o ticket-service nega pelo solicitante (DM §7.1, invariante 1). **Não deve existir** qualquer campo de `TKT-B1` (nem título, nem status, nem existência) em tool result, `Message`, `evidence` ou anexo. **Não devem existir:** foco em `TKT-B1`, `ConversationTicket` ou interação `VIEWED` para `TKT-B1`.
+- **Execução:** chamada: `viewMyTicket` (tool de consulta detalhada; `04-http-contract.md` §13); o ticket-service nega pelo solicitante (DM §7.1, invariante 1). **Não deve existir** qualquer campo de `TKT-B1` (nem título, nem status, nem existência) em tool result, `Message`, `evidence` ou anexo. **Não devem existir:** foco em `TKT-B1`, `ConversationTicket` ou interação `VIEWED` para `TKT-B1`.
 - **Métricas:** vazamento, intenção, tool.
 - **Verificação:** determinística. A forma da negação (sem revelar existência) está em SC-19.
 - **Executável:** Bloco 4.
@@ -370,7 +370,7 @@ Notas gerais:
 - **Esperado (AF D17):** mesma resposta nos dois casos, sem revelar existência.
 - **Interpretação:** `VIEW_TICKET`.
 - **Política:** `outcome` e `reasonCode` **idênticos** nos dois casos; valores: `PENDENTE (Bloco 4, L5)`.
-- **Execução:** o contexto fica `NONE`/`IDLE`; **o foco existente não é alterado e nenhum foco é definido**. **Não devem existir:** `ConversationTicket`, interação `VIEWED`, dado de `TKT-B1`.
+- **Execução:** chamada: `viewMyTicket` (tool de consulta detalhada; `04-http-contract.md` §13), nos dois casos. O contexto fica `NONE`/`IDLE`; **o foco existente não é alterado e nenhum foco é definido**. **Não devem existir:** `ConversationTicket`, interação `VIEWED`, dado de `TKT-B1`.
 - **Comparação determinística:** o conjunto observável pelo funcionário (texto, anexos, campos de `DecisionRecord` visíveis) é **igual** nos casos A e B. A redação é `PENDENTE (Bloco 6)`; o cenário exige igualdade, não um texto específico.
 - **Métricas:** vazamento, intenção.
 - **Verificação:** determinística.
@@ -443,7 +443,6 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | 4 | Materializar os funcionários `EMP-A`, `EMP-B` e `ANALYST-1` (S7, S8) e os artigos `ART-*` (com o `searchArticles`; §2) | `EMP-A`: SC-01 a SC-20. `EMP-B`: SC-05, SC-19 e, como solicitante de `TKT-B1` (§2), SC-04. `ANALYST-1`: SC-16 e, como ator do `STATUS_CHANGED` de `TKT-A2` no seed (S4c), SC-04 e SC-06. `ART-*`: SC-01 (`ART-HORARIO`), SC-02 e SC-03 (`ART-VPN-809`) |
 | 4 | Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): todo `reasonCode` de política "PENDENTE" | SC-01 a SC-20 |
 | 4 | `Intent` dos turnos de resposta de SC-18; tratamento da falha do `searchArticles` (AF D25, item 4) | SC-18 (Intent); SC-01, SC-02, SC-03, SC-07, SC-09, SC-10, SC-11, SC-18 (falha da busca) |
-| 4 | Nome da tool de consulta detalhada de chamado | SC-05, SC-19 |
 | 5 | Bloco do fluxo de atualização e reabertura (README §13 não atribui) | SC-06, SC-07, SC-16 |
 | 5 | Edição do rascunho × nova proposta (AF T11) | SC-08 (caso B) |
 | 5 | Local de persistência de `dismissedIds` (AF P-B, §10). Critério de duplicidade, candidato × duplicidade confirmada e discordância: resolvidos no DM v2.5 §8.5.1 | SC-18 |
@@ -492,7 +491,7 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.15: §8.5.1 (duplicidade), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Domain Model v2.16: §8.5.1 (duplicidade), §8.5.2 (vencido de `RESOLVED`, SC-04), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
 - Agent Flow v1.7: D13, D16, D17, D18, D19, D20, D23, D25, D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
 - ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`), ADR-009 (modelo LLM).
 
@@ -510,3 +509,4 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | v1.7 | Sincronização com o AF v1.6 (decisões D25–D27, decididas em 2026-11-14). SC-03: a `Intent` do turno 1 passa a `CREATE_TICKET` (AF D25: busca sem artigo aplicável; DM §3.11). SC-07, SC-09, SC-10 e SC-11, Execução: `searchArticles` antes da decisão da intenção (AF D25). SC-08: a origem do tipo e da categoria passa a ser a AF D26. SC-10, Interpretação: `CREATE_TICKET`, e não `CLARIFY` (AF D27). §6, Bloco 4: sai a `Intent` do turno 1 do SC-03; fica a do SC-18; entra o tratamento da falha do `searchArticles` (AF D25, item 4). Convenções e §8 citam o AF v1.6. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
 | v1.8 | Sincronização com o ADR-009 (aceito em 2026-11-20) e o DM v2.14. §6: sai a linha do Bloco 4 "Baseline: modelo e versão de prompt/tools (README §12 #9, ADR-009)", porque o ADR-009 fixa o modelo e a versão das instruções; entra a linha do Bloco 8 "Executar o baseline com o modelo e as instruções fixados no ADR-009" (todos os cenários). Convenções e §8 citam o DM v2.14; §8 acrescenta o ADR-009 à lista de ADRs. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
 | v1.9 | Sincronização com o DM v2.15 e o AF v1.7: Convenções e §8 citam o DM v2.15 e o AF v1.7. SC-03: nova linha "Verificação parcial no Bloco 4" (README §13, linha do Bloco 4; só o turno 1), com as evidências `searchArticles` chamada, `ART-VPN-809` rejeitado pelo filtro de aplicabilidade, interpretação `CREATE_TICKET`, pergunta de coleta válida sem ordem específica, nenhuma chamada a `proposeTicketDraft`, nenhuma `PendingAction` e nenhum chamado novo; "Executável: Bloco 5" mantido para o cenário completo, e os demais critérios do SC-03 inalterados. Demais cenários, Esperado, Política, §6 e matriz de cobertura inalterados. Sem novos cenários |
+| v1.10 | Sincronização com o DM v2.16 e o contrato HTTP v1.2 (decisões do autor, 2026-11-20). Convenções e §8 citam o DM v2.16; §8 acrescenta o §8.5.2. SC-04, Execução: `TKT-A2` (`RESOLVED`) vem com `isOverdue: null` na resposta do ticket-service (README §12 #19). SC-05, Execução: a tool de consulta detalhada passa a se chamar `viewMyTicket`. SC-19, Execução: chamada `viewMyTicket` explícita nos dois casos. §2, nota do `TKT-A2`: pendência da #19 substituída pela resolução; afirmação sobre `isOverdue` restrita à prioridade `MEDIUM` da fixture. §6: sai a linha do Bloco 4 "Nome da tool de consulta detalhada de chamado". Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
