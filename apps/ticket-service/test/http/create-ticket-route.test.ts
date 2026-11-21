@@ -825,4 +825,49 @@ describe("POST /tickets", () => {
 
         expect(await estadoDoBanco()).toStrictEqual(antes);
     });
+
+    // Contrato §2.2 e DM §3.9: SYSTEM não envia X-Actor-Employee-Id. O ator é estruturalmente
+    // válido e não pode criar chamado: 403 ACTOR_NOT_EMPLOYEE pelo caso de uso real, sem gravar
+    // nada. O caso com X-Actor-Employee-Id (400) é o "SYSTEM com X-Actor-Employee-Id" acima.
+    it("ator SYSTEM sem X-Actor-Employee-Id: 403 ACTOR_NOT_EMPLOYEE, ticket_write REJECTED/403 e nada gravado", async () => {
+        await db.reset();
+
+        const createTicket = createCreateTicket({
+            unitOfWork,
+            eventIdGenerator: { generate: () => "EVT-HTTP-SYSTEM" },
+            clock: { now: () => NOW },
+        });
+        const registros: WriteRecord[] = [];
+        const app = createApp({
+            createTicket,
+            recordWrite: (record) => {
+                registros.push(record);
+            },
+        });
+
+        const response = await app.request("/tickets", {
+            method: "POST",
+            headers: { ...headersWithout("X-Actor-Employee-Id"), "X-Actor-Type": "SYSTEM" },
+            body: serialize(draft),
+        });
+
+        await expectProblem(response, 403, "ACTOR_NOT_EMPLOYEE");
+        expect(registros).toStrictEqual([
+            {
+                event: "ticket_write",
+                operation: "CREATE",
+                outcome: "REJECTED",
+                status: 403,
+                code: "ACTOR_NOT_EMPLOYEE",
+                responseDisposition: "SENT",
+                idempotencyKey: IDEMPOTENCY_KEY,
+            },
+        ]);
+        expect({
+            chamados: await db.prisma.ticket.count(),
+            eventos: await db.prisma.ticketEvent.count(),
+            registros: await db.prisma.idempotencyRecord.count(),
+            contadores: await db.prisma.ticketCounter.count(),
+        }).toStrictEqual({ chamados: 0, eventos: 0, registros: 0, contadores: 0 });
+    });
 });

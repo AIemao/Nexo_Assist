@@ -200,7 +200,7 @@ const actorHeadersSchema = z.discriminatedUnion(ACTOR_TYPE, [
   }),
   z.looseObject({
     [ACTOR_TYPE]: actorTypeSchema.extract(["SYSTEM"]),
-    [ACTOR_EMPLOYEE_ID]: z.undefined(),
+    [ACTOR_EMPLOYEE_ID]: z.undefined().optional(),
   }),
 ]);
 
