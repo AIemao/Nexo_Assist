@@ -5,6 +5,8 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { createCreateTicket } from "./application/create-ticket.js";
+import { createListMyTickets } from "./application/list-my-tickets.js";
+import { createViewMyTicket } from "./application/view-my-ticket.js";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
 import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
@@ -90,13 +92,17 @@ function main(): void {
   }
 
   const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: databaseUrl }) });
+  const unitOfWork = createUnitOfWork(prisma);
+  const clock = { now: () => new Date().toISOString() };
   const createTicket = createCreateTicket({
-    unitOfWork: createUnitOfWork(prisma),
+    unitOfWork,
     eventIdGenerator: { generate: randomUUID },
-    clock: { now: () => new Date().toISOString() },
+    clock,
   });
   const app = createApp({
     createTicket,
+    listMyTickets: createListMyTickets({ unitOfWork, clock }),
+    viewMyTicket: createViewMyTicket({ unitOfWork, clock }),
     onUnexpectedError: (error) => logError("request", error),
     simulatedFault: fault,
     recordWrite: recordLine,

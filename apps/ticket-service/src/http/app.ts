@@ -6,6 +6,8 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 
 import type { CreateTicketInput, CreateTicketResult } from "../application/create-ticket.js";
+import type { ListMyTicketsInput, TicketView } from "../application/list-my-tickets.js";
+import type { ViewMyTicketInput, ViewMyTicketResult } from "../application/view-my-ticket.js";
 import {
   ACTOR_TYPES,
   AFFECTED_SCOPES,
@@ -29,15 +31,25 @@ export interface CreateTicketUseCase {
   execute(input: CreateTicketInput): Promise<CreateTicketResult>;
 }
 
+export interface ListMyTicketsUseCase {
+  execute(input: ListMyTicketsInput): Promise<TicketView[]>;
+}
+
+export interface ViewMyTicketUseCase {
+  execute(input: ViewMyTicketInput): Promise<ViewMyTicketResult>;
+}
+
 export interface AppDependencies {
   createTicket: CreateTicketUseCase;
+  // Contrato §8 e §9: leituras do funcionário. Ausente, a rota correspondente não existe.
+  listMyTickets?: ListMyTicketsUseCase;
+  viewMyTicket?: ViewMyTicketUseCase;
   onUnexpectedError?: (error: unknown) => void | Promise<void>;
   // Cenários §2.2. Ausente = desligada.
   simulatedFault?: SimulatedFault;
   // Cenários §1.1: recebe um registro por requisição de escrita.
   recordWrite?: (record: WriteRecord) => void;
-  // Cenários §1.1, IL1–IL7: recebe um registro por requisição de leitura de chamados. As
-  // rotas de leitura entram no P7 da fatia 0.
+  // Cenários §1.1, IL1–IL7: recebe um registro por requisição de leitura de chamados.
   recordRead?: (record: ReadRecord) => void;
 }
 
@@ -47,6 +59,7 @@ export interface AppDependencies {
 const PROBLEM_TITLES = {
   400: "Bad Request",
   403: "Forbidden",
+  404: "Not Found",
   409: "Conflict",
   415: "Unsupported Media Type",
   422: "Unprocessable Content",
@@ -213,25 +226,35 @@ const idempotencyHeaderSchema = z.looseObject({
 });
 
 // Contrato §2.2: conjunto fechado de cabeçalhos X-Actor-*; os demais cabeçalhos são ignorados.
+// Compartilhado pelo POST /tickets e pelas leituras (§7.1).
+function rejectUnknownActorHeaders(headers: object, ctx: z.RefinementCtx): void {
+  for (const name of Object.keys(headers)) {
+    const lower = name.toLowerCase();
+    if (lower.startsWith(ACTOR_PREFIX) && !(lower in CANONICAL_HEADER_NAMES)) {
+      ctx.addIssue({ code: "custom", path: [name], message: "Cabeçalho de ator não previsto." });
+    }
+  }
+}
+
 const requestHeadersSchema = z
   .intersection(idempotencyHeaderSchema, actorHeadersSchema)
-  .superRefine((headers, ctx) => {
-    for (const name of Object.keys(headers)) {
-      const lower = name.toLowerCase();
-      if (lower.startsWith(ACTOR_PREFIX) && !(lower in CANONICAL_HEADER_NAMES)) {
-        ctx.addIssue({ code: "custom", path: [name], message: "Cabeçalho de ator não previsto." });
-      }
-    }
-  });
+  .superRefine(rejectUnknownActorHeaders);
+
+// Contrato §7.1: as leituras usam os cabeçalhos do ator do §2.2, sem Idempotency-Key.
+const readHeadersSchema = actorHeadersSchema.superRefine(rejectUnknownActorHeaders);
 
 // O zValidator lê `schema.shape` (ou `schema.in.shape`) do schema de cabeçalhos para
 // mapear nomes sem diferença de maiúsculas, e uma interseção não tem `shape`. O objeto
 // vazio de entrada só atende a essa leitura: repassa todos os cabeçalhos, já em minúsculas.
 const headersValidatorSchema = z.looseObject({}).pipe(requestHeadersSchema);
+const readHeadersValidatorSchema = z.looseObject({}).pipe(readHeadersSchema);
 
-type RequestHeaders = z.output<typeof requestHeadersSchema>;
+// Contrato §8.1 e §11: as leituras não aceitam parâmetros de consulta (schema estrito).
+const noQuerySchema = z.strictObject({});
 
-function toActor(headers: RequestHeaders): Actor {
+type ActorHeaders = z.output<typeof actorHeadersSchema>;
+
+function toActor(headers: ActorHeaders): Actor {
   if (headers[ACTOR_TYPE] === "SYSTEM") return { type: "SYSTEM" };
   return { type: headers[ACTOR_TYPE], employeeId: headers[ACTOR_EMPLOYEE_ID] };
 }
@@ -249,12 +272,23 @@ function toHeaderName(path: readonly PropertyKey[]): string {
   return CANONICAL_HEADER_NAMES[name.toLowerCase()] ?? name;
 }
 
+// Contrato §11: o path de um parâmetro de consulta é o nome precedido de "?".
+function toQueryName(path: readonly PropertyKey[]): string {
+  return `?${String(path[0] ?? "")}`;
+}
+
+function toPath(target: string, path: readonly PropertyKey[]): string {
+  if (target === "header") return toHeaderName(path);
+  if (target === "query") return toQueryName(path);
+  return toJsonPointer(path);
+}
+
 function toValidationErrors(error: z.core.$ZodError, target: string): ValidationError[] {
   return error.issues.flatMap((issue) => {
     // Campo extra no schema estrito: um erro por campo, no caminho do próprio campo.
     const paths = issue.code === "unrecognized_keys" ? issue.keys.map((key) => [...issue.path, key]) : [issue.path];
     return paths.map((path) => ({
-      path: target === "header" ? toHeaderName(path) : toJsonPointer(path),
+      path: toPath(target, path),
       message: issue.message,
     }));
   });
@@ -265,6 +299,50 @@ type ValidationResult = ({ success: true } | { success: false; error: z.core.$Zo
 function rejectInvalid(result: ValidationResult, c: AppContext): Response | undefined {
   if (result.success) return undefined;
   return rejectWrite(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+}
+
+// Resposta de erro (Problem Details) que também marca o desfecho da leitura (IL6).
+function rejectRead(
+  c: AppContext,
+  outcome: "INVALID" | "REJECTED",
+  status: ProblemStatus,
+  code: string,
+  errors?: ValidationError[],
+): Response {
+  markRead(c, { outcome, status, code });
+  return problem(status, code, errors);
+}
+
+function rejectInvalidRead(result: ValidationResult, c: AppContext): Response | undefined {
+  if (result.success) return undefined;
+  return rejectRead(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+}
+
+// ---------------------------------------------------------------------------
+// Corpos das leituras (contrato §8.2 e §9.1).
+
+// §8.2: resumo; resolvedAt só com status RESOLVED (omitido, como no objeto ticket do §3);
+// requesterId fora, porque é sempre o próprio ator.
+function toTicketSummary({ ticket, currentDueAt, isOverdue }: TicketView) {
+  return {
+    id: ticket.id,
+    type: ticket.type,
+    title: ticket.title,
+    category: ticket.category,
+    priority: ticket.priority,
+    status: ticket.status,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+    ...(ticket.resolvedAt === undefined ? {} : { resolvedAt: ticket.resolvedAt }),
+    currentDueAt,
+    isOverdue,
+  };
+}
+
+// §9.1: o próprio objeto ticket, sem envelope, com currentDueAt e isOverdue no mesmo nível;
+// opcionais ausentes já vêm omitidos do repositório.
+function toTicketDetail({ ticket, currentDueAt, isOverdue }: TicketView) {
+  return { ...ticket, currentDueAt, isOverdue };
 }
 
 // ---------------------------------------------------------------------------
@@ -400,9 +478,12 @@ function logRequestError(error: unknown): void {
 
 export function createApp({
   createTicket,
+  listMyTickets,
+  viewMyTicket,
   onUnexpectedError = logRequestError,
   simulatedFault,
   recordWrite,
+  recordRead,
 }: AppDependencies) {
   // Bindings do adapter Node: a falha simulada encerra o ServerResponse (c.env.outgoing),
   // o que só existe com @hono/node-server. Os testes de rota (app.request()) não ligam
@@ -492,6 +573,65 @@ export function createApp({
       return rejectWrite(c, "REJECTED", REJECTION_STATUS[result.error], result.error);
     },
   );
+
+  // Leituras do funcionário (contrato §7 a §9). Ordem de validação (§11): cabeçalhos,
+  // parâmetros de consulta, tipo do ator (403) e só então o caso de uso. O emissor do
+  // ticket_read envolve toda a cadeia (IL5).
+  if (listMyTickets !== undefined) {
+    app.get(
+      "/tickets",
+      readRecorder({ operation: "LIST", recordRead, onUnexpectedError }),
+      zValidator<typeof readHeadersValidatorSchema, "header", AppEnv, "/tickets", typeof rejectInvalidRead>(
+        "header",
+        readHeadersValidatorSchema,
+        rejectInvalidRead,
+      ),
+      zValidator<typeof noQuerySchema, "query", AppEnv, "/tickets", typeof rejectInvalidRead>(
+        "query",
+        noQuerySchema,
+        rejectInvalidRead,
+      ),
+      async (c) => {
+        // §7.2: só EMPLOYEE, antes de qualquer leitura no banco.
+        const actor = toActor(c.req.valid("header"));
+        if (actor.type !== "EMPLOYEE") return rejectRead(c, "REJECTED", 403, "ACTOR_NOT_EMPLOYEE");
+
+        const views = await listMyTickets.execute({ requesterId: actor.employeeId });
+        markRead(c, { outcome: "OK", status: 200 });
+        return c.json({ tickets: views.map(toTicketSummary) }, 200);
+      },
+    );
+  }
+
+  if (viewMyTicket !== undefined) {
+    app.get(
+      "/tickets/:ticketId",
+      readRecorder({ operation: "VIEW", recordRead, onUnexpectedError }),
+      zValidator<typeof readHeadersValidatorSchema, "header", AppEnv, "/tickets/:ticketId", typeof rejectInvalidRead>(
+        "header",
+        readHeadersValidatorSchema,
+        rejectInvalidRead,
+      ),
+      zValidator<typeof noQuerySchema, "query", AppEnv, "/tickets/:ticketId", typeof rejectInvalidRead>(
+        "query",
+        noQuerySchema,
+        rejectInvalidRead,
+      ),
+      async (c) => {
+        // §7.2: só EMPLOYEE, antes de qualquer leitura no banco.
+        const actor = toActor(c.req.valid("header"));
+        if (actor.type !== "EMPLOYEE") return rejectRead(c, "REJECTED", 403, "ACTOR_NOT_EMPLOYEE");
+
+        // §9.2: o caminho não tem validação de formato; inexistente, de outro funcionário e
+        // malformado recebem a mesma negação, e o registro não leva o id pedido (IL3).
+        const result = await viewMyTicket.execute({ requesterId: actor.employeeId, ticketId: c.req.param("ticketId") });
+        if (!result.ok) return rejectRead(c, "REJECTED", 404, result.error);
+
+        markRead(c, { outcome: "OK", status: 200, ticketId: result.view.ticket.id });
+        return c.json(toTicketDetail(result.view), 200);
+      },
+    );
+  }
 
   app.onError((error, c) => {
     // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno, que nunca

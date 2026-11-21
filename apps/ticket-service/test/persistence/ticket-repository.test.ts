@@ -269,4 +269,32 @@ describe("TicketRepository", () => {
             resolvedAt: null,
         });
     });
+
+    // Contrato §8.3: listagem do solicitante, por updatedAt decrescente (instantes, não texto),
+    // com desempate por id crescente (R5: instantes distintos e um empate controlado).
+    it("listByRequester: só os chamados do solicitante, por updatedAt decrescente e id crescente no empate", async () => {
+        await db.createEmployees("EMP-001", "EMP-002");
+        const empate = "2026-11-06T11:00:00.000Z";
+        await repository.create(chamadoValido({ id: "INC-A", updatedAt: "2026-11-06T10:00:00.000Z" }));
+        await repository.create(chamadoValido({ id: "INC-C", updatedAt: empate }));
+        await repository.create(chamadoValido({ id: "INC-B", updatedAt: empate }));
+        await repository.create(chamadoValido({ id: "INC-D", updatedAt: "2026-11-06T12:00:00.000Z" }));
+        await repository.create(chamadoValido({ id: "INC-OUTRO", requesterId: "EMP-002", updatedAt: "2026-11-06T13:00:00.000Z" }));
+
+        const lista = await repository.listByRequester("EMP-001");
+
+        expect(lista.map((ticket) => ticket.id)).toStrictEqual(["INC-D", "INC-B", "INC-C", "INC-A"]);
+        expect(await repository.listByRequester("EMP-404")).toStrictEqual([]);
+    });
+
+    // Contrato §9.2: uma única consulta por id e requesterId para as três causas do 404.
+    it("findByIdAndRequester: devolve o chamado do solicitante e undefined para outro solicitante ou id inexistente", async () => {
+        await db.createEmployees("EMP-001", "EMP-002");
+        const chamado = chamadoValido();
+        await repository.create(chamado);
+
+        expect(await repository.findByIdAndRequester(chamado.id, "EMP-001")).toStrictEqual(chamado);
+        expect(await repository.findByIdAndRequester(chamado.id, "EMP-002")).toBeUndefined();
+        expect(await repository.findByIdAndRequester("INC-999999", "EMP-001")).toBeUndefined();
+    });
 });
