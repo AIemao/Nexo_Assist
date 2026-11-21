@@ -209,6 +209,9 @@ describe("createTicket", () => {
 
     beforeEach(async () => {
         await db.reset();
+        // Ator e chamadoAncora usam EMP-001 (FK de requesterId e actorEmployeeId).
+        // EMP-002 e ANL-001 não são criados: são recusados antes de qualquer gravação.
+        await db.createEmployees("EMP-001");
 
         clockCalls = 0;
         eventIdGeneratorCalls = 0;

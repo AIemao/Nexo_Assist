@@ -1,6 +1,6 @@
 // Fixtures dos cenários de avaliação (docs/evaluation/01-evaluation-scenarios.md,
 // §2 "Dados de criação dos chamados" e §2.1, S1–S9). Todas são [Premissa].
-import type { CreateTicketDraft } from "../domain/index.js";
+import type { CreateTicketDraft, Employee } from "../domain/index.js";
 
 export const MINUTE_MS = 60_000;
 export const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -85,3 +85,12 @@ export const TICKET_FIXTURES = [
 
 export type TicketFixture = (typeof TICKET_FIXTURES)[number];
 export type FixtureLabel = TicketFixture["label"];
+
+// S8: funcionários do seed (decisão do autor, 2026-11-21). O id é o próprio rótulo e coincide
+// com o requesterId dos chamados e com o ator ANALYST da transição (S4c). Gravados antes dos
+// chamados (S7), criados só se ausentes (plano da fatia 0, D2).
+export const EMPLOYEE_FIXTURES = [
+  { id: "EMP-A", name: "Ana Souza", email: "ana@nexo.example", department: "Operações", role: "EMPLOYEE" },
+  { id: "EMP-B", name: "Bruno Lima", email: "bruno@nexo.example", department: "Financeiro", role: "EMPLOYEE" },
+  { id: "ANALYST-1", name: "Carla Mendes", email: "carla@nexo.example", department: "Service Desk", role: "ANALYST" },
+] as const satisfies readonly Employee[];

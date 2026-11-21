@@ -70,6 +70,8 @@ describe("IdempotencyRecordRepository", () => {
 
     beforeEach(async () => {
         await db.reset();
+        // Solicitante do chamado (FK de requesterId).
+        await db.createEmployees("EMP-001");
 
         await unitOfWork.execute(async ({ tickets }) => {
             await tickets.create(chamadoValido);

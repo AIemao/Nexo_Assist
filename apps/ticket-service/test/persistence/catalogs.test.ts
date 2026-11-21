@@ -5,6 +5,7 @@ import {
     ACTOR_TYPES,
     AFFECTED_SCOPES,
     COMMITMENT_RISKS,
+    EMPLOYEE_ROLES,
     PRIORITIES,
     TICKET_CATEGORIES,
     TICKET_EVENT_TYPES,
@@ -19,6 +20,7 @@ import type {
     ActorType,
     AffectedScope,
     CommitmentRisk,
+    EmployeeRole,
     Priority,
     TicketCategory,
     TicketEventType,
@@ -32,6 +34,7 @@ import {
     ActorType as PrismaActorTypeEnum,
     AffectedScope as PrismaAffectedScopeEnum,
     CommitmentRisk as PrismaCommitmentRiskEnum,
+    EmployeeRole as PrismaEmployeeRoleEnum,
     Priority as PrismaPriorityEnum,
     TicketCategory as PrismaTicketCategoryEnum,
     TicketEventType as PrismaTicketEventTypeEnum,
@@ -45,6 +48,7 @@ import type {
     ActorType as PrismaActorType,
     AffectedScope as PrismaAffectedScope,
     CommitmentRisk as PrismaCommitmentRisk,
+    EmployeeRole as PrismaEmployeeRole,
     Priority as PrismaPriority,
     TicketCategory as PrismaTicketCategory,
     TicketEventType as PrismaTicketEventType,
@@ -77,6 +81,7 @@ export type CatalogTypeChecks = {
     ticketEventTypes: Assert<Equals<TicketEventType, PrismaTicketEventType>>;
     actorTypes: Assert<Equals<ActorType, PrismaActorType>>;
     ticketOperationTypes: Assert<Equals<TicketOperationType, PrismaTicketOperationType>>;
+    employeeRoles: Assert<Equals<EmployeeRole, PrismaEmployeeRole>>;
     // Conferência interna do domínio: Actor precisa cobrir todo ActorType.
     actorCoversActorTypes: Assert<Equals<Actor["type"], ActorType>>;
 };
@@ -133,6 +138,11 @@ const catalogs = [
         name: "TicketOperationType",
         domain: TICKET_OPERATION_TYPES,
         prisma: Object.values(PrismaTicketOperationTypeEnum),
+    },
+    {
+        name: "EmployeeRole",
+        domain: EMPLOYEE_ROLES,
+        prisma: Object.values(PrismaEmployeeRoleEnum),
     },
 ] as const;
 

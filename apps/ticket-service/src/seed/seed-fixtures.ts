@@ -3,7 +3,7 @@
 import { createCreateTicket } from "../application/create-ticket.js";
 import { computeDueAt, type TicketStatus } from "../domain/index.js";
 import type { UnitOfWork } from "../persistence/unit-of-work.js";
-import { TICKET_FIXTURES, type FixtureLabel, type TicketFixture } from "./fixtures.js";
+import { EMPLOYEE_FIXTURES, TICKET_FIXTURES, type FixtureLabel, type TicketFixture } from "./fixtures.js";
 
 export interface SeedDependencies {
   unitOfWork: UnitOfWork;
@@ -33,6 +33,9 @@ export async function seedFixtures(
 ): Promise<Record<FixtureLabel, string>> {
   const ids: Partial<Record<FixtureLabel, string>> = {};
 
+  // S7: funcionários primeiro (FKs de requesterId e actorEmployeeId); depois os chamados.
+  await seedEmployees(deps);
+
   for (const fixture of TICKET_FIXTURES) {
     const ticketId = await createFixture(deps, fixture, reference);
     ids[fixture.label] = ticketId;
@@ -46,6 +49,16 @@ export async function seedFixtures(
     throw new Error("Seed: mapa de fixtures incompleto.");
   }
   return ids;
+}
+
+// S8: os três funcionários, numa Unit of Work. Plano da fatia 0, D2: um funcionário já
+// existente não é comparado nem alterado (como os chamados, S2 e S6).
+async function seedEmployees(deps: SeedDependencies): Promise<void> {
+  await deps.unitOfWork.execute(async ({ employees }) => {
+    for (const employee of EMPLOYEE_FIXTURES) {
+      await employees.createIfAbsent(employee);
+    }
+  });
 }
 
 // S1/S2: criação pelo caso de uso, com o relógio parado no instante de criação.

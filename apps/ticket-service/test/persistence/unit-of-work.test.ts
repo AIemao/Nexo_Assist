@@ -41,6 +41,8 @@ describe("Unit of Work", () => {
 
     beforeEach(async () => {
         await db.prisma.ticket.deleteMany();
+        // Solicitante do chamado (FK de requesterId).
+        await db.createEmployees("EMP-001");
     });
 
     afterAll(async () => {

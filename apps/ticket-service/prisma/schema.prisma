@@ -78,8 +78,27 @@ enum TicketOperationType {
   TRANSFER
 }
 
+enum EmployeeRole {
+  EMPLOYEE
+  ANALYST
+}
+
+// DM §3.1. E-mail gravado já normalizado (trim + minúsculas), com @unique (ADR-008,
+// atualização de 2026-11-21). Funcionários não são excluídos: FKs com Restrict.
+model Employee {
+  id               String        @id
+  name             String
+  email            String        @unique
+  department       String
+  role             EmployeeRole
+  requestedTickets Ticket[]      @relation("TicketRequester")
+  assignedTickets  Ticket[]      @relation("TicketAssignee")
+  ticketEvents     TicketEvent[]
+}
+
 // Sem defaults: id, version, datas e status são fornecidos pelo ticket-service (DM §3.2).
-// requesterId e assignedTo sem relação até o model Employee (migração posterior).
+// requesterId (obrigatória) e assignedTo (opcional) referenciam Employee (ADR-008,
+// atualização de 2026-11-21).
 model Ticket {
   id                   String              @id
   version              Int
@@ -90,10 +109,12 @@ model Ticket {
   priority             Priority
   status               TicketStatus
   requesterId          String
+  requester            Employee            @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   workImpact           WorkImpact
   affectedScope        AffectedScope
   commitmentRisk       CommitmentRisk
   assignedTo           String?
+  assignee             Employee?           @relation("TicketAssignee", fields: [assignedTo], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdAt            DateTime
   updatedAt            DateTime
   resolvedAt           DateTime?
@@ -105,7 +126,8 @@ model Ticket {
 }
 
 // DM §3.9. actor em duas colunas; changes é um Json cujo valor é um array.
-// Chamados não são excluídos: FK com Restrict.
+// Chamados não são excluídos: FK com Restrict. actorEmployeeId (opcional) referencia
+// Employee (ADR-008, atualização de 2026-11-21).
 model TicketEvent {
   id              String          @id
   ticketId        String
@@ -113,6 +135,7 @@ model TicketEvent {
   type            TicketEventType
   actorType       ActorType
   actorEmployeeId String?
+  actorEmployee   Employee?       @relation(fields: [actorEmployeeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   summary         String
   changes         Json
   occurredAt      DateTime

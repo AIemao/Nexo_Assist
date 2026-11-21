@@ -100,6 +100,8 @@ describe("Falhas simuladas no transporte (servidor real, porta 0)", () => {
 
     beforeEach(async () => {
         await db.reset();
+        // O ator dos POSTs é EMP-001 (FK de requesterId e actorEmployeeId).
+        await db.createEmployees("EMP-001");
     });
 
     afterEach(async () => {

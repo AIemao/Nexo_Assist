@@ -18,6 +18,7 @@ import { createCreateTicket } from "../../src/application/create-ticket.js";
 import { computeDueAt } from "../../src/domain/index.js";
 import { Prisma } from "../../src/generated/prisma/client.js";
 import { createApp } from "../../src/http/app.js";
+import type { WriteRecord } from "../../src/http/write-record.js";
 import { createErrorLogger } from "../../src/observability/error-log.js";
 import { readPrismaCode } from "../../src/persistence/prisma-error-code.js";
 import { createUnitOfWork } from "../../src/persistence/unit-of-work.js";
@@ -463,6 +464,8 @@ describe("POST /tickets", () => {
     // Cenário 6: usa o caso de uso real e verifica a reconciliação pelo banco.
     it("cria e reconcilia o chamado pela mesma chave com o banco real", async () => {
         await db.reset();
+        // O ator é EMP-001 (FK de requesterId e actorEmployeeId).
+        await db.createEmployees("EMP-001");
 
         const eventIdGenerator = {
             generate: () => "EVT-HTTP-001",
@@ -735,5 +738,91 @@ describe("POST /tickets", () => {
             errorType: "PrismaClientKnownRequestError",
         });
         expect(linhas[0]).not.toHaveProperty("prismaCode");
+    });
+
+    // Contrato v1.3, nota do §4.3; ADR-008, atualização de 2026-11-21: com as FKs para
+    // Employee, um X-Actor-Employee-Id sem Employee viola a premissa do README §8 e resulta no
+    // 500 genérico, com ticket_write ERROR e rollback completo. O app usa o registro composto
+    // como no main.ts (com o leitor do código do Prisma), não o padrão do createApp.
+    it("ator sem Employee: 500 genérico, ticket_write ERROR, stderr só com campos permitidos e rollback completo", async () => {
+        await db.reset();
+        // Contador já existente: o rollback precisa preservar o valor, não só a ausência da linha.
+        await db.prisma.ticketCounter.create({ data: { type: "INC", lastNumber: 7 } });
+
+        const createTicket = createCreateTicket({
+            unitOfWork,
+            eventIdGenerator: { generate: () => "EVT-HTTP-404" },
+            clock: { now: () => NOW },
+        });
+        const registros: WriteRecord[] = [];
+        const logError = createErrorLogger(readPrismaCode);
+        const app = createApp({
+            createTicket,
+            onUnexpectedError: (error) => logError("request", error),
+            recordWrite: (record) => {
+                registros.push(record);
+            },
+        });
+
+        async function estadoDoBanco() {
+            const contador = await db.prisma.ticketCounter.findUnique({ where: { type: "INC" } });
+            return {
+                ultimoNumeroInc: contador?.lastNumber ?? null,
+                chamados: await db.prisma.ticket.count(),
+                eventos: await db.prisma.ticketEvent.count(),
+                registros: await db.prisma.idempotencyRecord.count(),
+            };
+        }
+
+        const antes = await estadoDoBanco();
+
+        // O mockRestore limpa as chamadas: a saída é lida antes de restaurar.
+        const escrita = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+        let response: Response;
+        let stderr: string;
+        try {
+            response = await app.request("/tickets", {
+                method: "POST",
+                headers: { ...validHeaders(), "X-Actor-Employee-Id": "EMP-404" },
+                body: serialize(draft),
+            });
+        } finally {
+            stderr = escrita.mock.calls.map(([trecho]) => String(trecho)).join("");
+            escrita.mockRestore();
+        }
+
+        const responseText = await response.clone().text();
+        await expectProblem(response, 500, "INTERNAL_ERROR");
+        expect(responseText).not.toContain("EMP-404");
+
+        expect(registros).toStrictEqual([
+            {
+                event: "ticket_write",
+                operation: "CREATE",
+                outcome: "ERROR",
+                status: 500,
+                code: "INTERNAL_ERROR",
+                responseDisposition: "SENT",
+                idempotencyKey: IDEMPOTENCY_KEY,
+            },
+        ]);
+
+        const linhas = stderr
+            .split("\n")
+            .filter((linha) => linha.includes('"unexpected_error"'))
+            .map((linha) => JSON.parse(linha) as Record<string, unknown>);
+        expect(linhas).toHaveLength(1);
+        const { stack, ...semPilha } = linhas[0] ?? {};
+        expect(semPilha).toStrictEqual({
+            event: "unexpected_error",
+            context: "request",
+            errorType: "PrismaClientKnownRequestError",
+            prismaCode: "P2003",
+        });
+        expect(Array.isArray(stack)).toBe(true);
+        expect(stderr).not.toMatch(/foreign key/i);
+        expect(stderr).not.toContain("EMP-404");
+
+        expect(await estadoDoBanco()).toStrictEqual(antes);
     });
 });

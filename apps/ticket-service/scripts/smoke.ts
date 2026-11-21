@@ -30,6 +30,7 @@ const prismaCli = require.resolve("prisma/build/index.js");
 interface SqliteStatement {
   get(...params: unknown[]): unknown;
   all(...params: unknown[]): unknown[];
+  run(...params: unknown[]): unknown;
 }
 interface SqliteDatabase {
   prepare(sql: string): SqliteStatement;
@@ -100,7 +101,29 @@ function migratedDatabase(tempDir: string, name: string): string {
   const databaseUrl = `file:${join(tempDir, name).replaceAll("\\", "/")}`;
   log(`aplicando migrações em ${databaseUrl}`);
   run("prisma migrate deploy", [prismaCli, "migrate", "deploy"], { ...process.env, DATABASE_URL: databaseUrl }, STEP_TIMEOUT_MS * 3);
+  insertSmokeEmployee(join(tempDir, name));
   return databaseUrl;
+}
+
+// ADR-008, atualização de 2026-11-21 (plano da fatia 0, D5): com a FK de requesterId, o ator
+// do smoke (EMP-001) precisa existir antes de subir o servidor. O smoke não roda o seed nem
+// importa src/: grava o funcionário direto, numa conexão fechada antes de subir o servidor,
+// com o e-mail já normalizado e role 'EMPLOYEE'. Essa escrita não passa pelo Prisma Client,
+// e o banco não valida o enum (TEXT no SQLite).
+function insertSmokeEmployee(databasePath: string): void {
+  const db = new Sqlite(databasePath, { readonly: false, fileMustExist: true });
+  try {
+    db.prepare('INSERT INTO "Employee" ("id", "name", "email", "department", "role") VALUES (?, ?, ?, ?, ?)').run(
+      "EMP-001",
+      "Funcionário do Smoke",
+      "emp-001@smoke.example",
+      "Smoke",
+      "EMPLOYEE",
+    );
+  } finally {
+    db.close();
+  }
+  log("funcionário EMP-001 gravado antes de subir o servidor");
 }
 
 // O ambiente do filho nunca herda falha simulada do ambiente de quem roda o smoke:

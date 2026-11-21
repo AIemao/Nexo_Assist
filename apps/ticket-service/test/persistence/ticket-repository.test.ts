@@ -64,6 +64,7 @@ describe("TicketRepository", () => {
     });
 
     it("cria e recupera um chamado mantendo sua representação de domínio", async () => {
+        await db.createEmployees("EMP-001");
         const chamado = chamadoValido();
 
         const criado = await repository.create(chamado);
@@ -76,6 +77,8 @@ describe("TicketRepository", () => {
     });
 
     it("normaliza as datas obrigatórias e opcionais para UTC sem alterar o instante", async () => {
+        // EMP-002 é o assignedTo do chamado (FK opcional).
+        await db.createEmployees("EMP-001", "EMP-002");
         const chamado = chamadoValido({
             status: "RESOLVED",
             assignedTo: "EMP-002",
@@ -130,6 +133,7 @@ describe("TicketRepository", () => {
     });
 
     it("atualiza o chamado e incrementa sua versão", async () => {
+        await db.createEmployees("EMP-001");
         const chamado = chamadoValido();
 
         await repository.create(chamado);
@@ -156,6 +160,7 @@ describe("TicketRepository", () => {
     });
 
     it("retorna VERSION_CONFLICT ao receber uma versão desatualizada", async () => {
+        await db.createEmployees("EMP-001");
         const chamado = chamadoValido();
 
         await repository.create(chamado);
@@ -203,6 +208,7 @@ describe("TicketRepository", () => {
     });
 
     it("rejeita atualização inválida sem alterar o registro persistido", async () => {
+        await db.createEmployees("EMP-001");
         const chamado = chamadoValido();
 
         await repository.create(chamado);
@@ -224,6 +230,7 @@ describe("TicketRepository", () => {
     });
 
     it("limpa no banco o campo opcional removido na atualização", async () => {
+        await db.createEmployees("EMP-001");
         const resolvido = chamadoValido({
             status: "RESOLVED",
             resolvedAt: "2026-11-06T12:00:00.000Z",
