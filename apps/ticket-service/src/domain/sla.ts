@@ -1,4 +1,5 @@
 import type { Priority } from "./priority.js";
+import type { Ticket } from "./ticket.js";
 
 // DM v2.6 §8.5.2. Fuso operacional do MVP: UTC−03:00 com deslocamento fixo, sem
 // biblioteca de fuso. Risco registrado: se o horário de verão voltar a ser aplicável,
@@ -37,6 +38,21 @@ export function computeDueAt(start: string, priority: Priority): string {
 // DM v2.6 §8.5.2: vencido só depois do prazo; no instante exato ainda não.
 export function isOverdue(dueAt: string, now: string): boolean {
   return Date.parse(now) > Date.parse(dueAt);
+}
+
+// DM §3.2: prazo vigente = nextUpdateDueAt ?? firstResponseDueAt.
+export function currentDueAt(ticket: Pick<Ticket, "firstResponseDueAt" | "nextUpdateDueAt">): string {
+  return ticket.nextUpdateDueAt ?? ticket.firstResponseDueAt;
+}
+
+// DM v2.16 §8.5.2 (README §12 #19): chamado RESOLVED não tem vencido (null); os demais
+// status usam isOverdue(prazo vigente, now). `now` é parâmetro: o domínio não lê relógio.
+export function ticketOverdue(
+  ticket: Pick<Ticket, "status" | "firstResponseDueAt" | "nextUpdateDueAt">,
+  now: string,
+): boolean | null {
+  if (ticket.status === "RESOLVED") return null;
+  return isOverdue(currentDueAt(ticket), now);
 }
 
 // Instante deslocado para o horário operacional; lido sempre com os getters UTC.

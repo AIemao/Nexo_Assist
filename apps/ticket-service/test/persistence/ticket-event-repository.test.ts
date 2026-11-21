@@ -59,6 +59,8 @@ describe("TicketEventRepository", () => {
 
     beforeEach(async () => {
         await db.reset();
+        // Solicitante do chamado e ator dos eventos (FKs de requesterId e actorEmployeeId).
+        await db.createEmployees("EMP-001");
 
         await unitOfWork.execute(async ({ tickets }) => {
             await tickets.create(chamadoValido);

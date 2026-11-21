@@ -1,4 +1,5 @@
 import type { PrismaClient } from "../generated/prisma/client.js";
+import { createEmployeeRepository, type EmployeeRepository } from "./employee-repository.js";
 import {
   createIdempotencyRecordRepository,
   type IdempotencyRecordRepository,
@@ -12,6 +13,7 @@ export interface UnitOfWorkRepositories {
   ticketIdAllocator: TicketIdAllocator;
   ticketEvents: TicketEventRepository;
   idempotencyRecords: IdempotencyRecordRepository;
+  employees: EmployeeRepository;
 }
 
 export interface UnitOfWork {
@@ -27,6 +29,7 @@ export function createUnitOfWork(prisma: Pick<PrismaClient, "$transaction">): Un
           ticketIdAllocator: createTicketIdAllocator(tx),
           ticketEvents: createTicketEventRepository(tx),
           idempotencyRecords: createIdempotencyRecordRepository(tx),
+          employees: createEmployeeRepository(tx),
         }),
       );
     },

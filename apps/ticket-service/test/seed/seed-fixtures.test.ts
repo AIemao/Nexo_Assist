@@ -19,6 +19,15 @@ import {
     seedFixtures,
 } from "../../src/seed/seed-fixtures.js";
 import { createTestDatabase } from "../support/test-database.js";
+import { normalizeEmail, type Employee } from "../../src/domain/index.js";
+import { seedFixturesWithSummary } from "../../src/seed/seed-fixtures.js";
+
+// Cenários §2.1, S8: os três funcionários do seed, com os dados exatos.
+const FUNCIONARIOS_S8: Employee[] = [
+    { id: "ANALYST-1", name: "Carla Mendes", email: "carla@nexo.example", department: "Service Desk", role: "ANALYST" },
+    { id: "EMP-A", name: "Ana Souza", email: "ana@nexo.example", department: "Operações", role: "EMPLOYEE" },
+    { id: "EMP-B", name: "Bruno Lima", email: "bruno@nexo.example", department: "Financeiro", role: "EMPLOYEE" },
+];
 
 // Quarta-feira, 10:00 em UTC−03:00.
 const REFERENCE = new Date("2026-11-04T13:00:00.000Z");
@@ -80,6 +89,40 @@ describe("seedFixtures", () => {
             chamados: await db.prisma.ticket.count(),
             eventos: await db.prisma.ticketEvent.count(),
             registros: await db.prisma.idempotencyRecord.count(),
+            funcionarios: await db.prisma.employee.count(),
+        };
+    }
+
+    // Funcionários gravados, em ordem de id, só com os campos do DM §3.1.
+    async function lerFuncionarios(): Promise<Employee[]> {
+        const linhas = await db.prisma.employee.findMany({ orderBy: { id: "asc" } });
+        return linhas.map(({ id, name, email, department, role }) => ({ id, name, email, department, role }));
+    }
+
+    // Unit of Work que anota, na ordem, cada funcionário e cada chamado gravados pelo seed.
+    function unitOfWorkComRegistro(gravacoes: string[]): UnitOfWork {
+        return {
+            execute(work) {
+                return unitOfWork.execute((repos) =>
+                    work({
+                        ...repos,
+                        employees: {
+                            ...repos.employees,
+                            createIfAbsent: (employee) => {
+                                gravacoes.push(`funcionário ${employee.id}`);
+                                return repos.employees.createIfAbsent(employee);
+                            },
+                        },
+                        tickets: {
+                            ...repos.tickets,
+                            create: (ticket) => {
+                                gravacoes.push(`chamado de ${ticket.requesterId}`);
+                                return repos.tickets.create(ticket);
+                            },
+                        },
+                    }),
+                );
+            },
         };
     }
 
@@ -292,5 +335,89 @@ describe("seedFixtures", () => {
             expect(chave).toMatch(UUID);
         }
         expect(new Set(chaves).size).toBe(chaves.length);
+    });
+
+    it("grava os três funcionários do S8 com os dados exatos e o e-mail normalizado", async () => {
+        await seedFixtures({ unitOfWork, eventIdGenerator: criarGeradorDeEventos() }, REFERENCE);
+
+        const funcionarios = await lerFuncionarios();
+
+        expect(funcionarios).toStrictEqual(FUNCIONARIOS_S8);
+        for (const funcionario of funcionarios) {
+            expect(funcionario.email).toBe(normalizeEmail(funcionario.email));
+        }
+    });
+
+    it("grava os funcionários antes dos chamados (S7)", async () => {
+        const gravacoes: string[] = [];
+
+        await seedFixtures(
+            { unitOfWork: unitOfWorkComRegistro(gravacoes), eventIdGenerator: criarGeradorDeEventos() },
+            REFERENCE,
+        );
+
+        expect(gravacoes).toStrictEqual([
+            "funcionário EMP-A",
+            "funcionário EMP-B",
+            "funcionário ANALYST-1",
+            "chamado de EMP-A",
+            "chamado de EMP-A",
+            "chamado de EMP-B",
+        ]);
+    });
+
+    it("segunda execução com a mesma referência não altera os funcionários (S5)", async () => {
+        const eventIdGenerator = criarGeradorDeEventos();
+        await seedFixtures({ unitOfWork, eventIdGenerator }, REFERENCE);
+        const antes = await contagens();
+
+        await seedFixtures({ unitOfWork, eventIdGenerator }, REFERENCE);
+
+        expect(antes.funcionarios).toBe(3);
+        expect(await contagens()).toStrictEqual(antes);
+        expect(await lerFuncionarios()).toStrictEqual(FUNCIONARIOS_S8);
+    });
+
+    it("reexecução dias depois não altera os funcionários (S6)", async () => {
+        const eventIdGenerator = criarGeradorDeEventos();
+        await seedFixtures({ unitOfWork, eventIdGenerator }, REFERENCE);
+
+        await seedFixtures({ unitOfWork, eventIdGenerator }, REFERENCE_MAIS_3_DIAS);
+
+        expect((await contagens()).funcionarios).toBe(3);
+        expect(await lerFuncionarios()).toStrictEqual(FUNCIONARIOS_S8);
+    });
+
+    it("não altera um funcionário já existente com dados diferentes (plano da fatia 0, D2)", async () => {
+        const existente: Employee = {
+            id: "EMP-A",
+            name: "Nome Anterior",
+            email: "ana.antiga@nexo.example",
+            department: "Outro Departamento",
+            role: "EMPLOYEE",
+        };
+        await unitOfWork.execute(({ employees }) => employees.create(existente));
+
+        await seedFixtures({ unitOfWork, eventIdGenerator: criarGeradorDeEventos() }, REFERENCE);
+
+        expect(await lerFuncionarios()).toStrictEqual([
+            FUNCIONARIOS_S8[0],
+            existente,
+            FUNCIONARIOS_S8[2],
+        ]);
+    });
+
+    it("o resumo do seed traz os funcionários gravados ou recuperados, com id e papel, e o mapa dos chamados", async () => {
+        const resumo = await seedFixturesWithSummary(
+            { unitOfWork, eventIdGenerator: criarGeradorDeEventos() },
+            REFERENCE,
+        );
+
+        expect(resumo.employees).toStrictEqual([
+            { id: "EMP-A", role: "EMPLOYEE" },
+            { id: "EMP-B", role: "EMPLOYEE" },
+            { id: "ANALYST-1", role: "ANALYST" },
+        ]);
+        expect(Object.keys(resumo.tickets).sort()).toStrictEqual(ROTULOS);
     });
 });

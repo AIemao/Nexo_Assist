@@ -6,6 +6,12 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 
 import type { CreateTicketInput, CreateTicketResult } from "../application/create-ticket.js";
+import type {
+  FindEmployeeByEmailInput,
+  FindEmployeeByEmailResult,
+} from "../application/find-employee-by-email.js";
+import type { ListMyTicketsInput, TicketView } from "../application/list-my-tickets.js";
+import type { ViewMyTicketInput, ViewMyTicketResult } from "../application/view-my-ticket.js";
 import {
   ACTOR_TYPES,
   AFFECTED_SCOPES,
@@ -17,6 +23,8 @@ import {
   type Actor,
   type CreateTicketDraft,
 } from "../domain/index.js";
+import { createErrorLogger } from "../observability/error-log.js";
+import type { ReadOperation, ReadRecord } from "./read-record.js";
 import type { SimulatedFault } from "./simulated-fault.js";
 import type { WriteRecord } from "./write-record.js";
 
@@ -27,13 +35,32 @@ export interface CreateTicketUseCase {
   execute(input: CreateTicketInput): Promise<CreateTicketResult>;
 }
 
+export interface ListMyTicketsUseCase {
+  execute(input: ListMyTicketsInput): Promise<TicketView[]>;
+}
+
+export interface ViewMyTicketUseCase {
+  execute(input: ViewMyTicketInput): Promise<ViewMyTicketResult>;
+}
+
+export interface FindEmployeeByEmailUseCase {
+  execute(input: FindEmployeeByEmailInput): Promise<FindEmployeeByEmailResult>;
+}
+
 export interface AppDependencies {
   createTicket: CreateTicketUseCase;
+  // Contrato §10: leitura do funcionário para o login simulado. Ausente, a rota não existe.
+  findEmployeeByEmail?: FindEmployeeByEmailUseCase;
+  // Contrato §8 e §9: leituras do funcionário. Ausente, a rota correspondente não existe.
+  listMyTickets?: ListMyTicketsUseCase;
+  viewMyTicket?: ViewMyTicketUseCase;
   onUnexpectedError?: (error: unknown) => void | Promise<void>;
   // Cenários §2.2. Ausente = desligada.
   simulatedFault?: SimulatedFault;
   // Cenários §1.1: recebe um registro por requisição de escrita.
   recordWrite?: (record: WriteRecord) => void;
+  // Cenários §1.1, IL1–IL7: recebe um registro por requisição de leitura de chamados.
+  recordRead?: (record: ReadRecord) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +69,7 @@ export interface AppDependencies {
 const PROBLEM_TITLES = {
   400: "Bad Request",
   403: "Forbidden",
+  404: "Not Found",
   409: "Conflict",
   415: "Unsupported Media Type",
   422: "Unprocessable Content",
@@ -84,9 +112,19 @@ type WriteVariables = { writeOutcome?: WriteOutcome };
 // que ele funcione também num Hono que não é o deste app.
 export type WriteEnv = { Variables: WriteVariables };
 
+// Cenários §1.1, IL5: a marca da leitura, sem `event` e `operation` (vêm do emissor da rota)
+// e sem `responseDisposition` (sempre SENT, IL6). Não há campo para idempotencyKey nem para
+// id do funcionário.
+export type ReadOutcomeMark = Omit<ReadRecord, "event" | "operation" | "responseDisposition">;
+
+type ReadVariables = { readOutcome?: ReadOutcomeMark };
+
+// Ambiente mínimo do emissor de leituras, como o WriteEnv.
+export type ReadEnv = { Variables: ReadVariables };
+
 type AppEnv = {
   Bindings: HttpBindings;
-  Variables: WriteVariables;
+  Variables: WriteVariables & ReadVariables;
 };
 
 type AppContext = Context<AppEnv>;
@@ -101,6 +139,13 @@ type WriteMarkTarget = { set(key: "writeOutcome", value: WriteOutcome): void };
 // Único mecanismo de marca do desfecho.
 export function markWrite(c: WriteMarkTarget, writeOutcome: WriteOutcome): void {
   c.set("writeOutcome", writeOutcome);
+}
+
+type ReadMarkTarget = { set(key: "readOutcome", value: ReadOutcomeMark): void };
+
+// Único mecanismo de marca do desfecho das leituras (IL5).
+export function markRead(c: ReadMarkTarget, readOutcome: ReadOutcomeMark): void {
+  c.set("readOutcome", readOutcome);
 }
 
 // Resposta de erro (Problem Details) que também marca o desfecho da escrita.
@@ -178,7 +223,7 @@ const actorHeadersSchema = z.discriminatedUnion(ACTOR_TYPE, [
   }),
   z.looseObject({
     [ACTOR_TYPE]: actorTypeSchema.extract(["SYSTEM"]),
-    [ACTOR_EMPLOYEE_ID]: z.undefined(),
+    [ACTOR_EMPLOYEE_ID]: z.undefined().optional(),
   }),
 ]);
 
@@ -191,25 +236,35 @@ const idempotencyHeaderSchema = z.looseObject({
 });
 
 // Contrato §2.2: conjunto fechado de cabeçalhos X-Actor-*; os demais cabeçalhos são ignorados.
+// Compartilhado pelo POST /tickets e pelas leituras (§7.1).
+function rejectUnknownActorHeaders(headers: object, ctx: z.RefinementCtx): void {
+  for (const name of Object.keys(headers)) {
+    const lower = name.toLowerCase();
+    if (lower.startsWith(ACTOR_PREFIX) && !(lower in CANONICAL_HEADER_NAMES)) {
+      ctx.addIssue({ code: "custom", path: [name], message: "Cabeçalho de ator não previsto." });
+    }
+  }
+}
+
 const requestHeadersSchema = z
   .intersection(idempotencyHeaderSchema, actorHeadersSchema)
-  .superRefine((headers, ctx) => {
-    for (const name of Object.keys(headers)) {
-      const lower = name.toLowerCase();
-      if (lower.startsWith(ACTOR_PREFIX) && !(lower in CANONICAL_HEADER_NAMES)) {
-        ctx.addIssue({ code: "custom", path: [name], message: "Cabeçalho de ator não previsto." });
-      }
-    }
-  });
+  .superRefine(rejectUnknownActorHeaders);
+
+// Contrato §7.1: as leituras usam os cabeçalhos do ator do §2.2, sem Idempotency-Key.
+const readHeadersSchema = actorHeadersSchema.superRefine(rejectUnknownActorHeaders);
 
 // O zValidator lê `schema.shape` (ou `schema.in.shape`) do schema de cabeçalhos para
 // mapear nomes sem diferença de maiúsculas, e uma interseção não tem `shape`. O objeto
 // vazio de entrada só atende a essa leitura: repassa todos os cabeçalhos, já em minúsculas.
 const headersValidatorSchema = z.looseObject({}).pipe(requestHeadersSchema);
+const readHeadersValidatorSchema = z.looseObject({}).pipe(readHeadersSchema);
 
-type RequestHeaders = z.output<typeof requestHeadersSchema>;
+// Contrato §8.1 e §11: as leituras não aceitam parâmetros de consulta (schema estrito).
+const noQuerySchema = z.strictObject({});
 
-function toActor(headers: RequestHeaders): Actor {
+type ActorHeaders = z.output<typeof actorHeadersSchema>;
+
+function toActor(headers: ActorHeaders): Actor {
   if (headers[ACTOR_TYPE] === "SYSTEM") return { type: "SYSTEM" };
   return { type: headers[ACTOR_TYPE], employeeId: headers[ACTOR_EMPLOYEE_ID] };
 }
@@ -227,12 +282,23 @@ function toHeaderName(path: readonly PropertyKey[]): string {
   return CANONICAL_HEADER_NAMES[name.toLowerCase()] ?? name;
 }
 
+// Contrato §11: o path de um parâmetro de consulta é o nome precedido de "?".
+function toQueryName(path: readonly PropertyKey[]): string {
+  return `?${String(path[0] ?? "")}`;
+}
+
+function toPath(target: string, path: readonly PropertyKey[]): string {
+  if (target === "header") return toHeaderName(path);
+  if (target === "query") return toQueryName(path);
+  return toJsonPointer(path);
+}
+
 function toValidationErrors(error: z.core.$ZodError, target: string): ValidationError[] {
   return error.issues.flatMap((issue) => {
     // Campo extra no schema estrito: um erro por campo, no caminho do próprio campo.
     const paths = issue.code === "unrecognized_keys" ? issue.keys.map((key) => [...issue.path, key]) : [issue.path];
     return paths.map((path) => ({
-      path: target === "header" ? toHeaderName(path) : toJsonPointer(path),
+      path: toPath(target, path),
       message: issue.message,
     }));
   });
@@ -243,6 +309,65 @@ type ValidationResult = ({ success: true } | { success: false; error: z.core.$Zo
 function rejectInvalid(result: ValidationResult, c: AppContext): Response | undefined {
   if (result.success) return undefined;
   return rejectWrite(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+}
+
+// Resposta de erro (Problem Details) que também marca o desfecho da leitura (IL6).
+function rejectRead(
+  c: AppContext,
+  outcome: "INVALID" | "REJECTED",
+  status: ProblemStatus,
+  code: string,
+  errors?: ValidationError[],
+): Response {
+  markRead(c, { outcome, status, code });
+  return problem(status, code, errors);
+}
+
+function rejectInvalidRead(result: ValidationResult, c: AppContext): Response | undefined {
+  if (result.success) return undefined;
+  return rejectRead(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+}
+
+// Contrato §10: o POST /employees/lookup não tem registro operacional (cenários §1.1, IL1);
+// o erro de validação só monta a resposta.
+function rejectInvalidUnrecorded(result: ValidationResult): Response | undefined {
+  if (result.success) return undefined;
+  return problem(400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+}
+
+// Contrato §10.1: corpo estrito, só `email` (a senha não vai ao ticket-service).
+const employeeLookupBodySchema = z.strictObject({ email: z.string() });
+
+// Contrato §11: rejeição do caso de uso da leitura do funcionário.
+const LOOKUP_REJECTION_STATUS: Record<Extract<FindEmployeeByEmailResult, { ok: false }>["error"], ProblemStatus> = {
+  EMPLOYEE_NOT_FOUND: 404,
+};
+
+// ---------------------------------------------------------------------------
+// Corpos das leituras (contrato §8.2 e §9.1).
+
+// §8.2: resumo; resolvedAt só com status RESOLVED (omitido, como no objeto ticket do §3);
+// requesterId fora, porque é sempre o próprio ator.
+function toTicketSummary({ ticket, currentDueAt, isOverdue }: TicketView) {
+  return {
+    id: ticket.id,
+    type: ticket.type,
+    title: ticket.title,
+    category: ticket.category,
+    priority: ticket.priority,
+    status: ticket.status,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+    ...(ticket.resolvedAt === undefined ? {} : { resolvedAt: ticket.resolvedAt }),
+    currentDueAt,
+    isOverdue,
+  };
+}
+
+// §9.1: o próprio objeto ticket, sem envelope, com currentDueAt e isOverdue no mesmo nível;
+// opcionais ausentes já vêm omitidos do repositório.
+function toTicketDetail({ ticket, currentDueAt, isOverdue }: TicketView) {
+  return { ...ticket, currentDueAt, isOverdue };
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +435,55 @@ export function writeRecorder({ recordWrite, onUnexpectedError }: WriteRecorderO
   };
 }
 
+// Emissor único do registro das leituras de chamados (cenários §1.1, IL5), simétrico ao
+// writeRecorder. "Exatamente uma emissão" vale para os caminhos classificados, que marcam o
+// próprio desfecho. A falta de marca é defeito interno: vai ao onUnexpectedError e não gera
+// ticket_read (plano da fatia 0, D4). Só observa: não decide regra de negócio.
+
+export interface ReadRecorderOptions {
+  // IL6: LIST ou VIEW, conforme a rota.
+  operation: ReadOperation;
+  // Ausente: nada é emitido, mas o diagnóstico de caminho sem marca continua ativo.
+  recordRead?: ((record: ReadRecord) => void) | undefined;
+  onUnexpectedError: UnexpectedErrorHandler;
+}
+
+export function readRecorder({
+  operation,
+  recordRead,
+  onUnexpectedError,
+}: ReadRecorderOptions): MiddlewareHandler<ReadEnv> {
+  return async (c, next) => {
+    await next();
+
+    const readOutcome = c.get("readOutcome");
+    if (readOutcome === undefined) {
+      reportUnexpected(
+        onUnexpectedError,
+        new Error(`${c.req.method} ${c.req.path} terminou sem desfecho registrado (cenários §1.1, IL5).`),
+      );
+      return;
+    }
+    if (recordRead === undefined) return;
+
+    // IL6: sem idempotencyKey e sem id do funcionário; responseDisposition sempre SENT.
+    const record: ReadRecord = {
+      event: "ticket_read",
+      operation,
+      ...readOutcome,
+      responseDisposition: "SENT",
+    };
+
+    // IL5 (como o IN8): falha do gravador nunca altera a resposta; o erro vai para o
+    // registro interno, e nenhum segundo registro é emitido.
+    try {
+      recordRead(record);
+    } catch (error) {
+      reportUnexpected(onUnexpectedError, error);
+    }
+  };
+}
+
 // FS5: encerra a conexão sem resposta HTTP e avisa o adapter de que não deve responder.
 function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
   outgoing.destroy();
@@ -318,11 +492,24 @@ function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
 
 // ---------------------------------------------------------------------------
 
+// README §12 #22: o registro padrão só leva ao stderr os campos permitidos. Sem leitor do
+// código do Prisma (ADR-008, condição 4: o app não alcança o Prisma); quem quiser o
+// prismaCode injeta o onUnexpectedError, como o main.ts.
+const logDefaultError = createErrorLogger();
+
+function logRequestError(error: unknown): void {
+  logDefaultError("request", error);
+}
+
 export function createApp({
   createTicket,
-  onUnexpectedError = console.error,
+  listMyTickets,
+  viewMyTicket,
+  findEmployeeByEmail,
+  onUnexpectedError = logRequestError,
   simulatedFault,
   recordWrite,
+  recordRead,
 }: AppDependencies) {
   // Bindings do adapter Node: a falha simulada encerra o ServerResponse (c.env.outgoing),
   // o que só existe com @hono/node-server. Os testes de rota (app.request()) não ligam
@@ -413,11 +600,117 @@ export function createApp({
     },
   );
 
+  // Leituras do funcionário (contrato §7 a §9). Ordem de validação (§11): cabeçalhos,
+  // parâmetros de consulta, tipo do ator (403) e só então o caso de uso. O emissor do
+  // ticket_read envolve toda a cadeia (IL5).
+  if (listMyTickets !== undefined) {
+    app.get(
+      "/tickets",
+      readRecorder({ operation: "LIST", recordRead, onUnexpectedError }),
+      zValidator<typeof readHeadersValidatorSchema, "header", AppEnv, "/tickets", typeof rejectInvalidRead>(
+        "header",
+        readHeadersValidatorSchema,
+        rejectInvalidRead,
+      ),
+      zValidator<typeof noQuerySchema, "query", AppEnv, "/tickets", typeof rejectInvalidRead>(
+        "query",
+        noQuerySchema,
+        rejectInvalidRead,
+      ),
+      async (c) => {
+        // §7.2: só EMPLOYEE, antes de qualquer leitura no banco.
+        const actor = toActor(c.req.valid("header"));
+        if (actor.type !== "EMPLOYEE") return rejectRead(c, "REJECTED", 403, "ACTOR_NOT_EMPLOYEE");
+
+        const views = await listMyTickets.execute({ requesterId: actor.employeeId });
+        markRead(c, { outcome: "OK", status: 200 });
+        return c.json({ tickets: views.map(toTicketSummary) }, 200);
+      },
+    );
+  }
+
+  if (viewMyTicket !== undefined) {
+    app.get(
+      "/tickets/:ticketId",
+      readRecorder({ operation: "VIEW", recordRead, onUnexpectedError }),
+      zValidator<typeof readHeadersValidatorSchema, "header", AppEnv, "/tickets/:ticketId", typeof rejectInvalidRead>(
+        "header",
+        readHeadersValidatorSchema,
+        rejectInvalidRead,
+      ),
+      zValidator<typeof noQuerySchema, "query", AppEnv, "/tickets/:ticketId", typeof rejectInvalidRead>(
+        "query",
+        noQuerySchema,
+        rejectInvalidRead,
+      ),
+      async (c) => {
+        // §7.2: só EMPLOYEE, antes de qualquer leitura no banco.
+        const actor = toActor(c.req.valid("header"));
+        if (actor.type !== "EMPLOYEE") return rejectRead(c, "REJECTED", 403, "ACTOR_NOT_EMPLOYEE");
+
+        // §9.2: o caminho não tem validação de formato; inexistente, de outro funcionário e
+        // malformado recebem a mesma negação, e o registro não leva o id pedido (IL3).
+        const result = await viewMyTicket.execute({ requesterId: actor.employeeId, ticketId: c.req.param("ticketId") });
+        if (!result.ok) return rejectRead(c, "REJECTED", 404, result.error);
+
+        markRead(c, { outcome: "OK", status: 200, ticketId: result.view.ticket.id });
+        return c.json(toTicketDetail(result.view), 200);
+      },
+    );
+  }
+
+  // Leitura do funcionário para o login simulado (contrato §10). Sem emissor de registro
+  // (cenários §1.1, IL1); o e-mail nunca é registrado (README §12 #22). Ordem: Content-Type
+  // antes dos cabeçalhos, como no POST /tickets (plano da fatia 0, D8); depois cabeçalhos,
+  // corpo, tipo do ator (403) e só então o caso de uso (§11).
+  if (findEmployeeByEmail !== undefined) {
+    app.post(
+      "/employees/lookup",
+      requireJson,
+      zValidator<
+        typeof readHeadersValidatorSchema,
+        "header",
+        AppEnv,
+        "/employees/lookup",
+        typeof rejectInvalidUnrecorded
+      >("header", readHeadersValidatorSchema, rejectInvalidUnrecorded),
+      async (c) => {
+        // Corpo lido aqui, como no POST /tickets: só o erro de parse vira 400.
+        let body: unknown;
+        try {
+          body = await c.req.json<unknown>();
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+          return problem(400, "VALIDATION_ERROR", [{ path: "#", message: "Corpo JSON malformado." }]);
+        }
+
+        const parsed = employeeLookupBodySchema.safeParse(body);
+        if (!parsed.success) {
+          return problem(400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
+        }
+
+        // §10.3: só o BFF, antes de existir sessão, com ator SYSTEM.
+        const actor = toActor(c.req.valid("header"));
+        if (actor.type !== "SYSTEM") return problem(403, "ACTOR_NOT_SYSTEM");
+
+        const result = await findEmployeeByEmail.execute({ email: parsed.data.email });
+        if (!result.ok) return problem(LOOKUP_REJECTION_STATUS[result.error], result.error);
+
+        // §10.2: o Employee do DM §3.1, campo a campo.
+        const { id, name, email, department, role } = result.employee;
+        return c.json({ id, name, email, department, role }, 200);
+      },
+    );
+  }
+
   app.onError((error, c) => {
     // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno, que nunca
     // impede a resposta 500.
     reportUnexpected(onUnexpectedError, error);
-    // IN8: o caminho do erro marca o próprio desfecho; o emissor não deduz o ERROR do 500.
+    // IN8 e IL5: o caminho do erro marca o próprio desfecho; os emissores não deduzem o
+    // ERROR do 500. O onError é do app inteiro: marca a escrita e a leitura, e cada emissor
+    // lê só a sua marca (uma rota sem emissor ignora as duas).
+    markRead(c, { outcome: "ERROR", status: 500, code: "INTERNAL_ERROR" });
     return rejectWrite(c, "ERROR", 500, "INTERNAL_ERROR");
   });
 

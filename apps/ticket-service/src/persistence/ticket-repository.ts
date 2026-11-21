@@ -14,6 +14,11 @@ export interface TicketRepository {
   create(ticket: Ticket): Promise<Ticket>;
   findById(id: string): Promise<Ticket | undefined>;
   update(ticket: Ticket): Promise<UpdateTicketResult>;
+  // Contrato §8.3: chamados do solicitante, por updatedAt decrescente e id crescente no empate.
+  listByRequester(requesterId: string): Promise<Ticket[]>;
+  // Contrato §9.2: uma única consulta por id e requesterId; inexistente e de outro
+  // solicitante dão o mesmo resultado (undefined).
+  findByIdAndRequester(id: string, requesterId: string): Promise<Ticket | undefined>;
 }
 
 export type TicketDatabaseClient = Pick<PrismaClient, "ticket">;
@@ -30,6 +35,19 @@ export function createTicketRepository(prisma: TicketDatabaseClient): TicketRepo
 
     async findById(id) {
       const row = await prisma.ticket.findUnique({ where: { id } });
+      return row === null ? undefined : toDomain(row);
+    },
+
+    async listByRequester(requesterId) {
+      const rows = await prisma.ticket.findMany({
+        where: { requesterId },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      });
+      return rows.map(toDomain);
+    },
+
+    async findByIdAndRequester(id, requesterId) {
+      const row = await prisma.ticket.findFirst({ where: { id, requesterId } });
       return row === null ? undefined : toDomain(row);
     },
 

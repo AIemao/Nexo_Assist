@@ -5,10 +5,16 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { createCreateTicket } from "./application/create-ticket.js";
+import { createListMyTickets } from "./application/list-my-tickets.js";
+import { createViewMyTicket } from "./application/view-my-ticket.js";
+import { createFindEmployeeByEmail } from "./application/find-employee-by-email.js";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
 import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
+import type { ReadRecord } from "./http/read-record.js";
 import type { WriteRecord } from "./http/write-record.js";
+import { createErrorLogger } from "./observability/error-log.js";
+import { readPrismaCode } from "./persistence/prisma-error-code.js";
 import { createUnitOfWork } from "./persistence/unit-of-work.js";
 
 interface Config {
@@ -54,12 +60,16 @@ function describeFault(fault: SimulatedFault): string {
   return fault.mode === "F-SLOW" ? `${fault.mode} (${fault.delayMs} ms)` : fault.mode;
 }
 
-// Cenários §1.1, IN2 e IN4: uma linha JSON por registro de escrita no stdout, com o
-// instante da emissão (`at`) carimbado aqui, e não no app. O formato de `at` é o mesmo
-// dos instantes do domínio (DM §3.2): ISO 8601 em UTC, com milissegundos.
-function writeRecordLine(record: WriteRecord): void {
+// Cenários §1.1, IN2 e IN4 (escritas) e IL5 (leituras): uma linha JSON por registro no
+// stdout, com o instante da emissão (`at`) carimbado aqui, e não no app. O formato de `at`
+// é o mesmo dos instantes do domínio (DM §3.2): ISO 8601 em UTC, com milissegundos.
+function recordLine(record: WriteRecord | ReadRecord): void {
   process.stdout.write(`${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`);
 }
+
+// README §12 #22: registro de erros com campos permitidos. O leitor do código do Prisma é
+// composto aqui, na raiz de composição, e nunca importado pela camada HTTP (ADR-008, condição 4).
+const logError = createErrorLogger(readPrismaCode);
 
 function formatAddress(info: AddressInfo): string {
   const host = info.family === "IPv6" ? `[${info.address}]` : info.address;
@@ -83,19 +93,31 @@ function main(): void {
   }
 
   const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: databaseUrl }) });
+  const unitOfWork = createUnitOfWork(prisma);
+  const clock = { now: () => new Date().toISOString() };
   const createTicket = createCreateTicket({
-    unitOfWork: createUnitOfWork(prisma),
+    unitOfWork,
     eventIdGenerator: { generate: randomUUID },
-    clock: { now: () => new Date().toISOString() },
+    clock,
   });
-  const app = createApp({ createTicket, simulatedFault: fault, recordWrite: writeRecordLine });
+  const app = createApp({
+    createTicket,
+    listMyTickets: createListMyTickets({ unitOfWork, clock }),
+    viewMyTicket: createViewMyTicket({ unitOfWork, clock }),
+    findEmployeeByEmail: createFindEmployeeByEmail({ unitOfWork }),
+    onUnexpectedError: (error) => logError("request", error),
+    simulatedFault: fault,
+    recordWrite: recordLine,
+    recordRead: recordLine,
+  });
 
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`ticket-service ouvindo em ${formatAddress(info)}`);
   });
 
+  // README §12 #22: o erro vai para o registro com campos permitidos, nunca inteiro.
   server.once("error", (error) => {
-    console.error("Falha no servidor HTTP:", error);
+    logError("server", error);
     process.exit(1);
   });
 
@@ -112,7 +134,7 @@ function main(): void {
     server.close((error) => {
       if (error) {
         // Sem $disconnect: requisições ainda podem estar usando o banco.
-        console.error("Falha ao fechar o servidor HTTP:", error);
+        logError("shutdown", error);
         process.exit(1);
       }
       prisma.$disconnect().then(
@@ -120,7 +142,7 @@ function main(): void {
           console.log("ticket-service encerrado.");
         },
         (disconnectError: unknown) => {
-          console.error("Falha ao desconectar o banco:", disconnectError);
+          logError("shutdown", disconnectError);
           process.exitCode = 1;
         },
       );
