@@ -47,6 +47,8 @@ São contratos do Bloco 4. O Bloco 4 precisa implementá-las e validá-las antes
 
 **Atualização (2026-11-20).** Nota posterior à decisão; as condições acima não mudam e nenhuma é retirada. O plano do Bloco 4 distribui a implementação entre dois blocos. No Bloco 4, a condição 2 é implementada e validada, porque vale para todo turno com o modelo, inclusive os cenários executáveis no Bloco 4; as condições 1 e 3 ficam com o contrato definido. No Bloco 5, as condições 1 e 3 são implementadas e validadas junto com a coleta e a completude do rascunho, porque atuam sobre a coleta, que nenhum cenário do Bloco 4 exercita. O fluxo completo de criação de chamados só pode ser considerado confiável depois que as condições 1 e 3 estiverem implementadas e validadas no Bloco 5.
 
+**Atualização (2026-11-21).** Nota posterior à decisão; as condições acima não mudam. A versão do Mastra adotada no produto é a `@mastra/core` **1.81.0**, a mesma das evidências do spike (seção "Evidências do spike"; README §5, "Versões das dependências"). Mudar de versão exige revalidar os comportamentos do framework medidos nesta versão ("Comportamentos do framework medidos (Mastra 1.81.0)", em "Evidências do spike").
+
 ## Alternativas consideradas
 
 ### A. `qwen3:4b-instruct` (Ollama local)

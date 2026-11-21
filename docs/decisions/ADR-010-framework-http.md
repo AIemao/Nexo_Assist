@@ -36,6 +36,8 @@ Os dois candidatos empataram nos critérios 1 e 2. O Hono passou no critério 3 
 
 **Atualização (2026-11-08).** Nota posterior à decisão; as condições acima não mudam. Os testes do comportamento de transporte das falhas simuladas ([`01-evaluation-scenarios.md`](../evaluation/01-evaluation-scenarios.md) §2.2) usam servidor real na porta 0, porque conexão encerrada sem resposta só existe com socket: `app.request()` não a representa. Os testes de rota continuam com `app.request()` (condição 2). No `npm test` (Vitest), o servidor sobe no mesmo processo do teste; processos reais com `dist/main.js`, como no teste de reinício, só na etapa do smoke (`npm run smoke`), coerente com a condição 3.
 
+**Atualização (2026-11-21).** Nota posterior à decisão; as condições acima não mudam. A condição 1 (versões exatas, sem `^`, estáveis publicadas há pelo menos sete dias, salvo correção de segurança) passou a ser regra do projeto inteiro, para todas as dependências diretas, inclusive `devDependencies`, com lockfile versionado e `npm ci` (decisão do autor; README §5, "Versões das dependências").
+
 ## Alternativas consideradas
 
 ### A. Fastify
