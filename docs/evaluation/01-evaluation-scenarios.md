@@ -1,6 +1,6 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1.10 · **Data:** 2026-11-20 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.11 · **Data:** 2026-11-21 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste nem contratos novos; as premissas da instrumentação das escritas estão em §1.1, as do seed em §2.1 e as do mecanismo das falhas simuladas, em §2.2.
 
@@ -19,9 +19,9 @@ Documento da avaliação do agent (README §10, "Avaliação do agent"). Define 
 - **Registro de cada execução** (README §10): cenário (e caso A/B), entrada, esperado, obtido, modelo, versão do prompt/tools, aprovado ou reprovado, e motivo.
 - **Evidência de escrita.** Para a classe (a) é necessário observar o ticket-service de fora do agent (registro de chamadas recebidas e estado resultante). Como isso é instrumentado: §1.1.
 
-### 1.1 Instrumentação das escritas
+### 1.1 Instrumentação das escritas e das leituras de chamados
 
-Premissas da instrumentação que observa as escritas no ticket-service de fora do agent (Bloco 3; §1, "Evidência de escrita"). IN1–IN9 são **[Premissa]**; nenhuma vem do PRD. IN10 reúne o que segue `PENDENTE`.
+Premissas da instrumentação que observa as escritas no ticket-service de fora do agent (Bloco 3; §1, "Evidência de escrita"). IN1–IN9 são **[Premissa]**; nenhuma vem do PRD. IN10 reúne o que segue `PENDENTE`. As leituras de chamados (Bloco 4) estão em IL1–IL8, depois do IN10.
 
 - **IN1. Três evidências. [Premissa]** São distintas: o **estado persistido** (o que foi gravado), a **resposta HTTP** (o que o cliente recebeu) e a **instrumentação** (o que o servidor recebeu, executou, rejeitou ou cortou). "Nenhuma escrita efetivada" (estado) ≠ "nenhuma tentativa recebida" (instrumentação). `IdempotencyRecord` (DM §3.16: só operações que produziram efeito) e `TicketEvent` (DM §3.9: histórico de alterações) não são registro de chamadas.
 - **IN2. Forma. [Premissa]** Uma linha JSON (JSON Lines) por requisição de escrita, no stdout, emitida uma única vez, quando o desfecho é conhecido. Sempre ligada no processo do serviço. Sem tabela, endpoint ou biblioteca de log. Discriminante fixo `"event": "ticket_write"`.
@@ -47,6 +47,35 @@ Premissas da instrumentação que observa as escritas no ticket-service de fora 
 - **IN8. Emissor único. [Premissa]** Um middleware em volta da rota emite o registro; rota, validação e `onError` deixam metadados no contexto da requisição, sem inferir o desfecho só pelo status. Exatamente uma emissão por requisição de escrita, inclusive em erro. Falha do gravador nunca altera a resposta nem o resultado de negócio.
 - **IN9. Ciclo de vida. [Premissa]** O registro vive no fluxo capturado pelo harness, que junta os processos (FS8); isolar cenários é do harness. A falha simulada continua pertencendo ao processo (FS6).
 - **IN10. Pendências.** Instante de recebimento: `PENDENTE (Bloco 7)`, se o SC-14 precisar (README §12 #23). Cruzamento com `OperationExecution.attempts` e quem sobe o ticket-service e captura o stdout dele a partir do Bloco 5: `PENDENTE (Bloco 5)` (README §12 #24).
+
+**Leituras de chamados** (`GET /tickets` e `GET /tickets/{ticketId}`, `04-http-contract.md` §8 e §9; SC-04, SC-05, SC-19; P7, Bloco 4; decisões do autor, 2026-11-21). IL1–IL7 são **[Premissa]**: seguem as convenções IN1–IN9 onde elas se aplicam, e o IL7 registra onde divergem. IN1–IN10 não mudam. IL8 reúne o que segue `PENDENTE`.
+
+- **IL1. Escopo. [Premissa]** Só `GET /tickets` e `GET /tickets/{ticketId}`. O `POST /employees/lookup` (`04-http-contract.md` §10) fica fora do `ticket_read` nesta etapa e não tem registro operacional. O e-mail nunca é registrado (exigência do README §12 #22).
+- **IL2. Um registro por requisição. [Premissa]** Cada requisição de leitura recebida gera o seu registro, inclusive nos retries do cliente (README §12 #20). Sem `idempotencyKey`, sem id de correlação e sem cabeçalho novo.
+- **IL3. 404 sem distinção de causa. [Premissa]** A consulta detalhada faz uma única consulta por `id` e `requesterId` (`04-http-contract.md` §9.2). O registro é igual nas três causas do 404 (chamado inexistente, de outro funcionário ou id malformado): `outcome` `REJECTED`, `status` 404, `code` `TICKET_NOT_FOUND`, sem `ticketId`.
+- **IL4. Sem efeito sobre o estado. [Premissa]** O registro não cria nem altera chamados, eventos ou associações. Não se confunde com o `TicketAccessLog` (DM §3.10: auditoria persistida das consultas do analista pelo console) nem com a interação `VIEWED` (DM §3.7: registrada no web após consulta detalhada bem-sucedida).
+- **IL5. Forma e emissor. [Premissa]** As convenções de IN2, IN8 e IN9: uma linha JSON por requisição de leitura, no stdout, emitida uma única vez, quando o desfecho é conhecido, por um emissor único em volta das rotas de leitura; rota, validação e `onError` deixam o desfecho no contexto; falha do gravador nunca altera a resposta. Discriminante fixo `"event": "ticket_read"`. O `"ticket_write"` das escritas não muda.
+- **IL6. Campos. [Premissa]**
+
+  | Campo | Conteúdo |
+  | --- | --- |
+  | `event` | `"ticket_read"` (IL5) |
+  | `operation` | `"LIST"` (`GET /tickets`) ou `"VIEW"` (`GET /tickets/{ticketId}`). São operações do ticket-service, independentes de quem chama. Não usa valores da `Intent` (DM §3.12), porque a revalidação do foco (`04-http-contract.md` §9.3; AF D20) usa a mesma rota sem a intenção `VIEW_TICKET`. Os valores são definidos uma vez no código (README §12 #18) |
+  | `outcome` | `OK` (200) · `INVALID` (400) · `REJECTED` (403, 404) · `ERROR` (500). Nas leituras, `REJECTED` = recusada pela regra de acesso ou pelo caso de uso: o 403 `ACTOR_NOT_EMPLOYEE` acontece antes do caso de uso (`04-http-contract.md` §11, ordem de validação) |
+  | `status` | Status HTTP produzido |
+  | `code` | Quando houver (`04-http-contract.md` §11) |
+  | `ticketId` | Só no 200 do `VIEW`. Ausente na listagem e no 404 (IL3) |
+  | `responseDisposition` | Sempre `SENT` |
+  | `at` | Instante da emissão |
+
+  Fora do registro, como no IN6: corpo, resposta devolvida e id do funcionário. Também fora: `idempotencyKey` (as leituras não têm `Idempotency-Key`, `04-http-contract.md` §7.3; IL2) e `fault` (§2.2, FS6).
+- **IL7. Relação com IN1–IN9. [Premissa]**
+  - **IN1:** uma leitura não deixa estado persistido; as evidências são só a resposta HTTP e o registro.
+  - **IN3:** continua restrito às escritas; as leituras entram por esta especificação.
+  - **IN4:** `operation` é um catálogo próprio das leituras, fora do `TicketOperationType`, sem cruzamento com `IdempotencyRecord.operationType`. `outcome` ganha `OK`; `REJECTED` tem a definição do IL6; `CREATED` e `REPLAYED` não se aplicam. `idempotencyKey` sempre ausente (IL2). `ticketId` mais restrito que "No sucesso" (IL6).
+  - **IN5:** `responseDisposition` sempre `SENT`; `NOT_EXECUTED` não se aplica, porque não há falha simulada nas leituras (§2.2, FS6).
+  - **IN7:** não se aplica.
+- **IL8. Pendências.** Implementação e testes do registro das leituras: `PENDENTE`, entrega da fatia 0 do Bloco 4.
 
 ---
 
@@ -108,8 +137,16 @@ Premissas do seed que materializa as fixtures de §2 no ticket-service (Bloco 3)
   - e) o seed verifica `ok` logo após o `update` e, se for `false`, lança exceção antes de criar o evento, para a Unit of Work reverter. Assim não existe `STATUS_CHANGED` gravado depois de uma atualização recusada (devolver `ok: false` não desfaz a transação).
 - **S5. Duas idempotências distintas. [Premissa]** A da criação vem do `createTicket` (S2); a da transição vem da regra S4b. Cada uma terá teste próprio: rodar o seed duas vezes no mesmo banco não altera a contagem de tickets, eventos e registros de idempotência, nem a versão de nenhum chamado.
 - **S6. Reexecução e datas. [Premissa]** Reexecutar o seed é seguro (não duplica), mas não renova as datas: os chamados mantêm os instantes da primeira execução. Cenários que dependem de idade relativa (vencido, resolvido há N dias) exigem banco recém-criado e semeado.
-- **S7. Escopo. [Premissa]** O seed do Bloco 3 cria só chamados. `requesterId` é string (ex.: `EMP-A`, S8), sem FK para `Employee` (DM §3.2). O model `Employee` (do ticket-service, conforme o DM) e o seed dos funcionários entram no Bloco 4, junto com o login do web; o seed dos funcionários roda antes de qualquer FK ser aplicada a chamados existentes.
-- **S8. Funcionários. [Premissa]** O `employeeId` de cada funcionário de fixture é o próprio rótulo (`EMP-A`, `EMP-B`, `ANALYST-1`), porque funcionário não tem id alocado por contador (DM §3.1 define `Employee.id` como string, sem formato). O seed de funcionários do Bloco 4 usa os mesmos ids. O mesmo id aparece em três lugares e deve coincidir: `Employee.id` (Bloco 4), `requesterId` do chamado e `employeeId` do ator `ANALYST` (S4c).
+- **S7. Escopo. [Premissa]** O seed do Bloco 3 cria só chamados. `requesterId` é string (ex.: `EMP-A`, S8), sem FK para `Employee` (DM §3.2). O model `Employee` (do ticket-service, conforme o DM) e o seed dos funcionários entram no Bloco 4, junto com o login do web. **Bloco 4 (fatia 0; decisão do autor, 2026-11-21):** com as FKs para `Employee` (ADR-008, atualização de 2026-11-21), o banco local é recriado vazio, sem backfill (README §5): as migrações criam as FKs com as tabelas vazias, e não há chamados existentes a validar. Isso substitui a previsão anterior de rodar o seed dos funcionários antes de aplicar FKs a chamados existentes. Ordem do seed: primeiro os funcionários (S8); depois a ordem atual dos chamados: `TKT-A1`, `TKT-A2`, resolução do `TKT-A2` (S4), `TKT-B1`.
+- **S8. Funcionários. [Premissa]** O `employeeId` de cada funcionário de fixture é o próprio rótulo (`EMP-A`, `EMP-B`, `ANALYST-1`), porque funcionário não tem id alocado por contador (DM §3.1 define `Employee.id` como string, sem formato). O seed de funcionários do Bloco 4 usa os mesmos ids. O mesmo id aparece em três lugares e deve coincidir: `Employee.id` (Bloco 4), `requesterId` do chamado e `employeeId` do ator `ANALYST` (S4c). Dados do seed de funcionários (decisão do autor, 2026-11-21), com os campos do DM §3.1:
+
+  | `id` | `name` | `email` | `department` | `role` |
+  | --- | --- | --- | --- | --- |
+  | `EMP-A` | Ana Souza | `ana@nexo.example` | Operações | `EMPLOYEE` |
+  | `EMP-B` | Bruno Lima | `bruno@nexo.example` | Financeiro | `EMPLOYEE` |
+  | `ANALYST-1` | Carla Mendes | `carla@nexo.example` | Service Desk | `ANALYST` |
+
+  O e-mail é gravado já normalizado (`trim().toLowerCase()`), a busca aplica a mesma normalização, e a persistência tem `@unique` no e-mail (DM §3.1; ADR-008, atualização de 2026-11-21).
 - **S9. Chamado inexistente. [Premissa]** `TKT-X` usa `INC-999999`: formato válido (`formatTicketId`, DM §3.2: prefixo do tipo, sem zeros à esquerda, `n` inteiro seguro ≥ 1) e fora do alcance do seed em banco recém-semeado (S6). Não usar `INC-0`, que seria rejeitado pelo formato e testaria outra coisa.
 
 ### 2.2 Mecanismo das falhas simuladas
@@ -439,8 +476,8 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | Bloco | Pendência | Cenários afetados |
 | --- | --- | --- |
 | 2 | `TicketStatus` e janela de reabertura (README §12 #2) | SC-06 |
-| 4 | Instrumentação de leituras (§1.1, IN3; README §12 #21) | SC-04, SC-05, SC-19 |
-| 4 | Materializar os funcionários `EMP-A`, `EMP-B` e `ANALYST-1` (S7, S8) e os artigos `ART-*` (com o `searchArticles`; §2) | `EMP-A`: SC-01 a SC-20. `EMP-B`: SC-05, SC-19 e, como solicitante de `TKT-B1` (§2), SC-04. `ANALYST-1`: SC-16 e, como ator do `STATUS_CHANGED` de `TKT-A2` no seed (S4c), SC-04 e SC-06. `ART-*`: SC-01 (`ART-HORARIO`), SC-02 e SC-03 (`ART-VPN-809`) |
+| 4 | Instrumentação de leituras: implementação e testes, entrega da fatia 0 (§1.1, IL8). Premissas definidas em IL1–IL7 (README §12 #21) | SC-04, SC-05, SC-19 |
+| 4 | Materializar os funcionários `EMP-A`, `EMP-B` e `ANALYST-1` (S7, S8; dados e ordem do seed definidos em 2026-11-21) e os artigos `ART-*` (com o `searchArticles`; §2) | `EMP-A`: SC-01 a SC-20. `EMP-B`: SC-05, SC-19 e, como solicitante de `TKT-B1` (§2), SC-04. `ANALYST-1`: SC-16 e, como ator do `STATUS_CHANGED` de `TKT-A2` no seed (S4c), SC-04 e SC-06. `ART-*`: SC-01 (`ART-HORARIO`), SC-02 e SC-03 (`ART-VPN-809`) |
 | 4 | Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): todo `reasonCode` de política "PENDENTE" | SC-01 a SC-20 |
 | 4 | `Intent` dos turnos de resposta de SC-18; tratamento da falha do `searchArticles` (AF D25, item 4) | SC-18 (Intent); SC-01, SC-02, SC-03, SC-07, SC-09, SC-10, SC-11, SC-18 (falha da busca) |
 | 5 | Bloco do fluxo de atualização e reabertura (README §13 não atribui) | SC-06, SC-07, SC-16 |
@@ -491,9 +528,10 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.16: §8.5.1 (duplicidade), §8.5.2 (vencido de `RESOLVED`, SC-04), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Domain Model v2.16: §3.1 (S8), §3.7 e §3.10 (§1.1, IL4), §8.5.1 (duplicidade), §8.5.2 (vencido de `RESOLVED`, SC-04), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15, §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
 - Agent Flow v1.7: D13, D16, D17, D18, D19, D20, D23, D25, D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
-- ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`), ADR-009 (modelo LLM).
+- ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`), ADR-008 (persistência; atualização de 2026-11-21, S7 e S8), ADR-009 (modelo LLM).
+- `04-http-contract.md` v1.3: §7.3, §8, §9, §10 e §11 (§1.1, IL1–IL7).
 
 ## 9. Histórico
 
@@ -510,3 +548,4 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | v1.8 | Sincronização com o ADR-009 (aceito em 2026-11-20) e o DM v2.14. §6: sai a linha do Bloco 4 "Baseline: modelo e versão de prompt/tools (README §12 #9, ADR-009)", porque o ADR-009 fixa o modelo e a versão das instruções; entra a linha do Bloco 8 "Executar o baseline com o modelo e as instruções fixados no ADR-009" (todos os cenários). Convenções e §8 citam o DM v2.14; §8 acrescenta o ADR-009 à lista de ADRs. Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
 | v1.9 | Sincronização com o DM v2.15 e o AF v1.7: Convenções e §8 citam o DM v2.15 e o AF v1.7. SC-03: nova linha "Verificação parcial no Bloco 4" (README §13, linha do Bloco 4; só o turno 1), com as evidências `searchArticles` chamada, `ART-VPN-809` rejeitado pelo filtro de aplicabilidade, interpretação `CREATE_TICKET`, pergunta de coleta válida sem ordem específica, nenhuma chamada a `proposeTicketDraft`, nenhuma `PendingAction` e nenhum chamado novo; "Executável: Bloco 5" mantido para o cenário completo, e os demais critérios do SC-03 inalterados. Demais cenários, Esperado, Política, §6 e matriz de cobertura inalterados. Sem novos cenários |
 | v1.10 | Sincronização com o DM v2.16 e o contrato HTTP v1.2 (decisões do autor, 2026-11-20). Convenções e §8 citam o DM v2.16; §8 acrescenta o §8.5.2. SC-04, Execução: `TKT-A2` (`RESOLVED`) vem com `isOverdue: null` na resposta do ticket-service (README §12 #19). SC-05, Execução: a tool de consulta detalhada passa a se chamar `viewMyTicket`. SC-19, Execução: chamada `viewMyTicket` explícita nos dois casos. §2, nota do `TKT-A2`: pendência da #19 substituída pela resolução; afirmação sobre `isOverdue` restrita à prioridade `MEDIUM` da fixture. §6: sai a linha do Bloco 4 "Nome da tool de consulta detalhada de chamado". Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
+| v1.11 | Decisões do autor sobre a fatia 0 do Bloco 4 (2026-11-21). §1.1, título e introdução: passa a cobrir as leituras de chamados; nova especificação das leituras, IL1–IL8, depois do IN10, com IL1–IL7 decididos: escopo só em `GET /tickets` e `GET /tickets/{ticketId}`, com o `POST /employees/lookup` fora e o e-mail nunca registrado (IL1); um registro por requisição, inclusive nos retries, sem `idempotencyKey`, id de correlação nem cabeçalho novo (IL2); 404 com registro igual nas três causas (IL3); sem efeito sobre o estado e distinto de `TicketAccessLog` e `VIEWED` (IL4); forma e emissor com `"event": "ticket_read"` (IL5); campos, com `operation` `LIST`/`VIEW` independente da `Intent` e `outcome` `OK`, `INVALID`, `REJECTED` (403 e 404) e `ERROR` (IL6); relação com IN1, IN3, IN4, IN5 e IN7 (IL7). IL8: implementação e testes, entrega da fatia 0. IN1–IN10 inalterados. §2.1, S7: ordem do seed no Bloco 4 (funcionários primeiro, depois `TKT-A1`, `TKT-A2`, resolução do `TKT-A2` e `TKT-B1`), banco recriado vazio, sem backfill, com as FKs criadas sobre tabelas vazias; sai a frase "o seed dos funcionários roda antes de qualquer FK ser aplicada a chamados existentes", substituída por essa previsão. S8: dados dos três funcionários do seed; e-mail gravado normalizado, mesma normalização na busca, `@unique` na persistência. §6: linha da instrumentação de leituras aponta para IL1–IL8; linha da materialização dos funcionários registra que dados e ordem estão definidos. §8 acrescenta DM §3.1, §3.7 e §3.10, o ADR-008 e o contrato HTTP v1.3. Cenários, Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |

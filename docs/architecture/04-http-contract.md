@@ -1,6 +1,6 @@
 # 04 — Contrato HTTP do ticket-service
 
-> Artefato do Bloco 3, **versão 1.2**, aprovada em 2026-11-20 (fatia 0 do Bloco 4; ver seção 16, Histórico de versões). O `POST /tickets` (§2 a §6) não muda.
+> Artefato do Bloco 3, **versão 1.3**, aprovada em 2026-11-21 (fatia 0 do Bloco 4; ver seção 16, Histórico de versões). Nenhuma regra do `POST /tickets` (§2 a §6) muda; a v1.3 acrescenta uma nota informativa ao §4.3.
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles e descreve só a **fronteira HTTP**: rotas, cabeçalhos, códigos de status e formato dos erros. Não redefine regras do domínio; remete ao DM.
 >
@@ -12,7 +12,7 @@ O cliente desta API é o web/BFF (ADR-002). A camada HTTP valida a forma da requ
 
 A v1.2 acrescenta as leituras do funcionário: listagem (§8) e consulta detalhada (§9), com as regras comuns no §7; e a leitura do funcionário para o login simulado (§10). Erros das rotas novas: §11. A leitura de classificação e prazo usada pelo `proposeTicketDraft` (README §6) fica fora desta versão (Bloco 5).
 
-Nas seções da v1.2: DM = `01-domain-model.md` v2.16; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.10.
+Nas seções da v1.2 e da v1.3: DM = `01-domain-model.md` v2.16; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.11.
 
 ## 2. `POST /tickets`
 
@@ -147,6 +147,8 @@ O corpo é genérico. Não inclui mensagem interna da exceção, stack trace, SQ
 
 O cliente pode repetir uma operação que recebeu 500 com a **mesma chave e o mesmo corpo original**. A idempotência evita efeito duplicado se a operação anterior tiver sido confirmada, mas não garante sucesso quando a causa do erro é persistente.
 
+> **Nota informativa: ator sem `Employee` (v1.3).** Com as FKs para `Employee` da fatia 0 do Bloco 4 ([ADR-008](../decisions/ADR-008-persistencia-prisma.md), atualização de 2026-11-21), um `X-Actor-Employee-Id` sem `Employee` correspondente no `POST /tickets` viola a premissa de identidade confiável (README §8; §2.2) e resulta no 500 `INTERNAL_ERROR` deste §4.3, com o corpo genérico. Nenhum código novo; nenhuma regra alterada.
+
 ## 5. Retry e reconciliação
 
 - A política de retry pertence ao cliente web/BFF (README §12 #7). O ticket-service não tem laço de retry.
@@ -189,7 +191,7 @@ Valem para `GET /tickets` (§8) e `GET /tickets/{ticketId}` (§9).
 - As leituras não têm efeito. Não usam `Idempotency-Key`, porque o `IdempotencyRecord` cobre só operações que produziram efeito (DM §3.16; cenários §1.1, IN1), e podem ser repetidas.
 - A política de retry das leituras é do cliente web/BFF (§5). O README §9, "Falhas na leitura", prevê retry com backoff curto e, se a falha persistir, aviso de instabilidade sem perder a conversa. **PENDENTE (README §12 #20, Bloco 4):** o tratamento concreto no cliente.
 - As falhas simuladas cobrem só escritas (cenários §2.2, FS6). **PENDENTE (README §12 #20):** se as leituras ganham falha simulada para exercitar o retry.
-- **PENDENTE (README §12 #21, Bloco 4):** o registro das leituras (cenários §1.1, IN3). Este contrato não define o registro; qualquer que seja, nada dele chega à resposta HTTP.
+- O registro das leituras (`"event": "ticket_read"`) está especificado nos cenários §1.1, IL1–IL7 (README §12 #21, resolvida quanto às premissas). **PENDENTE (fatia 0 do Bloco 4):** a implementação e os testes (cenários §1.1, IL8). Este contrato não define o registro; nada dele chega à resposta HTTP.
 
 ## 8. `GET /tickets`: listagem dos chamados do funcionário
 
@@ -315,7 +317,7 @@ X-Actor-Type: SYSTEM
 
 ### 10.1 Requisição
 
-- `POST` com o e-mail no corpo, para o e-mail não aparecer na URL nem em logs de acesso (README §8: "Logs sem dados sensíveis desnecessários"). É leitura: sem `Idempotency-Key`, sem efeito e fora do mecanismo de falhas simuladas (cenários §2.2, FS6).
+- `POST` com o e-mail no corpo, para o e-mail não aparecer na URL nem em logs de acesso (README §8: "Logs sem dados sensíveis desnecessários"). É leitura: sem `Idempotency-Key`, sem efeito e fora do mecanismo de falhas simuladas (cenários §2.2, FS6). Fica fora do registro `ticket_read` e sem registro operacional nesta etapa; o e-mail nunca é registrado (cenários §1.1, IL1; README §12 #22).
 - `Content-Type: application/json`, como no §2. Ausente, ou com tipo de mídia diferente: **415** `UNSUPPORTED_MEDIA_TYPE`.
 - Corpo com schema estrito: só `email`, string obrigatória. A senha **não** vai ao ticket-service: o login aceita qualquer senha para funcionários do seed (DM §3.1), e essa aceitação fica no web. Um campo `password` no corpo é recusado com **400** `VALIDATION_ERROR`.
 - A comparação do e-mail não diferencia maiúsculas de minúsculas e desconsidera espaços nas pontas (DM §3.1): `" Ana@Nexo.example "` encontra o funcionário cadastrado com `ana@nexo.example`.
@@ -372,7 +374,7 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 | Pendência | Origem | Bloco |
 | --- | --- | --- |
 | Tratamento concreto das falhas nas leituras pelo cliente web/BFF; falha simulada nas leituras (§7.3) | README §12 #20 | 4 |
-| Registro (instrumentação) das leituras (§7.3) | README §12 #21; cenários §1.1, IN3 | 4 |
+| Implementação e testes do registro das leituras (§7.3) | README §12 #21; cenários §1.1, IL8 | 4 (fatia 0) |
 | Campos exibidos pelo anexo `TICKET` e eventual histórico na consulta detalhada (§9.1) | AF §9.1, passo 4; DM §3.8 | 6 |
 | Leitura de classificação e prazo usada pelo `proposeTicketDraft` (§1) | README §6 | 5 |
 
@@ -384,6 +386,7 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 - RFC 9457 (Problem Details for HTTP APIs); `draft-ietf-httpapi-idempotency-key-header-08`.
 - `01-evaluation-scenarios.md` §2.2 (mecanismo das falhas simuladas).
 - v1.2: README §6 (tools), §8 (privacidade e login), §9 ("Falhas na leitura"), §12 #19, #20 e #21; DM v2.16: §1, §3.1 (unicidade e comparação do e-mail), §3.2, §3.7, §3.8, §3.9, §3.12, §3.16, §7.1 (invariantes 1 e 2), §7.2, §7.3, §8.5, §8.5.1 e §8.5.2 (vencido de `RESOLVED`); AF v1.7: D10, D17, D20, §7, §9.1 e §9.2; `01-evaluation-scenarios.md` v1.10: §1.1 (IN1, IN3), §2.1 (S3, S7, S9), §2.2 (FS6), SC-04, SC-05 e SC-19; ADR-004.
+- v1.3: README §8 (fronteira de confiança) e §12 #21; ADR-008 (atualização de 2026-11-21: FKs para `Employee`); `01-evaluation-scenarios.md` v1.11, §1.1 (IL1–IL8).
 
 ## 16. Histórico de versões
 
@@ -392,3 +395,4 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 | 1.0 | 2026-11-07 | Primeira versão, publicada com a API HTTP do ticket-service (ADR-010): `POST /tickets`, `Idempotency-Key`, ator, respostas de sucesso, erros em Problem Details (inclusive JSON malformado e ordem de validação, §4.1), retry e reconciliação, diferenças em relação ao Internet-Draft |
 | 1.1 | 2026-11-08 | Nota informativa em §5: com falha simulada ativa (cenários §2.2), o servidor pode encerrar a conexão sem resposta ou atrasá-la; desligada por padrão; fora do contrato normal. Nenhuma regra alterada. §7 cita a §2.2 dos cenários. Seção de histórico criada |
 | 1.2 | 2026-11-20 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-20. Leituras do funcionário: regras comuns (§7: identidade pelos cabeçalhos do §2.2, só `EMPLOYEE`, repetição, falhas e instrumentação); `GET /tickets` (§8: listagem em resumo, todos os status, sem paginação, ordem por `updatedAt` decrescente; SC-04); `GET /tickets/{ticketId}` (§9: objeto `ticket` mais `currentDueAt` e `isOverdue`; 404 `TICKET_NOT_FOUND` idêntico para inexistente, alheio e malformado, AF D17; revalidação do foco, AF D20; SC-05, SC-19). `POST /employees/lookup` para o login simulado (§10: ator `SYSTEM`, sem senha, e-mail comparado pela regra do DM v2.16 §3.1, 404 `EMPLOYEE_NOT_FOUND`). Erros das rotas novas (§11). `isOverdue` de `RESOLVED` = `null` (§12; DM v2.16 §8.5.2; README §12 #19). Tool `viewMyTicket` (§13). Pendências (§14). Rastreabilidade e histórico renumerados para §15 e §16. `POST /tickets` (§2 a §6) inalterado |
+| 1.3 | 2026-11-21 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-21. Nota informativa no §4.3 (precedente: v1.1): com as FKs para `Employee` (ADR-008, atualização de 2026-11-21), um `X-Actor-Employee-Id` sem `Employee` no `POST /tickets` viola a premissa do README §8 e resulta no 500 `INTERNAL_ERROR` do §4.3. Nenhuma regra alterada. Remissões atualizadas: §1 cita os cenários v1.11; §7.3 e §14 remetem à especificação do registro das leituras (cenários §1.1, IL1–IL7) e mantêm PENDENTE a implementação e os testes (IL8); §10.1 remete ao IL1 (login fora do `ticket_read`, sem registro; e-mail nunca registrado); §15 com a linha da v1.3 |

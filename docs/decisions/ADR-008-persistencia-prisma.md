@@ -35,6 +35,15 @@ Invariantes entre campos do `Ticket` não usam `CHECK` manual; são validadas an
 
 Todo acesso ao banco feito pelo fluxo da aplicação, inclusive leituras, passa pela Unit of Work (ver "Conexão única do adapter better-sqlite3").
 
+**Atualização (2026-11-21).** Nota posterior à decisão; as condições acima não mudam. Decisões do autor para a fatia 0 do Bloco 4, com o model `Employee` (DM §3.1):
+
+- **FKs para `Employee`:** `Ticket.requesterId` (obrigatória), `Ticket.assignedTo` (opcional) e `TicketEvent.actorEmployeeId` (opcional). `IdempotencyRecord` não tem FK de funcionário. Exigência para a implementação: testes de integração para as três FKs, com referência inexistente recusada em cada uma e `null` aceito em `assignedTo` e em `actorEmployeeId`.
+- **E-mail:** gravado já normalizado (`trim().toLowerCase()`), com `@unique`; a busca aplica a mesma normalização (DM §3.1; dados do seed em `01-evaluation-scenarios.md` §2.1, S8).
+- **Banco SQLite local descartável:** sem backfill. Uma migração que dependa disso pressupõe recriar o banco vazio; as instruções do README §5 apagam o `dev.db` antigo antes do `migrate deploy` e do seed. A ordem do seed (funcionários primeiro) está em `01-evaluation-scenarios.md` §2.1, S7.
+- **Testes:** fixtures de `Employee` próprias dos testes (`EMP-001`, `EMP-002`, `ANL-001`), centralizadas no helper de banco e criadas só quando o cenário precisa. Testes que usam funcionário inexistente de propósito continuam assim. Nada cria funcionário automaticamente a partir de um id recebido.
+- **Ator sem `Employee` no `POST /tickets`:** viola a premissa de identidade confiável (README §8) e resulta no 500 `INTERNAL_ERROR`, sem código novo (`04-http-contract.md` v1.3, nota informativa no §4.3). Exigência para a implementação: teste de integração com resposta genérica, registro `ticket_write` com `outcome` `ERROR` e rollback completo (nenhum `Ticket`, `TicketEvent` ou `IdempotencyRecord` gravado).
+- **Pendência do plano de implementação:** o smoke testa só por HTTP, não roda o seed e usa `EMP-001` como ator. Com a FK, ele precisa de um `Employee` antes de subir o servidor; a forma será definida no plano.
+
 ## Alternativas consideradas
 
 ### A. `node:sqlite` nativo com SQL explícito
@@ -182,3 +191,4 @@ O número de funcionários não exige PostgreSQL por si só. O SQLite permite m�
 - Domain Model v2.9: §3.16 (consulta da chave e releitura após rollback, executadas em transações curtas próprias).
 - ADR-002 (o ticket-service como aplicação separada, dona do domínio dos chamados).
 - ADR-005 (idempotência por `OperationExecution.id`).
+- Atualização de 2026-11-21: Domain Model v2.16 §3.1 (`Employee`, unicidade e comparação do e-mail) e §3.2 (`requesterId` e `assignedTo` referenciam `Employee.id`); README §5 ("Como rodar o ticket-service") e §8 (fronteira de confiança); `01-evaluation-scenarios.md` §1.1 (IN4) e §2.1 (S7, S8); `04-http-contract.md` v1.3, §4.3.
