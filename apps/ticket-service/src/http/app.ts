@@ -18,6 +18,7 @@ import {
   type CreateTicketDraft,
 } from "../domain/index.js";
 import { createErrorLogger } from "../observability/error-log.js";
+import type { ReadOperation, ReadRecord } from "./read-record.js";
 import type { SimulatedFault } from "./simulated-fault.js";
 import type { WriteRecord } from "./write-record.js";
 
@@ -35,6 +36,9 @@ export interface AppDependencies {
   simulatedFault?: SimulatedFault;
   // Cenários §1.1: recebe um registro por requisição de escrita.
   recordWrite?: (record: WriteRecord) => void;
+  // Cenários §1.1, IL1–IL7: recebe um registro por requisição de leitura de chamados. As
+  // rotas de leitura entram no P7 da fatia 0.
+  recordRead?: (record: ReadRecord) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,9 +89,19 @@ type WriteVariables = { writeOutcome?: WriteOutcome };
 // que ele funcione também num Hono que não é o deste app.
 export type WriteEnv = { Variables: WriteVariables };
 
+// Cenários §1.1, IL5: a marca da leitura, sem `event` e `operation` (vêm do emissor da rota)
+// e sem `responseDisposition` (sempre SENT, IL6). Não há campo para idempotencyKey nem para
+// id do funcionário.
+export type ReadOutcomeMark = Omit<ReadRecord, "event" | "operation" | "responseDisposition">;
+
+type ReadVariables = { readOutcome?: ReadOutcomeMark };
+
+// Ambiente mínimo do emissor de leituras, como o WriteEnv.
+export type ReadEnv = { Variables: ReadVariables };
+
 type AppEnv = {
   Bindings: HttpBindings;
-  Variables: WriteVariables;
+  Variables: WriteVariables & ReadVariables;
 };
 
 type AppContext = Context<AppEnv>;
@@ -102,6 +116,13 @@ type WriteMarkTarget = { set(key: "writeOutcome", value: WriteOutcome): void };
 // Único mecanismo de marca do desfecho.
 export function markWrite(c: WriteMarkTarget, writeOutcome: WriteOutcome): void {
   c.set("writeOutcome", writeOutcome);
+}
+
+type ReadMarkTarget = { set(key: "readOutcome", value: ReadOutcomeMark): void };
+
+// Único mecanismo de marca do desfecho das leituras (IL5).
+export function markRead(c: ReadMarkTarget, readOutcome: ReadOutcomeMark): void {
+  c.set("readOutcome", readOutcome);
 }
 
 // Resposta de erro (Problem Details) que também marca o desfecho da escrita.
@@ -311,6 +332,55 @@ export function writeRecorder({ recordWrite, onUnexpectedError }: WriteRecorderO
   };
 }
 
+// Emissor único do registro das leituras de chamados (cenários §1.1, IL5), simétrico ao
+// writeRecorder. "Exatamente uma emissão" vale para os caminhos classificados, que marcam o
+// próprio desfecho. A falta de marca é defeito interno: vai ao onUnexpectedError e não gera
+// ticket_read (plano da fatia 0, D4). Só observa: não decide regra de negócio.
+
+export interface ReadRecorderOptions {
+  // IL6: LIST ou VIEW, conforme a rota.
+  operation: ReadOperation;
+  // Ausente: nada é emitido, mas o diagnóstico de caminho sem marca continua ativo.
+  recordRead?: ((record: ReadRecord) => void) | undefined;
+  onUnexpectedError: UnexpectedErrorHandler;
+}
+
+export function readRecorder({
+  operation,
+  recordRead,
+  onUnexpectedError,
+}: ReadRecorderOptions): MiddlewareHandler<ReadEnv> {
+  return async (c, next) => {
+    await next();
+
+    const readOutcome = c.get("readOutcome");
+    if (readOutcome === undefined) {
+      reportUnexpected(
+        onUnexpectedError,
+        new Error(`${c.req.method} ${c.req.path} terminou sem desfecho registrado (cenários §1.1, IL5).`),
+      );
+      return;
+    }
+    if (recordRead === undefined) return;
+
+    // IL6: sem idempotencyKey e sem id do funcionário; responseDisposition sempre SENT.
+    const record: ReadRecord = {
+      event: "ticket_read",
+      operation,
+      ...readOutcome,
+      responseDisposition: "SENT",
+    };
+
+    // IL5 (como o IN8): falha do gravador nunca altera a resposta; o erro vai para o
+    // registro interno, e nenhum segundo registro é emitido.
+    try {
+      recordRead(record);
+    } catch (error) {
+      reportUnexpected(onUnexpectedError, error);
+    }
+  };
+}
+
 // FS5: encerra a conexão sem resposta HTTP e avisa o adapter de que não deve responder.
 function dropConnection(outgoing: HttpBindings["outgoing"]): Response {
   outgoing.destroy();
@@ -427,7 +497,10 @@ export function createApp({
     // Contrato §4.3: corpo genérico; o detalhe fica só no registro interno, que nunca
     // impede a resposta 500.
     reportUnexpected(onUnexpectedError, error);
-    // IN8: o caminho do erro marca o próprio desfecho; o emissor não deduz o ERROR do 500.
+    // IN8 e IL5: o caminho do erro marca o próprio desfecho; os emissores não deduzem o
+    // ERROR do 500. O onError é do app inteiro: marca a escrita e a leitura, e cada emissor
+    // lê só a sua marca (uma rota sem emissor ignora as duas).
+    markRead(c, { outcome: "ERROR", status: 500, code: "INTERNAL_ERROR" });
     return rejectWrite(c, "ERROR", 500, "INTERNAL_ERROR");
   });
 

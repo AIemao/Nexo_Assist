@@ -8,6 +8,7 @@ import { createCreateTicket } from "./application/create-ticket.js";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
 import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
+import type { ReadRecord } from "./http/read-record.js";
 import type { WriteRecord } from "./http/write-record.js";
 import { createErrorLogger } from "./observability/error-log.js";
 import { readPrismaCode } from "./persistence/prisma-error-code.js";
@@ -56,10 +57,10 @@ function describeFault(fault: SimulatedFault): string {
   return fault.mode === "F-SLOW" ? `${fault.mode} (${fault.delayMs} ms)` : fault.mode;
 }
 
-// Cenários §1.1, IN2 e IN4: uma linha JSON por registro de escrita no stdout, com o
-// instante da emissão (`at`) carimbado aqui, e não no app. O formato de `at` é o mesmo
-// dos instantes do domínio (DM §3.2): ISO 8601 em UTC, com milissegundos.
-function writeRecordLine(record: WriteRecord): void {
+// Cenários §1.1, IN2 e IN4 (escritas) e IL5 (leituras): uma linha JSON por registro no
+// stdout, com o instante da emissão (`at`) carimbado aqui, e não no app. O formato de `at`
+// é o mesmo dos instantes do domínio (DM §3.2): ISO 8601 em UTC, com milissegundos.
+function recordLine(record: WriteRecord | ReadRecord): void {
   process.stdout.write(`${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`);
 }
 
@@ -98,7 +99,8 @@ function main(): void {
     createTicket,
     onUnexpectedError: (error) => logError("request", error),
     simulatedFault: fault,
-    recordWrite: writeRecordLine,
+    recordWrite: recordLine,
+    recordRead: recordLine,
   });
 
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
