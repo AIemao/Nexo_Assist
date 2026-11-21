@@ -1,6 +1,6 @@
 # 04 — Contrato HTTP do ticket-service
 
-> Artefato do Bloco 3, **versão 1.1** (2026-11-08; ver seção 8, Histórico de versões).
+> Artefato do Bloco 3, **versão 1.2**, aprovada em 2026-11-20 (fatia 0 do Bloco 4; ver seção 16, Histórico de versões). O `POST /tickets` (§2 a §6) não muda.
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles e descreve só a **fronteira HTTP**: rotas, cabeçalhos, códigos de status e formato dos erros. Não redefine regras do domínio; remete ao DM.
 >
@@ -9,6 +9,10 @@
 ## 1. Escopo
 
 O cliente desta API é o web/BFF (ADR-002). A camada HTTP valida a forma da requisição com Zod, chama o caso de uso e traduz o resultado em status e corpo. Regras de negócio ficam no caso de uso e no domínio (ADR-010, condição 5).
+
+A v1.2 acrescenta as leituras do funcionário: listagem (§8) e consulta detalhada (§9), com as regras comuns no §7; e a leitura do funcionário para o login simulado (§10). Erros das rotas novas: §11. A leitura de classificação e prazo usada pelo `proposeTicketDraft` (README §6) fica fora desta versão (Bloco 5).
+
+Nas seções da v1.2: DM = `01-domain-model.md` v2.16; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.10.
 
 ## 2. `POST /tickets`
 
@@ -163,17 +167,228 @@ Documento de referência vigente em 2026-11-07: `draft-ietf-httpapi-idempotency-
 | Requisição concorrente com a mesma chave, ainda em processamento | Recomenda 409 | No mesmo processo, as transações são serializadas (Unit of Work; conexão única do adapter, ADR-008): a segunda requisição recebe o snapshot depois do commit da primeira, com **201**. Não há conformidade com a recomendação de 409 |
 | Chave ausente em operação que a exige | Recomenda 400 | 400 `VALIDATION_ERROR` |
 
-## 7. Rastreabilidade
+## 7. Leituras do funcionário: regras comuns
+
+Valem para `GET /tickets` (§8) e `GET /tickets/{ticketId}` (§9).
+
+### 7.1 Identidade
+
+- A identidade vem da sessão (ADR-004; README §8). O ticket-service a recebe pelos cabeçalhos do §2.2 (`X-Actor-Type`, `X-Actor-Employee-Id`), preenchidos exclusivamente pelo BFF, com as mesmas regras de forma e o mesmo conjunto fechado de `X-Actor-*`.
+- Nenhuma rota de leitura aceita identidade por caminho, consulta ou corpo. Exemplo: `GET /tickets?requesterId=EMP-B` é recusado com **400** `VALIDATION_ERROR`, como o `requesterId` no corpo do `POST /tickets` (§2).
+- O ticket-service valida o solicitante em toda leitura de funcionário (ADR-004; DM §7.3): só devolve chamados com `requesterId` igual ao `X-Actor-Employee-Id`.
+- O ticket-service não verifica se o `X-Actor-Employee-Id` existe no model `Employee`: mantém a confiança no ator informado pelo web (README §8; §2.2). Um id sem chamados recebe a lista vazia (§8) ou a negação (§9).
+
+### 7.2 Ator aceito
+
+- As duas rotas aceitam só `X-Actor-Type: EMPLOYEE` (DM §7.3; DM §7.1, invariante 1). `ANALYST` e `SYSTEM` recebem **403** `ACTOR_NOT_EMPLOYEE`, o mesmo código do §2.2.
+- Para `ANALYST`, a recusa decorre do DM §7.1, invariante 2: todo acesso de analista gera `TicketAccessLog`, e estas rotas não o geram. O acesso do analista entra com o console (Bloco 7; ADR-004), em rotas próprias.
+- A verificação do ator vem antes de qualquer leitura no banco: um `ANALYST` recebe 403 sem que o ticket-service consulte o chamado pedido.
+
+### 7.3 Repetição, falhas e instrumentação
+
+- As leituras não têm efeito. Não usam `Idempotency-Key`, porque o `IdempotencyRecord` cobre só operações que produziram efeito (DM §3.16; cenários §1.1, IN1), e podem ser repetidas.
+- A política de retry das leituras é do cliente web/BFF (§5). O README §9, "Falhas na leitura", prevê retry com backoff curto e, se a falha persistir, aviso de instabilidade sem perder a conversa. **PENDENTE (README §12 #20, Bloco 4):** o tratamento concreto no cliente.
+- As falhas simuladas cobrem só escritas (cenários §2.2, FS6). **PENDENTE (README §12 #20):** se as leituras ganham falha simulada para exercitar o retry.
+- **PENDENTE (README §12 #21, Bloco 4):** o registro das leituras (cenários §1.1, IN3). Este contrato não define o registro; qualquer que seja, nada dele chega à resposta HTTP.
+
+## 8. `GET /tickets`: listagem dos chamados do funcionário
+
+```http
+GET /tickets
+X-Actor-Type: EMPLOYEE
+X-Actor-Employee-Id: EMP-A
+```
+
+Atende à intenção `LIST_MY_TICKETS` (DM §3.12) e à tool `listMyTickets` (README §6). Cenário: SC-04.
+
+### 8.1 Escopo
+
+- Devolve todos os chamados com `requesterId` igual ao `X-Actor-Employee-Id`, de qualquer status: consultar chamados não se limita a abertos (DM §8.5). No SC-04, a listagem inclui `TKT-A2`, `RESOLVED`.
+- Não aceita parâmetros de consulta. Qualquer parâmetro é recusado com **400** `VALIDATION_ERROR` (schema estrito, como o corpo do §2).
+- Sem paginação no MVP. Se entrar depois, a resposta já é um objeto (§8.2), e o campo novo não quebra o cliente.
+
+### 8.2 Resposta
+
+**200 OK**, sempre, inclusive sem chamados (`"tickets": []`).
+
+Cada item é um **resumo**: o necessário para o seletor do AF §9.1, passo 2 (`TICKET_SELECTOR`, DM §3.8), distinguir os chamados e mostrar o vencido (AF §9.1, passo 5). Descrição, `impactAssessment`, `assignedTo` e os campos de prazo brutos ficam na consulta detalhada (§9), que é a que registra `VIEWED`; aparecer numa lista não cria associação (DM §3.7).
+
+| Campo | Origem |
+| --- | --- |
+| `id`, `type`, `title`, `category`, `priority`, `status`, `createdAt`, `updatedAt` | `Ticket` (DM §3.2) |
+| `resolvedAt` | `Ticket` (DM §3.2); presente só com `status` `RESOLVED`. Nos demais status, o campo é omitido, como no objeto `ticket` do §3 (campo opcional no DM §3.2) |
+| `currentDueAt` | Prazo vigente: `nextUpdateDueAt ?? firstResponseDueAt` (DM §3.2) |
+| `isOverdue` | `RESOLVED`: `null`. Demais status: `isOverdue(currentDueAt, now)`, com o relógio do ticket-service (DM §8.5.2; §12) |
+
+- `currentDueAt` e `isOverdue` são calculados pelo ticket-service e entregues prontos: as funções de domínio vivem no ticket-service, sem cópia no web (DM §7.2). O web não recalcula.
+- `requesterId` não aparece no item: é sempre o próprio ator.
+
+Exemplo com as fixtures do SC-04 (ids e instantes ilustrativos; o seed não fixa ids, cenários §2.1, S3):
+
+```json
+{
+  "tickets": [
+    {
+      "id": "INC-2",
+      "type": "INC",
+      "title": "Notebook lento",
+      "category": "HARDWARE",
+      "priority": "MEDIUM",
+      "status": "WAITING_ANALYST",
+      "createdAt": "2026-11-20T14:40:00.000Z",
+      "updatedAt": "2026-11-20T14:40:00.000Z",
+      "currentDueAt": "2026-11-25T14:40:00.000Z",
+      "isOverdue": false
+    },
+    {
+      "id": "INC-1",
+      "type": "INC",
+      "title": "Senha do SAP não funciona",
+      "category": "ACCESS",
+      "priority": "MEDIUM",
+      "status": "RESOLVED",
+      "createdAt": "2026-11-14T15:00:00.000Z",
+      "updatedAt": "2026-11-16T15:00:00.000Z",
+      "resolvedAt": "2026-11-16T15:00:00.000Z",
+      "currentDueAt": "2026-11-18T21:00:00.000Z",
+      "isOverdue": null
+    }
+  ]
+}
+```
+
+`TKT-B1` não aparece em nenhuma forma (SC-04).
+
+### 8.3 Ordenação
+
+`updatedAt` decrescente, comparando instantes, com desempate por `id` crescente: a mesma ordem dos candidatos de duplicidade (DM §8.5.1). No SC-04, `TKT-A1` (atualizado há 20 min) vem antes de `TKT-A2` (resolvido há 4 dias).
+
+## 9. `GET /tickets/{ticketId}`: consulta detalhada
+
+```http
+GET /tickets/INC-20311
+X-Actor-Type: EMPLOYEE
+X-Actor-Employee-Id: EMP-A
+```
+
+Atende à intenção `VIEW_TICKET` (DM §3.12) e à tool `viewMyTicket` (§13). Cenários: SC-05 e SC-19.
+
+### 9.1 Resposta de sucesso
+
+- **200 OK** com o mesmo objeto `ticket` que o `POST /tickets` devolve (§3; todos os campos do DM §3.2), mais `currentDueAt` e `isOverdue`, calculados como no §8.2.
+- Como no §3, o corpo é o próprio objeto `ticket`, sem envelope. `currentDueAt` e `isOverdue` ficam dentro desse objeto, no mesmo nível dos campos do DM §3.2. Os dois campos calculados não fazem parte do snapshot persistido nem do corpo do `POST /tickets`. Campos opcionais ausentes (`resolvedAt`, `assignedTo`, `nextUpdateDueAt`, `serviceDeskUpdatedAt`) são omitidos, como no §3.
+- O histórico (`TicketEvent`) não entra nesta versão. **PENDENTE (Bloco 6):** os campos que o anexo `TICKET` exibe (AF §9.1, passo 4; DM §3.8); se exigir o histórico, a resposta ganha um campo novo.
+
+### 9.2 Negação idêntica (AF D17)
+
+- Chamado inexistente, chamado de outro funcionário e id malformado recebem a mesma resposta, byte a byte (AF D17 e §9.2, I-3; SC-05; SC-19): **404 Not Found**, `Content-Type: application/problem+json` e este corpo:
+
+  ```json
+  {
+    "type": "about:blank",
+    "title": "Not Found",
+    "status": 404,
+    "code": "TICKET_NOT_FOUND"
+  }
+  ```
+
+  - Sem `detail`, sem `instance` e sem repetir o id pedido; nenhum cabeçalho de resposta depende do caso.
+  - 404, e não 403: um 403 só para o chamado alheio revelaria a existência dele.
+- O caminho não tem validação de formato: um id malformado (por exemplo, `abc`) chega à consulta e recebe a mesma negação. O funcionário não distingue "não existe", "não é seu" e "não é um id". O caso A do SC-19 usa um id bem formado e inexistente (`INC-999999`; cenários §2.1, S9).
+- O caso de uso busca o chamado por `id` e `requesterId` juntos, numa única consulta. Os casos de negação percorrem o mesmo caminho e produzem o mesmo resultado (nenhuma linha). **[Inferência]** Isso reduz a diferença de tempo entre eles, mas não garante tempo constante.
+
+### 9.3 Revalidação do foco no handoff (AF D20)
+
+A revalidação do foco (AF §7, D10) usa esta rota, com o ator `EMPLOYEE` dono da conversa. **200** = foco revalidado; **404** `TICKET_NOT_FOUND` = foco inválido ou inacessível, sem distinguir o motivo, e o chamado não aparece em nenhuma superfície do handoff (AF D20). O handoff em si é do Bloco 7.
+
+## 10. `POST /employees/lookup`: leitura do funcionário para o login simulado
+
+Localiza o funcionário pelo e-mail no login simulado do web. O `Employee` pertence ao ticket-service (DM §1); o model e o seed dos funcionários entram no Bloco 4 (cenários §2.1, S7).
+
+```http
+POST /employees/lookup
+Content-Type: application/json
+X-Actor-Type: SYSTEM
+
+{ "email": "ana@nexo.example" }
+```
+
+### 10.1 Requisição
+
+- `POST` com o e-mail no corpo, para o e-mail não aparecer na URL nem em logs de acesso (README §8: "Logs sem dados sensíveis desnecessários"). É leitura: sem `Idempotency-Key`, sem efeito e fora do mecanismo de falhas simuladas (cenários §2.2, FS6).
+- `Content-Type: application/json`, como no §2. Ausente, ou com tipo de mídia diferente: **415** `UNSUPPORTED_MEDIA_TYPE`.
+- Corpo com schema estrito: só `email`, string obrigatória. A senha **não** vai ao ticket-service: o login aceita qualquer senha para funcionários do seed (DM §3.1), e essa aceitação fica no web. Um campo `password` no corpo é recusado com **400** `VALIDATION_ERROR`.
+- A comparação do e-mail não diferencia maiúsculas de minúsculas e desconsidera espaços nas pontas (DM §3.1): `" Ana@Nexo.example "` encontra o funcionário cadastrado com `ana@nexo.example`.
+
+### 10.2 Respostas
+
+- **200 OK** com o `Employee` do DM §3.1: `id`, `name`, `email`, `department`, `role`. O web usa `id` e `role` para montar a sessão e, depois, os cabeçalhos do §2.2: identidade e papel são estabelecidos no servidor a partir do funcionário e da sessão (README §8).
+- **404** `EMPLOYEE_NOT_FOUND`: nenhum funcionário com o e-mail, pela comparação do DM §3.1. Como o e-mail é único (DM §3.1), a busca encontra no máximo um funcionário.
+
+### 10.3 Quem pode chamar
+
+- Só o BFF, no fluxo de login, antes de existir sessão: a autenticação do funcionário fica no web (README §8; ADR-002). Por isso o ator é `X-Actor-Type: SYSTEM` (DM §3.9), sem `X-Actor-Employee-Id` (regra do `Actor`, §2.2). `EMPLOYEE` ou `ANALYST` recebem **403** `ACTOR_NOT_SYSTEM`.
+- Não há autenticação entre o BFF e o ticket-service. "Só o BFF" decorre da premissa de confiança do README §8 e não é imposto pelo serviço, como nas demais rotas.
+
+## 11. Erros das rotas da v1.2
+
+O formato do §4.2 (Problem Details, `code`, `errors` nos 400) e o erro interno do §4.3 valem sem mudança (ADR-010, condição 6). A tabela do §4.1 continua sendo a do `POST /tickets`; as rotas novas usam esta:
+
+| Rota | HTTP | Condição | `code` |
+| --- | ---: | --- | --- |
+| `GET /tickets`, `GET /tickets/{ticketId}` | 400 | Cabeçalho do ator inválido (§2.2) ou parâmetro de consulta não previsto | `VALIDATION_ERROR` |
+| `GET /tickets`, `GET /tickets/{ticketId}` | 403 | Ator `ANALYST` ou `SYSTEM` (§7.2) | `ACTOR_NOT_EMPLOYEE` |
+| `GET /tickets/{ticketId}` | 404 | Chamado inexistente, de outro funcionário ou id malformado, com corpo idêntico (§9.2) | `TICKET_NOT_FOUND` |
+| `POST /employees/lookup` | 400 | Corpo inválido, campo extra (inclusive `password`), JSON malformado ou cabeçalho do ator inválido | `VALIDATION_ERROR` |
+| `POST /employees/lookup` | 403 | Ator diferente de `SYSTEM` (§10.3) | `ACTOR_NOT_SYSTEM` |
+| `POST /employees/lookup` | 404 | Nenhum funcionário com o e-mail (§10.2) | `EMPLOYEE_NOT_FOUND` |
+| `POST /employees/lookup` | 415 | `Content-Type` ausente ou diferente de `application/json` | `UNSUPPORTED_MEDIA_TYPE` |
+| todas | 500 | Como no §4.3 | `INTERNAL_ERROR` |
+
+- Ordem de validação: cabeçalhos, depois parâmetros de consulta ou corpo, depois o tipo do ator (403), e só então o caso de uso. É a ordem do §4.1 ("Os cabeçalhos são validados antes do corpo"), estendida às rotas novas.
+- Em `errors`, o `path` de um parâmetro de consulta é o nome precedido de `?` (`"?requesterId"`), ao lado do JSON Pointer do corpo e do nome do cabeçalho (§4.2).
+
+## 12. `isOverdue` de chamado `RESOLVED`
+
+Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
+
+| `status` | `isOverdue` na resposta |
+| --- | --- |
+| `RESOLVED` | `null`: o vencido não se aplica |
+| Demais status (DM §3.2) | `isOverdue(currentDueAt, now)`: `true` ou `false` |
+
+- `isOverdue` tem três valores na resposta: `true` (vencido), `false` (no prazo) e `null` (não se aplica). Só `true` conta como vencido, por exemplo para a oferta de analista (AF §9.1, passo 5; `OVERDUE_TICKET`).
+- `currentDueAt` continua presente para todo status.
+- No SC-04: `TKT-A1` com `isOverdue: false`; `TKT-A2`, `RESOLVED`, com `isOverdue: null`.
+
+## 13. Tool de consulta detalhada: `viewMyTicket`
+
+- A tool de consulta detalhada se chama **`viewMyTicket`** e tem um único parâmetro, `ticketId`, sem parâmetro de identidade (ADR-004). Ela chama o `GET /tickets/{ticketId}` (§9).
+- O nome forma o par com `listMyTickets`, como "Listar / ver meus chamados" no README §6. "My" indica que só os chamados do funcionário da sessão estão ao alcance; a segurança não depende do nome (§7.1, §9.2). "view" corresponde à `Intent` `VIEW_TICKET` (DM §3.12), como "list" corresponde a `LIST_MY_TICKETS`.
+- O nome pertence ao contrato das tools do web; este documento registra só a correspondência com a rota.
+
+## 14. Pendências
+
+| Pendência | Origem | Bloco |
+| --- | --- | --- |
+| Tratamento concreto das falhas nas leituras pelo cliente web/BFF; falha simulada nas leituras (§7.3) | README §12 #20 | 4 |
+| Registro (instrumentação) das leituras (§7.3) | README §12 #21; cenários §1.1, IN3 | 4 |
+| Campos exibidos pelo anexo `TICKET` e eventual histórico na consulta detalhada (§9.1) | AF §9.1, passo 4; DM §3.8 | 6 |
+| Leitura de classificação e prazo usada pelo `proposeTicketDraft` (§1) | README §6 | 5 |
+
+## 15. Rastreabilidade
 
 - README §8 (fronteira de confiança), §9 (idempotência e reconciliação), §12 #7 e #8.
 - DM v2.11: §3.2 (`requesterId` vem da sessão), §3.3 (`CreateTicketDraft`), §3.9 (`Actor`, `ActorType`) e §3.16 (idempotência, snapshot e conflito).
 - ADR-002, ADR-005, ADR-008 (conexão única do adapter) e ADR-010.
 - RFC 9457 (Problem Details for HTTP APIs); `draft-ietf-httpapi-idempotency-key-header-08`.
 - `01-evaluation-scenarios.md` §2.2 (mecanismo das falhas simuladas).
+- v1.2: README §6 (tools), §8 (privacidade e login), §9 ("Falhas na leitura"), §12 #19, #20 e #21; DM v2.16: §1, §3.1 (unicidade e comparação do e-mail), §3.2, §3.7, §3.8, §3.9, §3.12, §3.16, §7.1 (invariantes 1 e 2), §7.2, §7.3, §8.5, §8.5.1 e §8.5.2 (vencido de `RESOLVED`); AF v1.7: D10, D17, D20, §7, §9.1 e §9.2; `01-evaluation-scenarios.md` v1.10: §1.1 (IN1, IN3), §2.1 (S3, S7, S9), §2.2 (FS6), SC-04, SC-05 e SC-19; ADR-004.
 
-## 8. Histórico de versões
+## 16. Histórico de versões
 
 | Versão | Data | Mudanças |
 | --- | --- | --- |
 | 1.0 | 2026-11-07 | Primeira versão, publicada com a API HTTP do ticket-service (ADR-010): `POST /tickets`, `Idempotency-Key`, ator, respostas de sucesso, erros em Problem Details (inclusive JSON malformado e ordem de validação, §4.1), retry e reconciliação, diferenças em relação ao Internet-Draft |
 | 1.1 | 2026-11-08 | Nota informativa em §5: com falha simulada ativa (cenários §2.2), o servidor pode encerrar a conexão sem resposta ou atrasá-la; desligada por padrão; fora do contrato normal. Nenhuma regra alterada. §7 cita a §2.2 dos cenários. Seção de histórico criada |
+| 1.2 | 2026-11-20 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-20. Leituras do funcionário: regras comuns (§7: identidade pelos cabeçalhos do §2.2, só `EMPLOYEE`, repetição, falhas e instrumentação); `GET /tickets` (§8: listagem em resumo, todos os status, sem paginação, ordem por `updatedAt` decrescente; SC-04); `GET /tickets/{ticketId}` (§9: objeto `ticket` mais `currentDueAt` e `isOverdue`; 404 `TICKET_NOT_FOUND` idêntico para inexistente, alheio e malformado, AF D17; revalidação do foco, AF D20; SC-05, SC-19). `POST /employees/lookup` para o login simulado (§10: ator `SYSTEM`, sem senha, e-mail comparado pela regra do DM v2.16 §3.1, 404 `EMPLOYEE_NOT_FOUND`). Erros das rotas novas (§11). `isOverdue` de `RESOLVED` = `null` (§12; DM v2.16 §8.5.2; README §12 #19). Tool `viewMyTicket` (§13). Pendências (§14). Rastreabilidade e histórico renumerados para §15 e §16. `POST /tickets` (§2 a §6) inalterado |

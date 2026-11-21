@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.15** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.16** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -87,6 +87,7 @@ interface Employee {
 
 - Distinção N1/N2 **não** é modelada: o PRD não define regras diferentes entre os níveis (README §3, "Fora").
 - Autenticação simulada, com qualquer senha para funcionários do seed (README §3, README §8). Identidade e papel são estabelecidos no servidor a partir da sessão e nunca vêm de parâmetros fornecidos pelo LLM (README §8).
+- **[Premissa]** `email` é único entre os funcionários. A comparação não diferencia maiúsculas de minúsculas e desconsidera espaços nas pontas: `" Ana@Nexo.example "` e `"ana@nexo.example"` são o mesmo e-mail. Decisão do autor (2026-11-20), para a leitura do funcionário no login simulado (`04-http-contract.md`). A forma de garantir a unicidade na persistência é definida com o model `Employee` (Bloco 4).
 
 ### 3.2 Ticket
 
@@ -1073,6 +1074,7 @@ Ciclo de vida de `Ticket.status` (README §12 #2):
   - `computeDueAt(start: string, priority: Priority): string` → instante ISO 8601 normalizado em UTC (`Z`).
   - `isOverdue(dueAt: string, now: string): boolean` → `now > dueAt`, comparando instantes; `now === dueAt` não é vencido.
 - **[Premissa]** Vencido é calculado, nunca gravado como status.
+- **[Premissa]** Chamado `RESOLVED` não tem vencido: o vencido não se aplica e é apresentado como `null`. Para os demais status, vencido = `isOverdue(prazo vigente, now)`, com o prazo vigente do §3.2. Decisão do autor (2026-11-20; README §12 #19). A assinatura de `isOverdue` (acima) não recebe o status; a forma de aplicar a regra é definida na implementação (Bloco 4).
 - **[Premissa]** O prazo seguinte é calculado a partir da última atualização do service desk; informação adicional do funcionário não reinicia o prazo. Quais eventos contam como atualização do service desk: PENDENTE (Bloco 7).
 - **[Premissa]** `firstResponseDueAt = computeDueAt(createdAt, priority)`, calculado na criação; permanece como registro histórico após a primeira resposta. Campos de prazo, consistência entre eles e prazo vigente: §3.2.
 - **[Premissa]** Mudança de prioridade: sem atualização do service desk, recalcula `firstResponseDueAt` a partir de `createdAt`; com atualização, recalcula `nextUpdateDueAt` a partir de `serviceDeskUpdatedAt`. Consequência: uma elevação pode tornar o chamado vencido no mesmo instante; uma redução pode estender o prazo.
@@ -1313,8 +1315,17 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.13  | v2.12; fechamento do Bloco 3 | Cabeçalho, "Estado": passa a listar o que está implementado no ticket-service depois dos Blocos 2 e 3 (funções de domínio, persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord`, `createTicket`). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.14  | v2.13; ADR-009 (Bloco 4) | Pendência "modelo LLM" removida do §10, com remissão ao ADR-009. Decisão de modelo e integração; nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.15  | v2.14; plano do Bloco 4 (decisão do autor, 2026-11-20) | Pendência "baixa confiança" (README §12 #10) passa do Bloco 4 para o Bloco 7, junto com o handoff e os cenários dele: o Bloco 4 não exercita transferência por baixa confiança. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança. Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
+| v2.16  | v2.15; contrato HTTP v1.2 (decisões do autor, 2026-11-20); README §12 #19 | §3.1: `Employee.email` único, comparado sem diferenciar maiúsculas de minúsculas e sem espaços nas pontas. §8.5.2: chamado `RESOLVED` não tem vencido (`null`); para os demais status, `isOverdue(prazo vigente, now)`. Tipos, entidades e assinaturas das funções inalterados. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.15 para a v2.16
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Unicidade e comparação do e-mail | 3.1 | `Employee.email` único; comparação sem diferenciar maiúsculas de minúsculas e sem espaços nas pontas. Base da leitura do funcionário no login simulado (`04-http-contract.md`) |
+| Vencido de chamado `RESOLVED` | 8.5.2 | Não se aplica: apresentado como `null`. Demais status: `isOverdue(prazo vigente, now)`. Resolve o README §12 #19 |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.16 |
 
 ### Alterações da v2.14 para a v2.15
 
