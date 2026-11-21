@@ -44,6 +44,21 @@ Todo acesso ao banco feito pelo fluxo da aplicação, inclusive leituras, passa 
 - **Ator sem `Employee` no `POST /tickets`:** viola a premissa de identidade confiável (README §8) e resulta no 500 `INTERNAL_ERROR`, sem código novo (`04-http-contract.md` v1.3, nota informativa no §4.3). Exigência para a implementação: teste de integração com resposta genérica, registro `ticket_write` com `outcome` `ERROR` e rollback completo (nenhum `Ticket`, `TicketEvent` ou `IdempotencyRecord` gravado).
 - **Pendência do plano de implementação:** o smoke testa só por HTTP, não roda o seed e usa `EMP-001` como ator. Com a FK, ele precisa de um `Employee` antes de subir o servidor; a forma será definida no plano.
 
+**Atualização (2026-11-21, entrega da fatia 0).** Nota posterior à anterior, que não é reescrita; as condições acima não mudam.
+
+- **Entregue (PR #33):**
+  - migração `prisma/migrations/20261121183802_employee_fks` (model `Employee` com `email @unique` e as três FKs com `Restrict`);
+  - testes de integração das FKs (`test/persistence/employee-foreign-keys.test.ts`: referência inexistente recusada com P2003; `null` aceito em `assignedTo` e `actorEmployeeId`);
+  - teste do ator sem `Employee` no `POST /tickets` (500 genérico, `ticket_write` `ERROR` e rollback completo, inclusive do `TicketCounter`);
+  - smoke grava o `EMP-001` com o `better-sqlite3` antes de subir o servidor, nas duas etapas.
+- **Evidência do R1 (experimento da implementação, fora do repositório).** O SQL gerado recria `Ticket` e `TicketEvent` entre `PRAGMA foreign_keys=OFF` e `PRAGMA foreign_keys=ON` (com `PRAGMA defer_foreign_keys`) e não tem `PRAGMA foreign_key_check`. Procedimento:
+  1. aplicar as três migrações anteriores num banco temporário;
+  2. gravar um `Ticket` de `EMP-A`, um `TicketEvent` do `ANALYST-1` e um `IdempotencyRecord`, sem nenhum `Employee`;
+  3. aplicar a migração `employee_fks` com `prisma migrate deploy`.
+
+  Resultado: a migração termina sem erro (exit 0) e deixa órfãos. Saída do `PRAGMA foreign_key_check` depois da migração: `[["TicketEvent",1,"Employee",0],["Ticket",1,"Employee",1]]`. Num banco novo, depois do `migrate deploy`, a mesma checagem sai vazia (`[]`) e o `PRAGMA foreign_keys` da conexão do adapter é `1`.
+- **Recriação do banco como pré-condição.** Apagar o `dev.db` antes do `migrate deploy` e do seed (README §5) não é só recomendação: é o que impede os órfãos acima. Os bancos dos testes (template do `global-setup`) e do smoke já nascem vazios.
+
 ## Alternativas consideradas
 
 ### A. `node:sqlite` nativo com SQL explícito
@@ -192,3 +207,4 @@ O número de funcionários não exige PostgreSQL por si só. O SQLite permite m�
 - ADR-002 (o ticket-service como aplicação separada, dona do domínio dos chamados).
 - ADR-005 (idempotência por `OperationExecution.id`).
 - Atualização de 2026-11-21: Domain Model v2.16 §3.1 (`Employee`, unicidade e comparação do e-mail) e §3.2 (`requesterId` e `assignedTo` referenciam `Employee.id`); README §5 ("Como rodar o ticket-service") e §8 (fronteira de confiança); `01-evaluation-scenarios.md` §1.1 (IN4) e §2.1 (S7, S8); `04-http-contract.md` v1.3, §4.3.
+- Atualização de 2026-11-21 (entrega da fatia 0): README §5 e §13 ("Evidência do pronto da fatia 0 do Bloco 4").

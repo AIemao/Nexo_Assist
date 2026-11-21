@@ -1,10 +1,10 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.16** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.17** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
-> Estado: documentação arquitetural. Implementado no ticket-service (Blocos 2 e 3): as funções de domínio `classifyPriority` e `validateImpactAssessment` (§4, §5), `TicketStatus` com `isOpenTicket` e `canReopen` (§8.5), `findDuplicateCandidates` (§8.5.1), `computeDueAt` e `isOverdue` (§8.5.2), `formatTicketId` e `validateTicketInvariants` (§3.2); a persistência de `Ticket`, `TicketEvent` e `IdempotencyRecord` (§3.2, §3.9, §3.16); e a criação de chamado com idempotência (`createTicket`, §3.3, §3.16). As demais regras (as outras entidades e as operações de atualização, reabertura e transferência) seguem como especificação.
+> Estado: documentação arquitetural. Implementado no ticket-service (Blocos 2 e 3 e fatia 0 do Bloco 4): as funções de domínio `classifyPriority` e `validateImpactAssessment` (§4, §5), `TicketStatus` com `isOpenTicket` e `canReopen` (§8.5), `findDuplicateCandidates` (§8.5.1), `computeDueAt`, `isOverdue`, `currentDueAt` e o vencido com a regra do `RESOLVED` (§8.5.2), `formatTicketId` e `validateTicketInvariants` (§3.2), e `normalizeEmail` (§3.1); a persistência de `Employee` (com o e-mail normalizado e único), `Ticket`, `TicketEvent` e `IdempotencyRecord`, com as FKs de `requesterId`, `assignedTo` e `actorEmployeeId` para `Employee` (§3.1, §3.2, §3.9, §3.16); a criação de chamado com idempotência (`createTicket`, §3.3, §3.16); as leituras do funcionário (listagem e consulta detalhada dos próprios chamados, §7.3); e a leitura do funcionário por e-mail para o login simulado (§3.1). As demais regras (as outras entidades e as operações de atualização, reabertura e transferência) seguem como especificação.
 
 ## 0. Como ler este documento
 
@@ -1316,8 +1316,16 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.14  | v2.13; ADR-009 (Bloco 4) | Pendência "modelo LLM" removida do §10, com remissão ao ADR-009. Decisão de modelo e integração; nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.15  | v2.14; plano do Bloco 4 (decisão do autor, 2026-11-20) | Pendência "baixa confiança" (README §12 #10) passa do Bloco 4 para o Bloco 7, junto com o handoff e os cenários dele: o Bloco 4 não exercita transferência por baixa confiança. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança. Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.16  | v2.15; contrato HTTP v1.2 (decisões do autor, 2026-11-20); README §12 #19 | §3.1: `Employee.email` único, comparado sem diferenciar maiúsculas de minúsculas e sem espaços nas pontas. §8.5.2: chamado `RESOLVED` não tem vencido (`null`); para os demais status, `isOverdue(prazo vigente, now)`. Tipos, entidades e assinaturas das funções inalterados. |
+| v2.17  | v2.16; fechamento da fatia 0 do Bloco 4 (PR #33) | Cabeçalho, "Estado": passa a listar o que a fatia 0 implementou no ticket-service (`normalizeEmail`, `currentDueAt` e o vencido com a regra do `RESOLVED`, persistência de `Employee` com as FKs, leituras do funcionário e leitura por e-mail). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.16 para a v2.17
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Estado da implementação | cabeçalho | Lista o que a fatia 0 do Bloco 4 implementou no ticket-service. Nenhuma regra alterada |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.17 |
 
 ### Alterações da v2.15 para a v2.16
 

@@ -1,6 +1,6 @@
 # 04 — Contrato HTTP do ticket-service
 
-> Artefato do Bloco 3, **versão 1.3**, aprovada em 2026-11-21 (fatia 0 do Bloco 4; ver seção 16, Histórico de versões). Nenhuma regra do `POST /tickets` (§2 a §6) muda; a v1.3 acrescenta uma nota informativa ao §4.3.
+> Artefato do Bloco 3, **versão 1.4**, aprovada em 2026-11-21 (fechamento da fatia 0 do Bloco 4; ver seção 16, Histórico de versões). A v1.4 explicita no §4.1 e no §11 a posição do 415 na ordem de validação, como o `POST /tickets` já fazia, registra no §14 a limitação das rotas não mapeadas e marca como entregue o registro das leituras (§7.3).
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles e descreve só a **fronteira HTTP**: rotas, cabeçalhos, códigos de status e formato dos erros. Não redefine regras do domínio; remete ao DM.
 >
@@ -12,7 +12,7 @@ O cliente desta API é o web/BFF (ADR-002). A camada HTTP valida a forma da requ
 
 A v1.2 acrescenta as leituras do funcionário: listagem (§8) e consulta detalhada (§9), com as regras comuns no §7; e a leitura do funcionário para o login simulado (§10). Erros das rotas novas: §11. A leitura de classificação e prazo usada pelo `proposeTicketDraft` (README §6) fica fora desta versão (Bloco 5).
 
-Nas seções da v1.2 e da v1.3: DM = `01-domain-model.md` v2.16; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.11.
+Nas seções da v1.2 à v1.4: DM = `01-domain-model.md` v2.17; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.12.
 
 ## 2. `POST /tickets`
 
@@ -89,6 +89,8 @@ X-Actor-Employee-Id: EMP-001
 Os códigos 403, 409 e 422 correspondem aos resultados de rejeição do caso de uso `createTicket`; o 400 e o 415 são da validação de forma na fronteira; o 500 cobre toda exceção não mapeada.
 
 Os cabeçalhos são validados antes do corpo. Com cabeçalho inválido, o corpo não é lido nem validado, e `errors` traz só os erros de cabeçalho.
+
+O `Content-Type` é verificado antes dos cabeçalhos: com `Content-Type` ausente ou diferente de `application/json`, a resposta é 415, mesmo que os cabeçalhos também sejam inválidos (v1.4; a mesma ordem vale para o `POST /employees/lookup`, §11).
 
 ### 4.2 Formato: Problem Details (RFC 9457)
 
@@ -191,7 +193,7 @@ Valem para `GET /tickets` (§8) e `GET /tickets/{ticketId}` (§9).
 - As leituras não têm efeito. Não usam `Idempotency-Key`, porque o `IdempotencyRecord` cobre só operações que produziram efeito (DM §3.16; cenários §1.1, IN1), e podem ser repetidas.
 - A política de retry das leituras é do cliente web/BFF (§5). O README §9, "Falhas na leitura", prevê retry com backoff curto e, se a falha persistir, aviso de instabilidade sem perder a conversa. **PENDENTE (README §12 #20, Bloco 4):** o tratamento concreto no cliente.
 - As falhas simuladas cobrem só escritas (cenários §2.2, FS6). **PENDENTE (README §12 #20):** se as leituras ganham falha simulada para exercitar o retry.
-- O registro das leituras (`"event": "ticket_read"`) está especificado nos cenários §1.1, IL1–IL7 (README §12 #21, resolvida quanto às premissas). **PENDENTE (fatia 0 do Bloco 4):** a implementação e os testes (cenários §1.1, IL8). Este contrato não define o registro; nada dele chega à resposta HTTP.
+- O registro das leituras (`"event": "ticket_read"`) está especificado nos cenários §1.1, IL1–IL7 (README §12 #21) e foi implementado e testado na fatia 0 do Bloco 4 (cenários §1.1, IL8). Este contrato não define o registro; nada dele chega à resposta HTTP.
 
 ## 8. `GET /tickets`: listagem dos chamados do funcionário
 
@@ -347,7 +349,7 @@ O formato do §4.2 (Problem Details, `code`, `errors` nos 400) e o erro interno 
 | `POST /employees/lookup` | 415 | `Content-Type` ausente ou diferente de `application/json` | `UNSUPPORTED_MEDIA_TYPE` |
 | todas | 500 | Como no §4.3 | `INTERNAL_ERROR` |
 
-- Ordem de validação: cabeçalhos, depois parâmetros de consulta ou corpo, depois o tipo do ator (403), e só então o caso de uso. É a ordem do §4.1 ("Os cabeçalhos são validados antes do corpo"), estendida às rotas novas.
+- Ordem de validação: nas rotas com corpo (`POST /tickets` e `POST /employees/lookup`), primeiro o `Content-Type` (415); depois cabeçalhos, parâmetros de consulta ou corpo, o tipo do ator (403) e só então o caso de uso. É a ordem do §4.1 ("Os cabeçalhos são validados antes do corpo", com o 415 antes dos cabeçalhos desde a v1.4), estendida às rotas novas.
 - Em `errors`, o `path` de um parâmetro de consulta é o nome precedido de `?` (`"?requesterId"`), ao lado do JSON Pointer do corpo e do nome do cabeçalho (§4.2).
 
 ## 12. `isOverdue` de chamado `RESOLVED`
@@ -374,9 +376,10 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 | Pendência | Origem | Bloco |
 | --- | --- | --- |
 | Tratamento concreto das falhas nas leituras pelo cliente web/BFF; falha simulada nas leituras (§7.3) | README §12 #20 | 4 |
-| Implementação e testes do registro das leituras (§7.3) | README §12 #21; cenários §1.1, IL8 | 4 (fatia 0) |
 | Campos exibidos pelo anexo `TICKET` e eventual histórico na consulta detalhada (§9.1) | AF §9.1, passo 4; DM §3.8 | 6 |
 | Leitura de classificação e prazo usada pelo `proposeTicketDraft` (§1) | README §6 | 5 |
+
+**Limitação conhecida (v1.4).** Rotas não mapeadas, como `GET /tickets/` (id vazio) e `GET /tickets/a/b`, não casam com `GET /tickets/{ticketId}` e recebem o 404 padrão do Hono, em texto, fora do Problem Details e diferente do `TICKET_NOT_FOUND` do §9.2. Decisão da fatia 0 do Bloco 4: manter assim; um tratamento próprio exige decisão de contrato.
 
 ## 15. Rastreabilidade
 
@@ -387,6 +390,7 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 - `01-evaluation-scenarios.md` §2.2 (mecanismo das falhas simuladas).
 - v1.2: README §6 (tools), §8 (privacidade e login), §9 ("Falhas na leitura"), §12 #19, #20 e #21; DM v2.16: §1, §3.1 (unicidade e comparação do e-mail), §3.2, §3.7, §3.8, §3.9, §3.12, §3.16, §7.1 (invariantes 1 e 2), §7.2, §7.3, §8.5, §8.5.1 e §8.5.2 (vencido de `RESOLVED`); AF v1.7: D10, D17, D20, §7, §9.1 e §9.2; `01-evaluation-scenarios.md` v1.10: §1.1 (IN1, IN3), §2.1 (S3, S7, S9), §2.2 (FS6), SC-04, SC-05 e SC-19; ADR-004.
 - v1.3: README §8 (fronteira de confiança) e §12 #21; ADR-008 (atualização de 2026-11-21: FKs para `Employee`); `01-evaluation-scenarios.md` v1.11, §1.1 (IL1–IL8).
+- v1.4: README §12 #21 e §13 ("Evidência do pronto da fatia 0 do Bloco 4"); `01-evaluation-scenarios.md` v1.12, §1.1 (IL8).
 
 ## 16. Histórico de versões
 
@@ -396,3 +400,4 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 | 1.1 | 2026-11-08 | Nota informativa em §5: com falha simulada ativa (cenários §2.2), o servidor pode encerrar a conexão sem resposta ou atrasá-la; desligada por padrão; fora do contrato normal. Nenhuma regra alterada. §7 cita a §2.2 dos cenários. Seção de histórico criada |
 | 1.2 | 2026-11-20 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-20. Leituras do funcionário: regras comuns (§7: identidade pelos cabeçalhos do §2.2, só `EMPLOYEE`, repetição, falhas e instrumentação); `GET /tickets` (§8: listagem em resumo, todos os status, sem paginação, ordem por `updatedAt` decrescente; SC-04); `GET /tickets/{ticketId}` (§9: objeto `ticket` mais `currentDueAt` e `isOverdue`; 404 `TICKET_NOT_FOUND` idêntico para inexistente, alheio e malformado, AF D17; revalidação do foco, AF D20; SC-05, SC-19). `POST /employees/lookup` para o login simulado (§10: ator `SYSTEM`, sem senha, e-mail comparado pela regra do DM v2.16 §3.1, 404 `EMPLOYEE_NOT_FOUND`). Erros das rotas novas (§11). `isOverdue` de `RESOLVED` = `null` (§12; DM v2.16 §8.5.2; README §12 #19). Tool `viewMyTicket` (§13). Pendências (§14). Rastreabilidade e histórico renumerados para §15 e §16. `POST /tickets` (§2 a §6) inalterado |
 | 1.3 | 2026-11-21 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-21. Nota informativa no §4.3 (precedente: v1.1): com as FKs para `Employee` (ADR-008, atualização de 2026-11-21), um `X-Actor-Employee-Id` sem `Employee` no `POST /tickets` viola a premissa do README §8 e resulta no 500 `INTERNAL_ERROR` do §4.3. Nenhuma regra alterada. Remissões atualizadas: §1 cita os cenários v1.11; §7.3 e §14 remetem à especificação do registro das leituras (cenários §1.1, IL1–IL7) e mantêm PENDENTE a implementação e os testes (IL8); §10.1 remete ao IL1 (login fora do `ticket_read`, sem registro; e-mail nunca registrado); §15 com a linha da v1.3 |
+| 1.4 | 2026-11-21 | Fechamento da fatia 0 do Bloco 4 (PR #33). §4.1 e §11: a posição do 415 na ordem de validação das duas rotas com corpo (`POST /tickets` e `POST /employees/lookup`) fica explícita: `Content-Type` antes dos cabeçalhos (decisão D8 do plano da fatia 0; é o que o `POST /tickets` já fazia). §14: limitação das rotas não mapeadas (`GET /tickets/` e `GET /tickets/a/b` recebem o 404 padrão do Hono, em texto, fora do Problem Details; decisão D3). §7.3 e §14: o registro das leituras deixa de ser pendência (implementado e testado na fatia 0). §1 cita o DM v2.17 e os cenários v1.12; §15 com a linha da v1.4. Nenhum código de status novo |
