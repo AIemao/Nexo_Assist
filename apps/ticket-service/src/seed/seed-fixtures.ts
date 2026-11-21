@@ -1,7 +1,7 @@
 // Seed das fixtures (docs/evaluation/01-evaluation-scenarios.md §2.1, S1–S9).
 // Só acessa o banco pela Unit of Work; a composição fica em cli.ts.
 import { createCreateTicket } from "../application/create-ticket.js";
-import { computeDueAt, type TicketStatus } from "../domain/index.js";
+import { computeDueAt, type Employee, type TicketStatus } from "../domain/index.js";
 import type { UnitOfWork } from "../persistence/unit-of-work.js";
 import { EMPLOYEE_FIXTURES, TICKET_FIXTURES, type FixtureLabel, type TicketFixture } from "./fixtures.js";
 
@@ -27,14 +27,25 @@ function instantBefore(reference: Date, offsetMs: number): string {
   return new Date(reference.getTime() - offsetMs).toISOString();
 }
 
+// Resumo para o CLI: os funcionários gravados ou recuperados (só id e papel; nome e e-mail
+// não são necessários para operar, README §8) e o mapa rótulo → id dos chamados.
+export interface SeedSummary {
+  employees: Pick<Employee, "id" | "role">[];
+  tickets: Record<FixtureLabel, string>;
+}
+
 export async function seedFixtures(
   deps: SeedDependencies,
   reference: Date,
 ): Promise<Record<FixtureLabel, string>> {
+  return (await seedFixturesWithSummary(deps, reference)).tickets;
+}
+
+export async function seedFixturesWithSummary(deps: SeedDependencies, reference: Date): Promise<SeedSummary> {
   const ids: Partial<Record<FixtureLabel, string>> = {};
 
   // S7: funcionários primeiro (FKs de requesterId e actorEmployeeId); depois os chamados.
-  await seedEmployees(deps);
+  const employees = await seedEmployees(deps);
 
   for (const fixture of TICKET_FIXTURES) {
     const ticketId = await createFixture(deps, fixture, reference);
@@ -48,16 +59,19 @@ export async function seedFixtures(
   if (!hasAllLabels(ids)) {
     throw new Error("Seed: mapa de fixtures incompleto.");
   }
-  return ids;
+  return { employees: employees.map(({ id, role }) => ({ id, role })), tickets: ids };
 }
 
 // S8: os três funcionários, numa Unit of Work. Plano da fatia 0, D2: um funcionário já
-// existente não é comparado nem alterado (como os chamados, S2 e S6).
-async function seedEmployees(deps: SeedDependencies): Promise<void> {
-  await deps.unitOfWork.execute(async ({ employees }) => {
+// existente não é comparado nem alterado (como os chamados, S2 e S6). Devolve o que ficou
+// gravado: o criado agora ou o que já existia.
+async function seedEmployees(deps: SeedDependencies): Promise<Employee[]> {
+  return deps.unitOfWork.execute(async ({ employees }) => {
+    const saved: Employee[] = [];
     for (const employee of EMPLOYEE_FIXTURES) {
-      await employees.createIfAbsent(employee);
+      saved.push(await employees.createIfAbsent(employee));
     }
+    return saved;
   });
 }
 
