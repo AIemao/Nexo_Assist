@@ -7,6 +7,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { createCreateTicket } from "./application/create-ticket.js";
 import { createListMyTickets } from "./application/list-my-tickets.js";
 import { createViewMyTicket } from "./application/view-my-ticket.js";
+import { createFindEmployeeByEmail } from "./application/find-employee-by-email.js";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { createApp } from "./http/app.js";
 import { readSimulatedFault, type SimulatedFault } from "./http/simulated-fault.js";
@@ -103,6 +104,7 @@ function main(): void {
     createTicket,
     listMyTickets: createListMyTickets({ unitOfWork, clock }),
     viewMyTicket: createViewMyTicket({ unitOfWork, clock }),
+    findEmployeeByEmail: createFindEmployeeByEmail({ unitOfWork }),
     onUnexpectedError: (error) => logError("request", error),
     simulatedFault: fault,
     recordWrite: recordLine,

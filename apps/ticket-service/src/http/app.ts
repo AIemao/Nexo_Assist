@@ -6,6 +6,10 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 
 import type { CreateTicketInput, CreateTicketResult } from "../application/create-ticket.js";
+import type {
+  FindEmployeeByEmailInput,
+  FindEmployeeByEmailResult,
+} from "../application/find-employee-by-email.js";
 import type { ListMyTicketsInput, TicketView } from "../application/list-my-tickets.js";
 import type { ViewMyTicketInput, ViewMyTicketResult } from "../application/view-my-ticket.js";
 import {
@@ -39,8 +43,14 @@ export interface ViewMyTicketUseCase {
   execute(input: ViewMyTicketInput): Promise<ViewMyTicketResult>;
 }
 
+export interface FindEmployeeByEmailUseCase {
+  execute(input: FindEmployeeByEmailInput): Promise<FindEmployeeByEmailResult>;
+}
+
 export interface AppDependencies {
   createTicket: CreateTicketUseCase;
+  // Contrato §10: leitura do funcionário para o login simulado. Ausente, a rota não existe.
+  findEmployeeByEmail?: FindEmployeeByEmailUseCase;
   // Contrato §8 e §9: leituras do funcionário. Ausente, a rota correspondente não existe.
   listMyTickets?: ListMyTicketsUseCase;
   viewMyTicket?: ViewMyTicketUseCase;
@@ -318,6 +328,21 @@ function rejectInvalidRead(result: ValidationResult, c: AppContext): Response | 
   return rejectRead(c, "INVALID", 400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
 }
 
+// Contrato §10: o POST /employees/lookup não tem registro operacional (cenários §1.1, IL1);
+// o erro de validação só monta a resposta.
+function rejectInvalidUnrecorded(result: ValidationResult): Response | undefined {
+  if (result.success) return undefined;
+  return problem(400, "VALIDATION_ERROR", toValidationErrors(result.error, result.target));
+}
+
+// Contrato §10.1: corpo estrito, só `email` (a senha não vai ao ticket-service).
+const employeeLookupBodySchema = z.strictObject({ email: z.string() });
+
+// Contrato §11: rejeição do caso de uso da leitura do funcionário.
+const LOOKUP_REJECTION_STATUS: Record<Extract<FindEmployeeByEmailResult, { ok: false }>["error"], ProblemStatus> = {
+  EMPLOYEE_NOT_FOUND: 404,
+};
+
 // ---------------------------------------------------------------------------
 // Corpos das leituras (contrato §8.2 e §9.1).
 
@@ -480,6 +505,7 @@ export function createApp({
   createTicket,
   listMyTickets,
   viewMyTicket,
+  findEmployeeByEmail,
   onUnexpectedError = logRequestError,
   simulatedFault,
   recordWrite,
@@ -629,6 +655,50 @@ export function createApp({
 
         markRead(c, { outcome: "OK", status: 200, ticketId: result.view.ticket.id });
         return c.json(toTicketDetail(result.view), 200);
+      },
+    );
+  }
+
+  // Leitura do funcionário para o login simulado (contrato §10). Sem emissor de registro
+  // (cenários §1.1, IL1); o e-mail nunca é registrado (README §12 #22). Ordem: Content-Type
+  // antes dos cabeçalhos, como no POST /tickets (plano da fatia 0, D8); depois cabeçalhos,
+  // corpo, tipo do ator (403) e só então o caso de uso (§11).
+  if (findEmployeeByEmail !== undefined) {
+    app.post(
+      "/employees/lookup",
+      requireJson,
+      zValidator<
+        typeof readHeadersValidatorSchema,
+        "header",
+        AppEnv,
+        "/employees/lookup",
+        typeof rejectInvalidUnrecorded
+      >("header", readHeadersValidatorSchema, rejectInvalidUnrecorded),
+      async (c) => {
+        // Corpo lido aqui, como no POST /tickets: só o erro de parse vira 400.
+        let body: unknown;
+        try {
+          body = await c.req.json<unknown>();
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+          return problem(400, "VALIDATION_ERROR", [{ path: "#", message: "Corpo JSON malformado." }]);
+        }
+
+        const parsed = employeeLookupBodySchema.safeParse(body);
+        if (!parsed.success) {
+          return problem(400, "VALIDATION_ERROR", toValidationErrors(parsed.error, "json"));
+        }
+
+        // §10.3: só o BFF, antes de existir sessão, com ator SYSTEM.
+        const actor = toActor(c.req.valid("header"));
+        if (actor.type !== "SYSTEM") return problem(403, "ACTOR_NOT_SYSTEM");
+
+        const result = await findEmployeeByEmail.execute({ email: parsed.data.email });
+        if (!result.ok) return problem(LOOKUP_REJECTION_STATUS[result.error], result.error);
+
+        // §10.2: o Employee do DM §3.1, campo a campo.
+        const { id, name, email, department, role } = result.employee;
+        return c.json({ id, name, email, department, role }, 200);
       },
     );
   }
