@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import { computeDueAt, isOverdue } from "../../src/domain/sla.js";
+import { currentDueAt, ticketOverdue } from "../../src/domain/sla.js";
+import { TICKET_STATUSES } from "../../src/domain/index.js";
 
 import type { Priority } from "../../src/domain/index.js";
 
@@ -63,5 +65,61 @@ describe("isOverdue", () => {
 
     it.each(casosOverdue)("%s", (_nome, now, esperado) => {
         expect(isOverdue(dueAt, now)).toBe(esperado);
+    });
+});
+
+// DM §3.2: prazo vigente = nextUpdateDueAt ?? firstResponseDueAt.
+describe("currentDueAt", () => {
+    const firstResponseDueAt = "2026-11-02T17:00:00.000Z";
+    const nextUpdateDueAt = "2026-11-04T17:00:00.000Z";
+
+    it("sem nextUpdateDueAt, o prazo vigente é o firstResponseDueAt", () => {
+        expect(currentDueAt({ firstResponseDueAt })).toBe(firstResponseDueAt);
+    });
+
+    it("com nextUpdateDueAt, o prazo vigente é o nextUpdateDueAt", () => {
+        expect(currentDueAt({ firstResponseDueAt, nextUpdateDueAt })).toBe(nextUpdateDueAt);
+    });
+});
+
+// DM v2.16 §8.5.2 (README §12 #19): chamado RESOLVED não tem vencido (null); os demais
+// status usam isOverdue(prazo vigente, now). Os status vêm do catálogo do domínio.
+describe("ticketOverdue", () => {
+    const firstResponseDueAt = "2026-11-02T17:00:00.000Z";
+    const antes = "2026-11-02T16:59:59.999Z";
+    const depois = "2026-11-02T17:00:00.001Z";
+
+    const statusComVencido = TICKET_STATUSES.filter((status) => status !== "RESOLVED");
+
+    it("o catálogo tem status além do RESOLVED", () => {
+        expect(statusComVencido.length).toBeGreaterThan(0);
+    });
+
+    describe.each(statusComVencido)("%s", (status) => {
+        it.each([
+            ["1 ms antes do prazo", antes, false],
+            ["exatamente no prazo", firstResponseDueAt, false],
+            ["1 ms depois do prazo", depois, true],
+        ] as const)("%s", (_nome, now, esperado) => {
+            expect(ticketOverdue({ status, firstResponseDueAt }, now)).toBe(esperado);
+        });
+
+        it("prazo vigente vem do nextUpdateDueAt quando ele existe", () => {
+            const nextUpdateDueAt = "2026-11-04T17:00:00.000Z";
+
+            // Depois do firstResponseDueAt, mas antes do nextUpdateDueAt: não vencido.
+            expect(ticketOverdue({ status, firstResponseDueAt, nextUpdateDueAt }, depois)).toBe(false);
+            // Depois do nextUpdateDueAt: vencido.
+            expect(
+                ticketOverdue({ status, firstResponseDueAt, nextUpdateDueAt }, "2026-11-04T17:00:00.001Z"),
+            ).toBe(true);
+        });
+    });
+
+    it.each([
+        ["prazo passado", depois],
+        ["prazo futuro", antes],
+    ])("RESOLVED com %s → null", (_nome, now) => {
+        expect(ticketOverdue({ status: "RESOLVED", firstResponseDueAt }, now)).toBeNull();
     });
 });

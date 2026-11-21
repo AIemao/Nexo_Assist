@@ -20,7 +20,7 @@ export { formatTicketId } from "./format-ticket-id.js";
 export type { CreateTicketDraft } from "./ticket-draft.js";
 export type { DuplicateCandidateTicket } from "./duplicate-candidates.js";
 export { findDuplicateCandidates } from "./duplicate-candidates.js";
-export { computeDueAt, isOverdue } from "./sla.js";
+export { computeDueAt, currentDueAt, isOverdue, ticketOverdue } from "./sla.js";
 export type { TicketInvariantError } from "./validate-ticket-invariants.js";
 export { validateTicketInvariants } from "./validate-ticket-invariants.js";
 export type { JsonValue } from "./json.js";
