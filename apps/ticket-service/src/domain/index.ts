@@ -28,3 +28,5 @@ export type { TicketEvent, TicketEventType, ActorType, Actor } from "./ticket-ev
 export { TICKET_EVENT_TYPES, ACTOR_TYPES } from "./ticket-event.js";
 export type { TicketOperationType } from "./ticket-operation.js";
 export { TICKET_OPERATION_TYPES } from "./ticket-operation.js";
+export type { Employee, EmployeeRole } from "./employee.js";
+export { EMPLOYEE_ROLES, normalizeEmail } from "./employee.js";
