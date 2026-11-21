@@ -38,6 +38,8 @@ Os dois candidatos empataram nos critérios 1 e 2. O Hono passou no critério 3 
 
 **Atualização (2026-11-21).** Nota posterior à decisão; as condições acima não mudam. A condição 1 (versões exatas, sem `^`, estáveis publicadas há pelo menos sete dias, salvo correção de segurança) passou a ser regra do projeto inteiro, para todas as dependências diretas, inclusive `devDependencies`, com lockfile versionado e `npm ci` (decisão do autor; README §5, "Versões das dependências").
 
+**Atualização (2026-11-21, correção de segurança).** Nota posterior à decisão; as condições acima não mudam. `hono` passou de 4.13.14 para **4.13.18** e `@hono/node-server` de 2.1.5 para **2.1.8**, versões exatas, por correção de segurança: GHSA-4m76-xfj5-7975, GHSA-h7mg-cq63-vhpq, GHSA-3gg2-335m-rxc6, GHSA-46wx-v44x-9hh2 e GHSA-4h7h-rv7c-7m2v (`hono`, corrigidos a partir da 4.13.16) e GHSA-qv5m-9pm6-hqp3 e GHSA-jpvv-r467-5p4w (`@hono/node-server`, corrigidos a partir da 2.1.6). As duas versões estão dentro da regra dos sete dias (publicadas em 2026-11-11 e 2026-11-12, antes do corte de 2026-11-14). Nenhum vetor existia no uso atual: o serviço não usa WebSocket, `mount()`, middleware curinga, `hono/css`, `csrf()` nem `validator('form')`, e não há proxy reverso. O GHSA-jpvv (contrabarra no caminho tratada como separador, contornando o controle de acesso por caminho de um proxy reverso) passa a importar se o deploy puser um proxy reverso na frente do serviço (README §12 #26).
+
 ## Alternativas consideradas
 
 ### A. Fastify
