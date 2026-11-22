@@ -1,0 +1,553 @@
+{
+  "byTool": {
+    "listMyTickets": [
+      {
+        "path": "$",
+        "presence": "required",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.tickets",
+        "presence": "required",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "$.tickets[]",
+        "presence": "required",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.tickets[].category",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.tickets[].id",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.tickets[].priority",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.tickets[].status",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.tickets[].title",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.tickets[].type",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      }
+    ],
+    "proposeTicketDraft": [
+      {
+        "path": "$",
+        "presence": "required",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.pendingActionId",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.status",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.version",
+        "presence": "required",
+        "types": [
+          "number"
+        ]
+      }
+    ],
+    "requestHandoff": [
+      {
+        "path": "$",
+        "presence": "required",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.status",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      }
+    ],
+    "searchArticles": [
+      {
+        "path": "$",
+        "presence": "required",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.articles",
+        "presence": "required",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "$.articles[]",
+        "presence": "required",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.articles[].applicability",
+        "presence": "optional",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "$.articles[].applicability.operatingSystems",
+        "presence": "required",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "$.articles[].applicability.operatingSystems[]",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.articles[].content",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.articles[].id",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "$.articles[].title",
+        "presence": "required",
+        "types": [
+          "string"
+        ]
+      }
+    ]
+  },
+  "description": "Estrutura dos resultados das tools que chegaram ao modelo na V4 (ADR-009, nota de 2026-11-22, W8.1; plano T6). Extraída do conteúdo da mensagem tool na requisição seguinte à tool call, em execuções do runAttempt da V4 com respostas roteirizadas. Só estrutura: caminho, tipos (\"null\" é tipo) e presença (required = em todos os objetos que têm o pai; optional = ausente em algum). Nunca os valores das fixtures.",
+  "notes": [
+    "A lista vazia da listMyTickets não é produzida pela tag (as fixtures sempre têm chamados da sessão): é variante do produto, não da linha de base.",
+    "encoding text: o conteúdo da mensagem tool não é JSON (texto do Mastra para tool inexistente).",
+    "byTool: agregado das variantes do execute de cada tool (sem as variantes de recusa e de tool inexistente, produzidas pelo Mastra). Nenhum campo null aparece nas variantes da V4."
+  ],
+  "variants": [
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.articles",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        }
+      ],
+      "producedBy": "consulta sem palavra-chave de nenhum artigo",
+      "tool": "searchArticles",
+      "variant": "lista-vazia"
+    },
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.articles",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.articles[]",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.articles[].content",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.articles[].id",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.articles[].title",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "producedBy": "consulta com palavra-chave do artigo de horário (sem applicability na fixture)",
+      "tool": "searchArticles",
+      "variant": "artigo-sem-applicability"
+    },
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.articles",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.articles[]",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.articles[].applicability",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.articles[].applicability.operatingSystems",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.articles[].applicability.operatingSystems[]",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.articles[].content",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.articles[].id",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.articles[].title",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "producedBy": "consulta com palavra-chave do artigo de VPN (com applicability na fixture)",
+      "tool": "searchArticles",
+      "variant": "artigo-com-applicability"
+    },
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.tickets",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.tickets[]",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.tickets[].category",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.tickets[].id",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.tickets[].priority",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.tickets[].status",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.tickets[].title",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.tickets[].type",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "producedBy": "chamados da sessão nas fixtures da tag",
+      "tool": "listMyTickets",
+      "variant": "fixtures"
+    },
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.pendingActionId",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.status",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.version",
+          "presence": "required",
+          "types": [
+            "number"
+          ]
+        }
+      ],
+      "producedBy": "rascunho válido; o execute devolve resultado constante",
+      "tool": "proposeTicketDraft",
+      "variant": "constante"
+    },
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.status",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "producedBy": "pedido sem motivo; o execute devolve resultado constante",
+      "tool": "requestHandoff",
+      "variant": "constante"
+    },
+    {
+      "encoding": "json",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.error",
+          "presence": "required",
+          "types": [
+            "boolean"
+          ]
+        },
+        {
+          "path": "$.message",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.validationErrors",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.validationErrors.errors",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.validationErrors.fields",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.validationErrors.fields.query",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.validationErrors.fields.query.errors",
+          "presence": "required",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.validationErrors.fields.query.errors[]",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.validationErrors.fields.query.fields",
+          "presence": "required",
+          "types": [
+            "object"
+          ]
+        }
+      ],
+      "producedBy": "argumento inválido (query vazia, min(1)): o Mastra recusa antes do execute",
+      "tool": "searchArticles",
+      "variant": "recusa-de-validacao-do-mastra"
+    },
+    {
+      "encoding": "text",
+      "fields": [
+        {
+          "path": "$",
+          "presence": "required",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "producedBy": "nome de tool que não existe no Agent",
+      "tool": "inventada",
+      "variant": "tool-inexistente"
+    }
+  ]
+}

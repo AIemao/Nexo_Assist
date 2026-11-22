@@ -1,1 +1,6 @@
 * text=auto eol=lf
+
+# Referência da V4 (ADR-009, nota de 2026-11-22, W8.1): bytes fixados por SHA-256, sem conversão
+# de fim de linha, iguais no Windows e no Linux.
+apps/web/src/server/agent/baseline/** -text
+apps/web/test/baseline/** -text

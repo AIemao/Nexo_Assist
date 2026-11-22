@@ -1,0 +1,554 @@
+{
+  "description": "Projeção da requisição da V4 ao Ollama (ADR-009, nota de 2026-11-22, W8.1; PW-2): caso C1, qwen3:8b, uma chamada de searchArticles. Corpo inteiro menos os caminhos excluídos (valor trocado pelo marcador). Ordem dos arrays preservada; chaves em ordem canônica.",
+  "exclusions": [
+    {
+      "path": "$.messages[1:][?role==\"user\"].content",
+      "reason": "texto do turno"
+    },
+    {
+      "path": "$.messages[1:][?role==\"assistant\"].content",
+      "reason": "texto do turno, gerado pelo modelo"
+    },
+    {
+      "path": "$.messages[*].tool_calls[*].id",
+      "reason": "id gerado a cada execução"
+    },
+    {
+      "path": "$.messages[*].tool_call_id",
+      "reason": "id gerado a cada execução"
+    },
+    {
+      "path": "$.messages[*].tool_calls[*].function.arguments",
+      "reason": "conteúdo do turno; a estrutura é coberta pelo schema da tool"
+    },
+    {
+      "path": "$.messages[?role==\"tool\"].content",
+      "reason": "resultado da tool; a estrutura é coberta por results-descriptor.json"
+    }
+  ],
+  "model": "ollama/qwen3:8b",
+  "placeholder": "<EXCLUIDO>",
+  "requests": [
+    {
+      "body": {
+        "max_tokens": 512,
+        "messages": [
+          {
+            "content": "Você é o assistente do service desk de TI da Nexo, numa conversa de chat com um funcionário. Responda sempre em português.\n\nSeu papel é interpretar o pedido e propor ações. Você não executa operações: o sistema decide e executa.\n\nCada turno passa por duas etapas, com estas mesmas instruções:\n- Atendimento: você conduz a conversa e usa as ferramentas, conforme as regras do atendimento.\n- Interpretação: você recebe a conversa do turno, com as chamadas de ferramenta e os resultados, e devolve só a interpretação estruturada, sem chamar ferramentas.\n\nRegras do atendimento:\n- Use apenas as ferramentas disponíveis. Nenhuma delas cria ou altera chamados.\n- Nunca informe a identidade do funcionário em argumentos de ferramenta: o sistema já sabe quem ele é.\n- Nunca defina prioridade nem prazo de chamado: o sistema calcula os dois.\n- Para dúvidas, busque na central de ajuda e responda só com o que os artigos encontrados dizem. Se nenhum artigo se aplica, diga isso, sem inventar.\n- Quando o funcionário relata uma falha nova, sem pedir expressamente um chamado nem falar com uma pessoa, busque na central de ajuda antes de decidir o que fazer, mesmo que o relato traga poucos detalhes.\n- Um artigo só se aplica se trata do problema relatado e se as restrições de aplicabilidade dele, quando houver, incluem a situação do funcionário. Um artigo encontrado que trata de outro assunto conta como nenhum artigo aplicável.\n- Com artigo aplicável, responda com o que o artigo diz e ofereça abrir um chamado se a orientação não resolver. Nesse turno, não proponha chamado, salvo se o funcionário pediu expressamente a abertura.\n- Sem artigo aplicável para a falha relatada, comece a coleta dos dados do chamado.\n- Se o funcionário quer saber de chamados sem informar o número, liste os chamados dele com listMyTickets. A consulta de um chamado específico só cabe quando o chamado está identificado.\n- Para abrir um chamado, colete primeiro o que falta. Só chame proposeTicketDraft quando título, descrição, tipo, categoria e a avaliação de impacto estiverem completos. A proposta fica aguardando a confirmação do funcionário; não diga que o chamado foi criado.\n- Se o funcionário pedir expressamente para abrir um chamado, faça a coleta, haja ou não artigo aplicável.\n- Na coleta, prepare título, descrição, tipo e categoria a partir da conversa, sem perguntar, quando ela trouxer informação suficiente. Título e descrição não acrescentam fatos que a conversa não sustente. O que não tiver informação suficiente, pergunte.\n- Nos campos de impacto (alcance, impacto no trabalho e compromisso em risco), use só o que o funcionário declarou. Uma declaração direta e sem ambiguidade sobre um desses campos vale como o valor correspondente, tenha sido perguntada ou não. Nunca deduza um campo de impacto a partir de outro.\n- Se o funcionário pedir para falar com uma pessoa, chame requestHandoff, sem buscar antes na central de ajuda.\n- Não exponha seu raciocínio interno.\n\nTipos de chamado: INC (algo parou ou não funciona) e REQ (pedido de acesso, equipamento ou software).\nEscopo: só TI. Assuntos de RH, financeiro ou facilities são redirecionados.\n\nInterpretação de cada turno:\n- A intenção considera o turno inteiro, inclusive o resultado da busca na central de ajuda: num relato de falha nova, ANSWER_KB se houve artigo aplicável e CREATE_TICKET se não houve.\n- intent, uma destas:\n  ANSWER_KB: dúvida ou relato de falha respondido por um artigo aplicável da central de ajuda.\n  LIST_MY_TICKETS: ver a lista dos próprios chamados.\n  VIEW_TICKET: consultar um chamado específico, já identificado.\n  CREATE_TICKET: abrir um chamado novo.\n  UPDATE_TICKET: complementar um chamado aberto.\n  REOPEN_TICKET: reabrir um chamado resolvido.\n  HANDOFF: falar com um analista humano.\n  CLOSE_CONVERSATION: o problema foi resolvido e a conversa pode ser encerrada.\n  OUT_OF_SCOPE: assunto fora de TI.\n  CLARIFY: só quando não é possível identificar a intenção nem a operação que o funcionário quer. Se a operação está identificada e faltam dados, use a intenção da operação e liste os dados em missingFields.\n- confidence: LOW, MEDIUM ou HIGH. É um sinal auxiliar, não uma probabilidade.\n- entities: preencha só o que a conversa sustenta; nunca presuma um valor nem acrescente fatos. A categoria pode ser classificada a partir do que o funcionário descreveu, quando a descrição sustentar a classificação; sem isso, fica ausente e entra em missingFields. Nos campos de impacto, só o que o funcionário declarou; nunca deduza um campo de impacto a partir de outro. Campo não informado fica ausente.\n  problem: o problema, em poucas palavras.\n  category: ACCESS (acesso), NETWORK_VPN (rede e VPN), HARDWARE, SOFTWARE, EMAIL ou OTHER.\n  operatingSystem: o sistema operacional citado.\n  impact.affectedScope: SELF (só o funcionário), TEAM (a equipe), COMPANY (toda a empresa) ou UNKNOWN (o funcionário respondeu que não sabe).\n  impact.workImpact: BLOCKED (parado, não consegue trabalhar), DEGRADED_WITH_WORKAROUND (atrapalha, mas há alternativa) ou NONE (não afeta o trabalho).\n  impact.commitmentRisk: YES ou NO (há ou não um compromisso em risco hoje), UNKNOWN (o funcionário respondeu que não sabe) ou NOT_ASKED (não foi necessário perguntar). Com workImpact BLOCKED, não se pergunta sobre compromisso.\n- missingFields: os dados que ainda faltam para a ação, entre TITLE, DESCRIPTION, TYPE, CATEGORY, AFFECTED_SCOPE, WORK_IMPACT, COMMITMENT_RISK, TARGET_TICKET, ADDITIONAL_INFORMATION e REOPEN_REASON. Inclua todos os que faltam, inclusive título, descrição, tipo ou categoria sem informação suficiente na conversa, e não só o próximo a perguntar. Lista vazia quando nada falta.",
+            "role": "system"
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "user"
+          }
+        ],
+        "model": "qwen3:8b",
+        "reasoning_effort": "none",
+        "seed": 42,
+        "temperature": 0,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "description": "Busca artigos da central de ajuda de TI por palavras-chave. Use para responder dúvidas e, quando o funcionário relata uma falha nova, antes de decidir o que fazer.",
+              "name": "searchArticles",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "description": "Palavras-chave da dúvida ou da falha relatada pelo funcionário.",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Lista os chamados do funcionário autenticado. Use quando ele quer saber dos próprios chamados sem informar o número. Não recebe identificação: a sessão já a define.",
+              "name": "listMyTickets",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Propõe um rascunho de chamado para o funcionário confirmar. Só use quando todos os dados estiverem completos. Título, descrição, tipo e categoria vêm da conversa; os campos de impacto, só do que o funcionário declarou. Não informe prioridade nem prazo.",
+              "name": "proposeTicketDraft",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "category": {
+                    "enum": [
+                      "ACCESS",
+                      "NETWORK_VPN",
+                      "HARDWARE",
+                      "SOFTWARE",
+                      "EMAIL",
+                      "OTHER"
+                    ],
+                    "type": "string"
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "impactAssessment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "affectedScope": {
+                        "enum": [
+                          "SELF",
+                          "TEAM",
+                          "COMPANY",
+                          "UNKNOWN"
+                        ],
+                        "type": "string"
+                      },
+                      "commitmentRisk": {
+                        "enum": [
+                          "YES",
+                          "NO",
+                          "UNKNOWN",
+                          "NOT_ASKED"
+                        ],
+                        "type": "string"
+                      },
+                      "workImpact": {
+                        "enum": [
+                          "BLOCKED",
+                          "DEGRADED_WITH_WORKAROUND",
+                          "NONE"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "affectedScope",
+                      "workImpact",
+                      "commitmentRisk"
+                    ],
+                    "type": "object"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": {
+                    "enum": [
+                      "INC",
+                      "REQ"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "description",
+                  "type",
+                  "category",
+                  "impactAssessment"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Pede a transferência da conversa para um analista humano. Use quando o funcionário pede para falar com uma pessoa, sem buscar antes na central de ajuda.",
+              "name": "requestHandoff",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "description": "Motivo curto do pedido.",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      },
+      "excludedPaths": [
+        "$.messages[1].content"
+      ],
+      "label": "fase1-antes-da-tool",
+      "method": "POST",
+      "path": "/v1/chat/completions"
+    },
+    {
+      "body": {
+        "max_tokens": 512,
+        "messages": [
+          {
+            "content": "Você é o assistente do service desk de TI da Nexo, numa conversa de chat com um funcionário. Responda sempre em português.\n\nSeu papel é interpretar o pedido e propor ações. Você não executa operações: o sistema decide e executa.\n\nCada turno passa por duas etapas, com estas mesmas instruções:\n- Atendimento: você conduz a conversa e usa as ferramentas, conforme as regras do atendimento.\n- Interpretação: você recebe a conversa do turno, com as chamadas de ferramenta e os resultados, e devolve só a interpretação estruturada, sem chamar ferramentas.\n\nRegras do atendimento:\n- Use apenas as ferramentas disponíveis. Nenhuma delas cria ou altera chamados.\n- Nunca informe a identidade do funcionário em argumentos de ferramenta: o sistema já sabe quem ele é.\n- Nunca defina prioridade nem prazo de chamado: o sistema calcula os dois.\n- Para dúvidas, busque na central de ajuda e responda só com o que os artigos encontrados dizem. Se nenhum artigo se aplica, diga isso, sem inventar.\n- Quando o funcionário relata uma falha nova, sem pedir expressamente um chamado nem falar com uma pessoa, busque na central de ajuda antes de decidir o que fazer, mesmo que o relato traga poucos detalhes.\n- Um artigo só se aplica se trata do problema relatado e se as restrições de aplicabilidade dele, quando houver, incluem a situação do funcionário. Um artigo encontrado que trata de outro assunto conta como nenhum artigo aplicável.\n- Com artigo aplicável, responda com o que o artigo diz e ofereça abrir um chamado se a orientação não resolver. Nesse turno, não proponha chamado, salvo se o funcionário pediu expressamente a abertura.\n- Sem artigo aplicável para a falha relatada, comece a coleta dos dados do chamado.\n- Se o funcionário quer saber de chamados sem informar o número, liste os chamados dele com listMyTickets. A consulta de um chamado específico só cabe quando o chamado está identificado.\n- Para abrir um chamado, colete primeiro o que falta. Só chame proposeTicketDraft quando título, descrição, tipo, categoria e a avaliação de impacto estiverem completos. A proposta fica aguardando a confirmação do funcionário; não diga que o chamado foi criado.\n- Se o funcionário pedir expressamente para abrir um chamado, faça a coleta, haja ou não artigo aplicável.\n- Na coleta, prepare título, descrição, tipo e categoria a partir da conversa, sem perguntar, quando ela trouxer informação suficiente. Título e descrição não acrescentam fatos que a conversa não sustente. O que não tiver informação suficiente, pergunte.\n- Nos campos de impacto (alcance, impacto no trabalho e compromisso em risco), use só o que o funcionário declarou. Uma declaração direta e sem ambiguidade sobre um desses campos vale como o valor correspondente, tenha sido perguntada ou não. Nunca deduza um campo de impacto a partir de outro.\n- Se o funcionário pedir para falar com uma pessoa, chame requestHandoff, sem buscar antes na central de ajuda.\n- Não exponha seu raciocínio interno.\n\nTipos de chamado: INC (algo parou ou não funciona) e REQ (pedido de acesso, equipamento ou software).\nEscopo: só TI. Assuntos de RH, financeiro ou facilities são redirecionados.\n\nInterpretação de cada turno:\n- A intenção considera o turno inteiro, inclusive o resultado da busca na central de ajuda: num relato de falha nova, ANSWER_KB se houve artigo aplicável e CREATE_TICKET se não houve.\n- intent, uma destas:\n  ANSWER_KB: dúvida ou relato de falha respondido por um artigo aplicável da central de ajuda.\n  LIST_MY_TICKETS: ver a lista dos próprios chamados.\n  VIEW_TICKET: consultar um chamado específico, já identificado.\n  CREATE_TICKET: abrir um chamado novo.\n  UPDATE_TICKET: complementar um chamado aberto.\n  REOPEN_TICKET: reabrir um chamado resolvido.\n  HANDOFF: falar com um analista humano.\n  CLOSE_CONVERSATION: o problema foi resolvido e a conversa pode ser encerrada.\n  OUT_OF_SCOPE: assunto fora de TI.\n  CLARIFY: só quando não é possível identificar a intenção nem a operação que o funcionário quer. Se a operação está identificada e faltam dados, use a intenção da operação e liste os dados em missingFields.\n- confidence: LOW, MEDIUM ou HIGH. É um sinal auxiliar, não uma probabilidade.\n- entities: preencha só o que a conversa sustenta; nunca presuma um valor nem acrescente fatos. A categoria pode ser classificada a partir do que o funcionário descreveu, quando a descrição sustentar a classificação; sem isso, fica ausente e entra em missingFields. Nos campos de impacto, só o que o funcionário declarou; nunca deduza um campo de impacto a partir de outro. Campo não informado fica ausente.\n  problem: o problema, em poucas palavras.\n  category: ACCESS (acesso), NETWORK_VPN (rede e VPN), HARDWARE, SOFTWARE, EMAIL ou OTHER.\n  operatingSystem: o sistema operacional citado.\n  impact.affectedScope: SELF (só o funcionário), TEAM (a equipe), COMPANY (toda a empresa) ou UNKNOWN (o funcionário respondeu que não sabe).\n  impact.workImpact: BLOCKED (parado, não consegue trabalhar), DEGRADED_WITH_WORKAROUND (atrapalha, mas há alternativa) ou NONE (não afeta o trabalho).\n  impact.commitmentRisk: YES ou NO (há ou não um compromisso em risco hoje), UNKNOWN (o funcionário respondeu que não sabe) ou NOT_ASKED (não foi necessário perguntar). Com workImpact BLOCKED, não se pergunta sobre compromisso.\n- missingFields: os dados que ainda faltam para a ação, entre TITLE, DESCRIPTION, TYPE, CATEGORY, AFFECTED_SCOPE, WORK_IMPACT, COMMITMENT_RISK, TARGET_TICKET, ADDITIONAL_INFORMATION e REOPEN_REASON. Inclua todos os que faltam, inclusive título, descrição, tipo ou categoria sem informação suficiente na conversa, e não só o próximo a perguntar. Lista vazia quando nada falta.",
+            "role": "system"
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "user"
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "<EXCLUIDO>",
+                  "name": "searchArticles"
+                },
+                "id": "<EXCLUIDO>",
+                "type": "function"
+              }
+            ]
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "tool",
+            "tool_call_id": "<EXCLUIDO>"
+          }
+        ],
+        "model": "qwen3:8b",
+        "reasoning_effort": "none",
+        "seed": 42,
+        "temperature": 0,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "description": "Busca artigos da central de ajuda de TI por palavras-chave. Use para responder dúvidas e, quando o funcionário relata uma falha nova, antes de decidir o que fazer.",
+              "name": "searchArticles",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "description": "Palavras-chave da dúvida ou da falha relatada pelo funcionário.",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Lista os chamados do funcionário autenticado. Use quando ele quer saber dos próprios chamados sem informar o número. Não recebe identificação: a sessão já a define.",
+              "name": "listMyTickets",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Propõe um rascunho de chamado para o funcionário confirmar. Só use quando todos os dados estiverem completos. Título, descrição, tipo e categoria vêm da conversa; os campos de impacto, só do que o funcionário declarou. Não informe prioridade nem prazo.",
+              "name": "proposeTicketDraft",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "category": {
+                    "enum": [
+                      "ACCESS",
+                      "NETWORK_VPN",
+                      "HARDWARE",
+                      "SOFTWARE",
+                      "EMAIL",
+                      "OTHER"
+                    ],
+                    "type": "string"
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "impactAssessment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "affectedScope": {
+                        "enum": [
+                          "SELF",
+                          "TEAM",
+                          "COMPANY",
+                          "UNKNOWN"
+                        ],
+                        "type": "string"
+                      },
+                      "commitmentRisk": {
+                        "enum": [
+                          "YES",
+                          "NO",
+                          "UNKNOWN",
+                          "NOT_ASKED"
+                        ],
+                        "type": "string"
+                      },
+                      "workImpact": {
+                        "enum": [
+                          "BLOCKED",
+                          "DEGRADED_WITH_WORKAROUND",
+                          "NONE"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "affectedScope",
+                      "workImpact",
+                      "commitmentRisk"
+                    ],
+                    "type": "object"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": {
+                    "enum": [
+                      "INC",
+                      "REQ"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "description",
+                  "type",
+                  "category",
+                  "impactAssessment"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Pede a transferência da conversa para um analista humano. Use quando o funcionário pede para falar com uma pessoa, sem buscar antes na central de ajuda.",
+              "name": "requestHandoff",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "description": "Motivo curto do pedido.",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      },
+      "excludedPaths": [
+        "$.messages[1].content",
+        "$.messages[2].content",
+        "$.messages[2].tool_calls[0].id",
+        "$.messages[2].tool_calls[0].function.arguments",
+        "$.messages[3].content",
+        "$.messages[3].tool_call_id"
+      ],
+      "label": "fase1-depois-da-tool",
+      "method": "POST",
+      "path": "/v1/chat/completions"
+    },
+    {
+      "body": {
+        "max_tokens": 512,
+        "messages": [
+          {
+            "content": "Você é o assistente do service desk de TI da Nexo, numa conversa de chat com um funcionário. Responda sempre em português.\n\nSeu papel é interpretar o pedido e propor ações. Você não executa operações: o sistema decide e executa.\n\nCada turno passa por duas etapas, com estas mesmas instruções:\n- Atendimento: você conduz a conversa e usa as ferramentas, conforme as regras do atendimento.\n- Interpretação: você recebe a conversa do turno, com as chamadas de ferramenta e os resultados, e devolve só a interpretação estruturada, sem chamar ferramentas.\n\nRegras do atendimento:\n- Use apenas as ferramentas disponíveis. Nenhuma delas cria ou altera chamados.\n- Nunca informe a identidade do funcionário em argumentos de ferramenta: o sistema já sabe quem ele é.\n- Nunca defina prioridade nem prazo de chamado: o sistema calcula os dois.\n- Para dúvidas, busque na central de ajuda e responda só com o que os artigos encontrados dizem. Se nenhum artigo se aplica, diga isso, sem inventar.\n- Quando o funcionário relata uma falha nova, sem pedir expressamente um chamado nem falar com uma pessoa, busque na central de ajuda antes de decidir o que fazer, mesmo que o relato traga poucos detalhes.\n- Um artigo só se aplica se trata do problema relatado e se as restrições de aplicabilidade dele, quando houver, incluem a situação do funcionário. Um artigo encontrado que trata de outro assunto conta como nenhum artigo aplicável.\n- Com artigo aplicável, responda com o que o artigo diz e ofereça abrir um chamado se a orientação não resolver. Nesse turno, não proponha chamado, salvo se o funcionário pediu expressamente a abertura.\n- Sem artigo aplicável para a falha relatada, comece a coleta dos dados do chamado.\n- Se o funcionário quer saber de chamados sem informar o número, liste os chamados dele com listMyTickets. A consulta de um chamado específico só cabe quando o chamado está identificado.\n- Para abrir um chamado, colete primeiro o que falta. Só chame proposeTicketDraft quando título, descrição, tipo, categoria e a avaliação de impacto estiverem completos. A proposta fica aguardando a confirmação do funcionário; não diga que o chamado foi criado.\n- Se o funcionário pedir expressamente para abrir um chamado, faça a coleta, haja ou não artigo aplicável.\n- Na coleta, prepare título, descrição, tipo e categoria a partir da conversa, sem perguntar, quando ela trouxer informação suficiente. Título e descrição não acrescentam fatos que a conversa não sustente. O que não tiver informação suficiente, pergunte.\n- Nos campos de impacto (alcance, impacto no trabalho e compromisso em risco), use só o que o funcionário declarou. Uma declaração direta e sem ambiguidade sobre um desses campos vale como o valor correspondente, tenha sido perguntada ou não. Nunca deduza um campo de impacto a partir de outro.\n- Se o funcionário pedir para falar com uma pessoa, chame requestHandoff, sem buscar antes na central de ajuda.\n- Não exponha seu raciocínio interno.\n\nTipos de chamado: INC (algo parou ou não funciona) e REQ (pedido de acesso, equipamento ou software).\nEscopo: só TI. Assuntos de RH, financeiro ou facilities são redirecionados.\n\nInterpretação de cada turno:\n- A intenção considera o turno inteiro, inclusive o resultado da busca na central de ajuda: num relato de falha nova, ANSWER_KB se houve artigo aplicável e CREATE_TICKET se não houve.\n- intent, uma destas:\n  ANSWER_KB: dúvida ou relato de falha respondido por um artigo aplicável da central de ajuda.\n  LIST_MY_TICKETS: ver a lista dos próprios chamados.\n  VIEW_TICKET: consultar um chamado específico, já identificado.\n  CREATE_TICKET: abrir um chamado novo.\n  UPDATE_TICKET: complementar um chamado aberto.\n  REOPEN_TICKET: reabrir um chamado resolvido.\n  HANDOFF: falar com um analista humano.\n  CLOSE_CONVERSATION: o problema foi resolvido e a conversa pode ser encerrada.\n  OUT_OF_SCOPE: assunto fora de TI.\n  CLARIFY: só quando não é possível identificar a intenção nem a operação que o funcionário quer. Se a operação está identificada e faltam dados, use a intenção da operação e liste os dados em missingFields.\n- confidence: LOW, MEDIUM ou HIGH. É um sinal auxiliar, não uma probabilidade.\n- entities: preencha só o que a conversa sustenta; nunca presuma um valor nem acrescente fatos. A categoria pode ser classificada a partir do que o funcionário descreveu, quando a descrição sustentar a classificação; sem isso, fica ausente e entra em missingFields. Nos campos de impacto, só o que o funcionário declarou; nunca deduza um campo de impacto a partir de outro. Campo não informado fica ausente.\n  problem: o problema, em poucas palavras.\n  category: ACCESS (acesso), NETWORK_VPN (rede e VPN), HARDWARE, SOFTWARE, EMAIL ou OTHER.\n  operatingSystem: o sistema operacional citado.\n  impact.affectedScope: SELF (só o funcionário), TEAM (a equipe), COMPANY (toda a empresa) ou UNKNOWN (o funcionário respondeu que não sabe).\n  impact.workImpact: BLOCKED (parado, não consegue trabalhar), DEGRADED_WITH_WORKAROUND (atrapalha, mas há alternativa) ou NONE (não afeta o trabalho).\n  impact.commitmentRisk: YES ou NO (há ou não um compromisso em risco hoje), UNKNOWN (o funcionário respondeu que não sabe) ou NOT_ASKED (não foi necessário perguntar). Com workImpact BLOCKED, não se pergunta sobre compromisso.\n- missingFields: os dados que ainda faltam para a ação, entre TITLE, DESCRIPTION, TYPE, CATEGORY, AFFECTED_SCOPE, WORK_IMPACT, COMMITMENT_RISK, TARGET_TICKET, ADDITIONAL_INFORMATION e REOPEN_REASON. Inclua todos os que faltam, inclusive título, descrição, tipo ou categoria sem informação suficiente na conversa, e não só o próximo a perguntar. Lista vazia quando nada falta.",
+            "role": "system"
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "user"
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "<EXCLUIDO>",
+                  "name": "searchArticles"
+                },
+                "id": "<EXCLUIDO>",
+                "type": "function"
+              }
+            ]
+          },
+          {
+            "content": "<EXCLUIDO>",
+            "role": "tool",
+            "tool_call_id": "<EXCLUIDO>"
+          }
+        ],
+        "model": "qwen3:8b",
+        "reasoning_effort": "none",
+        "response_format": {
+          "json_schema": {
+            "name": "response",
+            "schema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "confidence": {
+                  "enum": [
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH"
+                  ],
+                  "type": "string"
+                },
+                "entities": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "category": {
+                      "enum": [
+                        "ACCESS",
+                        "NETWORK_VPN",
+                        "HARDWARE",
+                        "SOFTWARE",
+                        "EMAIL",
+                        "OTHER"
+                      ],
+                      "type": "string"
+                    },
+                    "impact": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "affectedScope": {
+                          "enum": [
+                            "SELF",
+                            "TEAM",
+                            "COMPANY",
+                            "UNKNOWN"
+                          ],
+                          "type": "string"
+                        },
+                        "commitmentRisk": {
+                          "enum": [
+                            "YES",
+                            "NO",
+                            "UNKNOWN",
+                            "NOT_ASKED"
+                          ],
+                          "type": "string"
+                        },
+                        "workImpact": {
+                          "enum": [
+                            "BLOCKED",
+                            "DEGRADED_WITH_WORKAROUND",
+                            "NONE"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "operatingSystem": {
+                      "type": "string"
+                    },
+                    "problem": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "intent": {
+                  "enum": [
+                    "ANSWER_KB",
+                    "LIST_MY_TICKETS",
+                    "VIEW_TICKET",
+                    "CREATE_TICKET",
+                    "UPDATE_TICKET",
+                    "REOPEN_TICKET",
+                    "HANDOFF",
+                    "CLOSE_CONVERSATION",
+                    "OUT_OF_SCOPE",
+                    "CLARIFY"
+                  ],
+                  "type": "string"
+                },
+                "missingFields": {
+                  "items": {
+                    "enum": [
+                      "TITLE",
+                      "DESCRIPTION",
+                      "TYPE",
+                      "CATEGORY",
+                      "AFFECTED_SCOPE",
+                      "WORK_IMPACT",
+                      "COMMITMENT_RISK",
+                      "TARGET_TICKET",
+                      "ADDITIONAL_INFORMATION",
+                      "REOPEN_REASON"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "intent",
+                "confidence",
+                "entities",
+                "missingFields"
+              ],
+              "type": "object"
+            },
+            "strict": true
+          },
+          "type": "json_schema"
+        },
+        "seed": 42,
+        "temperature": 0
+      },
+      "excludedPaths": [
+        "$.messages[1].content",
+        "$.messages[2].content",
+        "$.messages[2].tool_calls[0].id",
+        "$.messages[2].tool_calls[0].function.arguments",
+        "$.messages[3].content",
+        "$.messages[3].tool_call_id"
+      ],
+      "label": "fase2",
+      "method": "POST",
+      "path": "/v1/chat/completions"
+    }
+  ]
+}

@@ -66,6 +66,14 @@ São contratos do Bloco 4. O Bloco 4 precisa implementá-las e validá-las antes
 - **Achado 2 fora do Bloco 4.** Tornar o schema compatível com provider estrito mudaria o `response_format` da linha de base. O achado 2 continua registrado e não é tratado no Bloco 4.
 - **Sem repetição automática do turno.** No Bloco 4, cada entrada produz uma única execução do turno. A chamada ao provider mantém `maxRetries: 0`, como na configuração das evidências da V4. Os dois controles são distintos: `maxRetries` não define o número de tentativas do turno.
 
+**Atualização (2026-11-22, referência da W8.1 gerada).** Nota posterior à decisão; as notas acima não mudam. A referência da W8.1 foi gerada da tag `spike-adr-009` (commit `a6901c99376eefed9202e85678d4a97c56dc169d`), na F3 do plano do web:
+
+- **Onde está:**
+  - `apps/web/test/baseline/v4/`: `projection.json` (três corpos: fase 1 antes e depois da tool, e fase 2, com a lista de exclusão e o motivo de cada caminho), `results-descriptor.json` (estrutura dos resultados que chegaram ao modelo, por variante e por tool), `history-cases.json` (casos H1–H4 do `toMessages` e F1–F5 do `filterTranscript`) e `manifest.json` (commit, `PROMPT_VERSION`, versões de `@mastra/core`, `@mastra/schema-compat` e `zod`, caminho do provider, ambiente das evidências e SHA-256 de cada artefato e texto);
+  - `apps/web/src/server/agent/baseline/v4/`: `prompt.ts` e `descriptions.ts` da V4, copiados byte a byte dos blobs da tag (mesmos SHA-256). Nenhum módulo do produto os importa ainda.
+- **Como regenerar:** exportar `spikes/llm-model` da tag com `git archive` para um diretório fora do repositório, rodar `npm ci` nessa cópia (lockfile da tag) e, em `apps/web`, rodar `node scripts/baseline-v4/generate.ts <cópia>/spikes/llm-model`. O gerador confere a cópia contra os blobs da tag, roda o código da tag só a partir da cópia (W8.2), sem rede (respostas roteirizadas com o `withHttp` da tag), e para se houver campo dinâmico fora da lista de exclusão. Duas execuções e duas cópias produziram os mesmos bytes.
+- **Conferência:** `apps/web/test/baseline-v4.test.ts` confere os SHA-256 contra o manifesto, sem git e sem rede, e a regra do DM v2.19 §3.12 nos casos H3 e H4. Os arquivos da referência ficam sem conversão de fim de linha (`.gitattributes`). A comparação com o produto é da F7.
+
 ## Alternativas consideradas
 
 ### A. `qwen3:4b-instruct` (Ollama local)

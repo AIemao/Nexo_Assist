@@ -1,0 +1,48 @@
+{
+  "artifacts": {
+    "test/baseline/v4/history-cases.json": {
+      "sha256": "fbed058d8c7288a1f510ec5612fb52b0115434a56935d854768f098621304aa3"
+    },
+    "test/baseline/v4/projection.json": {
+      "sha256": "0f818609c59a0153b509064315c9988426850205c7a1a3d4815858b65c3de8f7"
+    },
+    "test/baseline/v4/results-descriptor.json": {
+      "sha256": "3e46f65bd4891795c6a9412ee338e294d957c5c9570dc8e945ad12f9c8dc2fc2"
+    }
+  },
+  "copiedTexts": {
+    "src/server/agent/baseline/v4/descriptions.ts": {
+      "sha256": "dffbe9079f3609ab5c706c3832bb6dd6f56302398bb866e6dddee547de8077e1",
+      "source": "spikes/llm-model/v4/src/descriptions.ts"
+    },
+    "src/server/agent/baseline/v4/prompt.ts": {
+      "sha256": "8440ef2d2caa8b45be1d45327b90a6152e0dc5f7213acc8d0f6ac6661e786d1f",
+      "source": "spikes/llm-model/v4/src/prompt.ts"
+    }
+  },
+  "description": "Manifesto da referência da V4 (ADR-009, nota de 2026-11-22, W8.1). Sem hash de si mesmo.",
+  "evidenceEnvironment": {
+    "model": "qwen3:8b",
+    "modelDigest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+    "ollama": "0.40.16",
+    "ollamaContextLength": 8192,
+    "source": "docs/decisions/ADR-009-modelo-llm.md, \"Evidências do spike\""
+  },
+  "generatedOn": "2026-11-22",
+  "generator": "scripts/baseline-v4/generate.ts",
+  "packages": {
+    "@mastra/core": "1.81.0",
+    "@mastra/schema-compat": "1.3.17",
+    "zod": "4.6.7"
+  },
+  "promptVersion": "spike-adr009-prompt-v4",
+  "provider": {
+    "model": "ollama/qwen3:8b",
+    "path": "model router do @mastra/core com url; provider compatível com OpenAI empacotado no @mastra/core",
+    "request": "POST /v1/chat/completions"
+  },
+  "tag": {
+    "commit": "a6901c99376eefed9202e85678d4a97c56dc169d",
+    "name": "spike-adr-009"
+  }
+}
