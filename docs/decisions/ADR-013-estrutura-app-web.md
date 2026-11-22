@@ -36,6 +36,14 @@ Decisão do autor (2026-11-21).
 - **No Bloco 4**, a interface mostra só um indicador de processamento.
 - **Um eventual streaming no Bloco 6** é só do conteúdo final já aprovado pela política, nunca dos tokens do modelo.
 
+**Atualização (2026-11-22, F2 do plano do web).** Nota posterior à decisão; o texto acima não muda. Decisão do autor no plano do web (T2), implementada na F2:
+
+- **Mecanismo da fronteira do servidor.**
+  - **Proteção principal:** um teste (Vitest) percorre os arquivos com `"use client"` em `apps/web/src/`, segue os imports transitivos, resolvendo os caminhos relativos e os aliases do `tsconfig`, e falha se alcançar `src/server/**`, `src/generated/**`, `@prisma/*`, `prisma`, `better-sqlite3` ou `@mastra/*`. A leitura dos imports é textual, sem a API do compilador. Fixtures fora de `src/` provam que o teste acusa o import direto, por intermediário, por alias e de pacote, e aceita o componente limpo.
+  - **Complemento:** o smoke do web procura `PrismaClient`, `better-sqlite3` e `@mastra` no bundle do cliente (`.next/static`) depois do `next build`.
+  - Convenção: todo módulo que importa Prisma, `better-sqlite3`, Mastra ou o cliente gerado fica em `src/server/`.
+- **Mastra no servidor do Next (R-W9).** O `@mastra/core` 1.81.0 carrega e constrói um `Agent` (modelo `ollama/qwen3:8b` pelo model router com `url`) dentro do servidor do Next.js 16.4.6 depois do `next build`, sem configuração extra e sem requisição ao Ollama. Evidência: o `GET /api/health` do smoke responde `agent: "loaded"`. Validado no Windows e na CI (`ubuntu-latest`), no PR da F2.
+
 ## Alternativas consideradas
 
 ### A. Pages Router
