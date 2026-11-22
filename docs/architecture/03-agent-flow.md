@@ -1,6 +1,6 @@
 # 03 — Agent Flow
 
-> Artefato do Bloco 1, **versão 1.7** (ver seção 13, Histórico de versões).
+> Artefato do Bloco 1, **versão 1.8** (ver seção 13, Histórico de versões).
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles: define como o `InteractionContext` se move durante o atendimento (resolve a lacuna L2) e **não redefine** regras de `Conversation`, `PendingAction` ou `OperationExecution`.
 >
@@ -361,6 +361,22 @@ Fonte: README §3 ("perguntas, prioridade com prazo, rascunho para confirmação
   4. Busca que falhou (erro da tool, timeout, erro do provider) não equivale a "sem artigo aplicável" e não leva a `CREATE_TICKET`. O tratamento dessa falha fica PENDENTE (P-G; Bloco 4; Cenários §6).
 - **Exemplos:** SC-02 → `ANSWER_KB`. SC-03, turno 1 (o artigo da VPN não se aplica ao Windows 11, DM §3.11) → `CREATE_TICKET`. SC-10 → busca sem artigo aplicável, `CREATE_TICKET`. "Minha VPN caiu e quero falar com um atendente" → `HANDOFF`.
 - **Esclarecido em 2026-11-16:** o DM §3.11 define só a aplicabilidade por sistema operacional. Aqui, "aplicável" exige também que o artigo trate do problema relatado. Um artigo devolvido pela busca que não trata do problema (por exemplo, um artigo sobre horário de atendimento devolvido para um relato de falha) conta como "sem artigo aplicável". Esta decisão não define quem julga a pertinência (o modelo ou o código).
+- **Nota (2026-11-22): quem garante a busca e quem julga a pertinência. [Premissa]** Decisão do autor. Nota posterior à decisão; as regras acima não mudam. Resolve as duas perguntas deixadas em aberto no item 1 e no esclarecimento de 2026-11-16 (README §12 #25).
+  - **Quem chama:** o modelo chama o `searchArticles` como tool; o código verifica.
+  - **Verificação:** a primeira fase 2 (ADR-009, decisão 2) produz uma interpretação preliminar. A recuperação dispara se valerem juntas:
+    - **G1:** o turno começa sem fluxo ativo (`NONE`/`IDLE`);
+    - **G2:** a intenção preliminar é `ANSWER_KB` ou `CREATE_TICKET`;
+    - **G3:** o modelo não fez nenhuma tentativa de `searchArticles` no turno.
+  - **Recuperação:** o código executa o `searchArticles` uma única vez, registrada com `origin: CODE` em `toolExecutions` (DM §3.12), acrescenta a execução e o resultado ao transcript e roda a fase 2 de novo, uma vez. A interpretação resultante é validada antes de o fluxo continuar.
+  - **O que não dispara a recuperação:**
+    - busca do modelo que falhou (erro da tool, timeout, erro do provider): segue a P-G (item 4 acima);
+    - busca concluída sem artigo aplicável;
+    - resultado de busca que não chegou ao transcript: é falha de orquestração, não ausência de tentativa.
+  - **Intenções que nunca disparam:** `HANDOFF`, `REOPEN_TICKET`, `LIST_MY_TICKETS`, `VIEW_TICKET`, `UPDATE_TICKET`, `CLOSE_CONVERSATION`, `OUT_OF_SCOPE` e `CLARIFY`. `HANDOFF` sem recuperação não mascara uma busca indevida do modelo: o SC-13 continua avaliando isso.
+  - **Aceito:** pedido expresso de chamado sem busca do modelo dispara a recuperação, ao custo de uma busca e de uma segunda fase 2. A intenção continua `CREATE_TICKET`; o resultado da busca não vira `ANSWER_KB` contra o pedido.
+  - **Limitação aceita:** com `CLARIFY` num relato vago, o mecanismo não garante a busca desta decisão. A avaliação mede isso (o SC-10 espera `CREATE_TICKET`).
+  - **Pertinência:** o modelo julga se o artigo trata do problema relatado. O código aplica o filtro de aplicabilidade dentro da tool, antes de o resultado chegar ao modelo (ADR-003; DM §3.11), e aceita como evidência só o artigo que veio da busca daquele turno, depois do filtro: nunca um id inventado ou de turno anterior (ADR-009, condição 2, sustentação).
+  - **Segunda fase 2 que ainda viole esta decisão:** é falha da condição 2 do ADR-009. A resposta segura fica para o plano do web.
 
 **D26. Quem prepara cada campo do rascunho. [Premissa]** Decidido em 2026-11-14.
 
@@ -498,7 +514,8 @@ Nenhuma pendência deste documento permanece no Bloco 3 (v1.4):
 | Catálogo de `appliedRules`; mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): por exemplo, qual par aplica-se à oferta por `OVERDUE_TICKET`                                                                                 | README §12 #11; DM §3.15 |
 | Mapeamento completo `Intent` → mudança de `flow`: este documento só usa as correspondências de nome (`CREATE_TICKET`, `UPDATE_TICKET`, `REOPEN_TICKET`), `LIST_MY_TICKETS` → `TICKET_LOOKUP` e `VIEW_TICKET` (DM §3.12); ver T2 | DM §3.12                 |
 | Interpretação e extração da resposta do funcionário sobre o candidato a duplicado ("mesmo problema", "complementar", "outro problema") como **entidade durante a coleta** (D23). **Não exige nova `Intent`** (T15)              | Decisão D23              |
-| Tratamento da falha do `searchArticles` no relato de falha nova (P-G) | Decisão D25 (item 4) |
+| Tratamento da falha do `searchArticles` no relato de falha nova (P-G). Continua PENDENTE depois da nota de 2026-11-22 na D25: a busca do modelo que falhou não dispara a recuperação e segue a P-G | Decisão D25 (item 4) |
+| Quem garante a busca e quem julga a pertinência no relato de falha nova: **RESOLVIDA** pela nota de 2026-11-22 na D25 (§8.1) | README §12 #25; D25 |
 | Onde título, descrição e tipo do rascunho ficam antes da proposta (P-H) | Decisão D26; DM §3.12 |
 
 ### Bloco 5
@@ -686,6 +703,8 @@ Cada item cita os dois trechos. As tensões abertas **não são resolvidas aqui*
 | DM §3.5                  | `Conversation`, `InteractionContext`, devolução, chamado em foco                                               | Base de §3, §6, T1, T3                                 |
 | DM §3.7                  | Registro de interações (`VIEWED`, `CREATED`, `UPDATED`, `REOPENED`)                                            | §6 (D22), T14                                          |
 | DM §3.12                 | `Intent` (`LIST_MY_TICKETS`; `VIEW_TICKET`, DM v2.2; sem nova `Intent` para a resposta sobre o candidato, D23) | §9, T2, T15                                            |
+| DM §3.12 (v2.18)         | `toolExecutions.origin` (`MODEL` ou `CODE`)                                                                    | §8.1 (D25, nota de 2026-11-22)                         |
+| ADR-003; ADR-009         | Filtro de aplicabilidade no código; integração D1 (fase 2) e condição 2 (sustentação)                          | §8.1 (D25, nota de 2026-11-22)                         |
 | DM §7.1                  | Invariantes 1, 5, 6, 7, 12, 14, 15                                                                             | §5, §9, T13 (D21)                                      |
 | DM §8.1–§8.4, §8.6, §8.7 | Ciclos e handoff                                                                                               | Referenciados                                          |
 | DM §11.2                 | L2                                                                                                             | Resolvida por este documento (marcada no DM v2.2; §13) |
@@ -704,6 +723,7 @@ Cada item cita os dois trechos. As tensões abertas **não são resolvidas aqui*
 | v1.5   | v1.4; fechamento do Bloco 3 (README v2.26)                                              | **Sem mudança de decisão funcional** (D1–D24 inalteradas). **§11, T13:** a duração do bloqueio em `OUTCOME_UNKNOWN` deixa de ser "PENDENTE (Bloco 3)" e passa a remeter ao mecanismo decidido (mesma chave) e à política de retry do cliente web/BFF, PENDENTE (Bloco 5), coerente com §5.6 e §10 desde a v1.4. O teste com reinício do servidor, pendente no Bloco 3 segundo a v1.4, foi entregue: etapa 2 do smoke ("reinício entre a gravação e a repetição", cenários §2.2, FS8; PR #26). |
 | v1.6   | v1.5; decisões D25–D27 (decididas em 2026-11-14), registradas em 2026-11-16 | Registra D25–D27 como **[Premissa]**. **D25** (§8.1): relato de falha nova passa pela central de ajuda antes da decisão da intenção; com artigo aplicável, `ANSWER_KB` (fora do percurso deste documento, §0.3); sem artigo aplicável, `CREATE_TICKET`; busca que falhou não leva a `CREATE_TICKET` (tratamento PENDENTE, Bloco 4). Resolve a `Intent` do turno 1 do SC-03 (Cenários §6). **D26** (§8.1): quem prepara cada campo do rascunho (descritivos pelo agent com evidência suficiente; impacto só o declarado; categoria `HARDWARE` para pedido de monitor aprovada nesta decisão); registra PENDENTE a lacuna §2 × DM §3.12 (onde título, descrição e tipo ficam antes da proposta). **D27** (novo §5.8): uso de `CLARIFY` na interpretação, sem alterar o catálogo do DM. **§10:** novas pendências P-G (tratamento da falha do `searchArticles`, D25 item 4) e P-H (onde título, descrição e tipo ficam antes da proposta, D26; lacuna §2 × DM §3.12), as duas no Bloco 4 e também na tabela do Bloco 4; remissões a elas na D25 e na D26. D25 esclarecida em 2026-11-16 (artigo aplicável). **Seções alteradas:** cabeçalho; §0.1 e §0.2 (faixa D1–D27); §0.3 (só a faixa D1–D27; escopo declarado inalterado); §1 (linhas D25–D27; coluna "Resolve" com "—" e o motivo entre parênteses, porque nenhuma delas resolve T/P deste documento); novo §5.8; §8 (fonte D1–D27); §8.1 (D25 e D26 antes do caminho principal; passo 1 condicionado à D25); §9 (fonte D1–D27); §10 (P-G e P-H; linhas no Bloco 4). DM inalterado. |
 | v1.7   | v1.6; decisão do autor sobre o plano do Bloco 4 (2026-11-20); `01-domain-model.md` v2.15; `README.md` v2.29 | **Sem mudança de decisão funcional** (D1–D27 inalteradas). **§10:** o critério de "baixa confiança" (README §12 #10) passa da tabela do Bloco 4 para a do Bloco 7, junto com o handoff e os cenários dele (DM v2.15 §10). Nenhuma outra pendência alterada. **Seções alteradas:** cabeçalho; §10. |
+| v1.8   | v1.7; decisão do autor (2026-11-22); `01-domain-model.md` v2.18 | **D25:** nota datada de 2026-11-22, sem reescrever a decisão: o modelo chama o `searchArticles` como tool e o código verifica; recuperação pelo código (uma busca com `origin: CODE` e uma segunda fase 2) quando valem juntas G1 (turno sem fluxo ativo), G2 (intenção preliminar `ANSWER_KB` ou `CREATE_TICKET`) e G3 (nenhuma tentativa de busca do modelo); busca que falhou segue a P-G e não dispara; intenções que nunca disparam; pedido expresso de chamado aceito como disparo, sem virar `ANSWER_KB`; limitação aceita com `CLARIFY`; pertinência julgada pelo modelo, com a aplicabilidade e a evidência garantidas pelo código; segunda fase 2 que viole a decisão é falha da condição 2 do ADR-009. Resolve README §12 #25. **§10, Bloco 4:** P-G continua PENDENTE; nova linha com "quem garante a busca e quem julga a pertinência", RESOLVIDA. **§12.2:** DM v2.18 §3.12 (`origin`), ADR-003 e ADR-009. **Seções alteradas:** cabeçalho; §8.1 (nota na D25); §10; §12.2. |
 
 ### Ações de acompanhamento (fora deste documento)
 

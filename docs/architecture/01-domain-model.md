@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.17** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.18** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -274,6 +274,15 @@ Regras:
 - **Chamado em foco** = `InteractionContext.targetTicketId` no instante do handoff (§8.7).
 - O `InteractionContext` não muda o controle da conversa (README §7B). O histórico persistido é a fonte da verdade; a memória do LLM não é (README §7B).
 
+**[Premissa] Uma conversa não encerrada por funcionário.** Decisão do autor (2026-11-22).
+
+- Cada funcionário tem **no máximo uma** `Conversation` não encerrada (status diferente de `CLOSED`) (§7.1, invariante 17).
+- **Ao entrar**, o web retoma a conversa não encerrada do funcionário. O histórico e a `PendingAction` ficam com a conversa retomada.
+- **Sem conversa não encerrada**, o login não cria conversa: ela nasce na primeira mensagem do funcionário.
+- **Conversa nova** só nasce depois de a anterior estar `CLOSED`. `CLOSED` continua terminal (invariante 15).
+- A invariante vale **na persistência**, não só na consulta do login. O mecanismo e o teste de concorrência ficam para o plano do web.
+- [Inferência] **Risco:** DDL escrito à mão (por exemplo, um índice único parcial) pode ser descartado quando o Prisma recria a tabela, como o `CHECK` manual no experimento do ADR-008 ("Experimento: CHECK manual no SQLite").
+
 ### 3.6 ConversationEvent
 
 ```ts
@@ -529,6 +538,7 @@ interface DecisionRecord {
     name: string;
     status: "SUCCESS" | "FAILED";
     durationMs: number;
+    origin: "MODEL" | "CODE"; // quem iniciou a execução (regra abaixo)
   }>;
   pendingActionId?: string; // ação criada OU alterada neste turno
   pendingActionVersion?: number; // versão do rascunho produzida neste turno
@@ -543,9 +553,10 @@ Regras:
 
 - Três camadas por resposta: **interpretação** (o que o modelo entendeu), **política** (o que o sistema permite), **execução** (o que realmente aconteceu) (README §6).
 - O **backend monta** `toolExecutions` a partir do que de fato rodou. O modelo não declara sucesso de nada (README §6).
+- **[Premissa] `toolExecutions.origin`.** Decisão do autor (2026-11-22). `MODEL` = tool emitida pelo modelo na fase 1 (ADR-009, decisão 2). `CODE` = tool executada pelo código na recuperação da busca (`03-agent-flow.md`, D25, nota de 2026-11-22). As duas entram em `toolExecutions` porque de fato rodaram.
 - A **confiança declarada não autoriza nenhuma operação**; serve como um dos sinais para encaminhar ao analista (README §6).
 - **Não se expõe o raciocínio interno do modelo**; expõem-se evidências, regras e ações (README §6).
-- `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). PENDENTE (Bloco 4): catálogo definido conforme as regras forem implementadas (§3.15, README §12 #11).
+- `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). Convenção e catálogo no §3.15 (README §12 #11); os IDs entram conforme as regras forem implementadas. `reasonCode` e `appliedRules` não substituem um ao outro (§3.15).
 
 ### 3.13 PendingAction (README §6)
 
@@ -648,11 +659,47 @@ type PolicyReasonCode = // por que esta ação (política)
   | "TOOL_FAILURE"
   | "OUT_OF_SCOPE"
   | "INSUFFICIENT_INFORMATION"
-  | "USER_CONFIRMED_RESOLUTION";
+  | "USER_CONFIRMED_RESOLUTION"
+  | "KNOWLEDGE_ARTICLE"
+  | "INFORMATION_REQUEST"
+  | "TICKET_NOT_AVAILABLE";
 ```
 
 - `PriorityReasonCode` e `PolicyReasonCode` são **catálogos distintos**.
 - Catálogos persistidos (enums no banco e fonte única no domínio): regra em README §5 (Princípios).
+
+**[Premissa] Semântica dos `PolicyReasonCode` usados no Bloco 4.** Decisão do autor (2026-11-22). `KNOWLEDGE_ARTICLE`, `INFORMATION_REQUEST` e `TICKET_NOT_AVAILABLE` são novos nesta versão; os demais códigos do catálogo seguem sem semântica registrada.
+
+| Código | Semântica, como usada no Bloco 4 |
+| --- | --- |
+| `KNOWLEDGE_ARTICLE` | Resposta sustentada por artigo aplicável da busca do turno |
+| `INFORMATION_REQUEST` | Consulta de leitura atendida |
+| `TICKET_NOT_AVAILABLE` | Negação neutra, igual para chamado inexistente e para chamado de outro funcionário (`03-agent-flow.md`, D17) |
+| `INSUFFICIENT_INFORMATION` | Pergunta de coleta: faltam dados para a ação |
+| `OUT_OF_SCOPE` | Assunto fora de TI, redirecionado |
+
+**[Premissa] Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5), parcial.** Decisão do autor (2026-11-22). Só os pares do Bloco 4:
+
+| `PolicyOutcome` | `PolicyReasonCode` |
+| --- | --- |
+| `ANSWER` | `KNOWLEDGE_ARTICLE` ou `INFORMATION_REQUEST` |
+| `ASK` | `INSUFFICIENT_INFORMATION` |
+| `DENY` | `TICKET_NOT_AVAILABLE` |
+| `REDIRECT` | `OUT_OF_SCOPE` |
+
+Os demais pares continuam PENDENTES, nos blocos em que forem necessários (§10; §11.2, L5). A L5 não está resolvida por inteiro.
+
+**[Premissa] `appliedRules`: convenção e catálogo.** Decisão do autor (2026-11-22).
+
+- **Formato:** `SD-<ÁREA>-<NNN>`, como no exemplo `SD-PRIORITY-001` (§3.12): área em maiúsculas e número de três dígitos, sequencial dentro da área.
+- **Estabilidade:** um ID nunca muda de significado nem é reutilizado, inclusive depois que a regra deixar de existir.
+- **Catálogo:** a tabela abaixo é a fonte dos IDs. Começa vazia e recebe os IDs conforme as regras forem implementadas; cada inclusão gera versão nova deste documento.
+- **`reasonCode` × `appliedRules`:** não substituem um ao outro. O `reasonCode` diz por que esta ação (um código do catálogo acima); `appliedRules` lista as regras do código aplicadas no turno.
+
+| ID | Regra | Versão do DM em que entrou |
+| --- | --- | --- |
+
+Nenhum ID registrado na v2.18.
 
 ### 3.16 IdempotencyRecord (registro técnico do ticket-service)
 
@@ -803,7 +850,7 @@ erDiagram
 | ------------------------------------------------------ | ------------- | ------------------------------------------------------------------------------------- | --------- |
 | `Employee` → `Ticket` (solicitante)                    | 1:N           | `Ticket.requesterId`                                                                  | —         |
 | `Ticket` → `TicketEvent`                               | 1:N           |                                                                                       | —         |
-| `Employee` → `Conversation`                            | 1:N           | `Conversation.ownerEmployeeId`                                                        | —         |
+| `Employee` → `Conversation`                            | 1:N           | `Conversation.ownerEmployeeId`; no máximo uma não encerrada (§7.1, invariante 17)    | §3.5      |
 | `Conversation` → `Message`                             | 1:N           |                                                                                       | —         |
 | `Conversation` → `ConversationEvent`                   | 1:N           | Uma por transição                                                                     | —         |
 | `Conversation` → `DecisionRecord`                      | 1:N           | Um por turno do agent                                                                 | —         |
@@ -855,6 +902,7 @@ Numeração preservada da lista oficial de invariantes, complementada por regras
 | 14  | O agent só é executado em conversas `AI_ACTIVE`.                                                                                                                                                                                                                                                                                                                               | **[PRD]** "Agent não responde enquanto a conversa está com analista" (README §2); README §7A         |
 | 15  | `CLOSED` é terminal.                                                                                                                                                                                                                                                                                                                                                           | README §3 ("Reabrir conversa encerrada" fora), README §7A                                            |
 | 16  | `commitmentRisk: NOT_ASKED` só existe com `workImpact: BLOCKED`.                                                                                                                                                                                                                                                                                                               | §3.4, §5.1; garantida por validação de domínio                                                       |
+| 17  | Cada funcionário tem **no máximo uma** `Conversation` não encerrada (status diferente de `CLOSED`). Vale na persistência, não só na consulta do login. | **[Premissa]** decisão do autor (2026-11-22); §3.5 |
 
 Origem das escritas e autorização correspondente:
 
@@ -965,7 +1013,7 @@ Regras do ciclo:
 - Qualquer encerramento (`AI_ACTIVE → CLOSED`, `WAITING_ANALYST → CLOSED`, `ANALYST_ACTIVE → CLOSED`) com `PendingAction` em `PENDING_CONFIRMATION` cancela a ação com `CONVERSATION_CLOSED`, na mesma transação local que encerra a conversa.
 - Ao sair de `ANALYST_ACTIVE` (`→ AI_ACTIVE` ou `→ CLOSED`), `Conversation.assignedAnalystId` é limpo; quem atendeu permanece registrado nos `ConversationEvent` (`ANALYST_ASSIGNED`, `RETURNED_TO_AGENT`, `CLOSED`).
 - Na transição `AI_ACTIVE → WAITING_ANALYST` a conversa muda **imediatamente**, mesmo com `OperationExecution` não terminal (ver 8.6). O `ConversationEvent` `HANDOFF` carrega `summary` e `decisionRecordId` (seção 3.6).
-- **`CLOSED` é terminal.** Ao voltar outro dia (história 6), o funcionário inicia uma nova conversa; o agent tem acesso aos chamados dele e ao histórico persistido (README §7A).
+- **`CLOSED` é terminal.** Ao voltar outro dia (história 6), o funcionário inicia uma nova conversa; o agent tem acesso aos chamados dele e ao histórico persistido (README §7A). Nota (v2.18): isso vale quando a conversa anterior está `CLOSED`; uma conversa não encerrada é retomada ao entrar (§3.5; invariante 17).
 - Encerramento por inatividade: fora do MVP. PENDENTE (Bloco 6) (README §7A, README §12 #16).
 - As únicas transições definidas são as da tabela acima; nenhuma outra existe (em particular, não há `WAITING_ANALYST → WAITING_ANALYST` nem `ANALYST_ACTIVE → ANALYST_ACTIVE`).
 
@@ -1132,7 +1180,7 @@ Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numera
 | 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                              | §8.8. PENDENTE (Bloco 6) |
 | 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                       | §8.7. PENDENTE (Bloco 7) |
 | 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas; a responsabilidade (cliente web/BFF, README §12 #7) está decidida | §8.4. PENDENTE (quando o web existir) |
-| 13  | Catálogos de códigos string                                   | `appliedRules` (Bloco 4); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5, Bloco 4); `TicketStatus`: §8.5 | §3.15                    |
+| 13  | Catálogos de códigos string                                   | IDs de `appliedRules` (convenção e catálogo no §3.15, preenchido conforme as regras forem implementadas); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5): pares do Bloco 4 no §3.15, demais PENDENTES; `TicketStatus`: §8.5 | §3.15                    |
 
 A lacuna #5 (estrutura de `InteractionContext`; transições entre pares `(flow, stage)`, L2) foi resolvida por `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
@@ -1146,7 +1194,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
 | PENDENTE (Bloco 7): critério de "baixa confiança" para transferir; definição e calibração junto com o handoff e os cenários dele. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança | 7     | README §12 #10                  |
-| PENDENTE (Bloco 4): catálogo de `appliedRules`                                                                                                          | 4     | §3.15, README §12 #11           |
+| PENDENTE (conforme as regras forem implementadas, a partir do Bloco 4): IDs do catálogo de `appliedRules`. Convenção e tabela definidas no §3.15 (decisão do autor, 2026-11-22) | 4 em diante | §3.15, README §12 #11           |
 | PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial)                        | 5     | README §12 #12                  |
 | PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta                                                           | 5     | README §7C, README §12 #13      |
 | PENDENTE (Bloco 6): limite de 30 mensagens (do usuário ou totais; por conversa ou por login)                                                            | 6     | README §12 #14                  |
@@ -1156,7 +1204,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (Bloco 7): o que acontece se a reconciliação do `TRANSFER_TICKET` não resolver (conversa transferida, chamado não); mecanismo de sincronização | 7     | §8.6 (C7)                       |
 | PENDENTE (Bloco 7): autorização pelo papel `ANALYST` nas escritas feitas pelo console                                                                   | 7     | §7.3                            |
 | PENDENTE (Bloco 7): quais eventos contam como atualização do service desk para o prazo seguinte (§8.5.2)                                                | 7     | §8.5.2, README §12 #4           |
-| PENDENTE (Bloco 4): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5)                                                                                | 4     | §3.15                           |
+| PENDENTE (nos blocos em que forem necessários): mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5) dos pares fora do Bloco 4. Os pares do Bloco 4 estão no §3.15 (decisão do autor, 2026-11-22) | —     | §3.15                           |
 | PENDENTE (Bloco 6): representação de "Sim, resolvido / Ainda não" na `Message` (L7)                                                                     | 6     | §3.8                            |
 | PENDENTE (operação `UPDATED`): contrato dos elementos de `TicketEvent.changes` (catálogo de `field`, `previousValue`, `newValue`) (L12)                  | —     | §3.9, README §12 #5             |
 | PENDENTE (operação `UPDATED`): onde garantir a imutabilidade de `requesterId` (caso de uso de atualização ou `update` do repositório)                    | —     | §3.2, §3.16                     |
@@ -1191,7 +1239,7 @@ Os itens abaixo são ausências **observadas ao derivar o modelo**, que não tin
 | ID  | Lacuna                                                                                                                                                                       | Onde aparece     | Situação                                         |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------ |
 | L2  | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`).     | §3.5, README §7B | **RESOLVIDA** por `03-agent-flow.md` v1.1, §§3–6 |
-| L5  | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PENDENTE** (Bloco 4)                           |
+| L5  | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PARCIALMENTE RESOLVIDA**: pares do Bloco 4 no §3.15 (decisão do autor, 2026-11-22); demais pares **PENDENTES**, nos blocos em que forem necessários |
 | L7  | Como a pergunta "Sim, resolvido / Ainda não" é representada na `Message` (`QUICK_REPLIES`? outro anexo?).                                                                    | README §6, §3.8  | **PENDENTE** (Bloco 6)                           |
 | L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`.                          | §3.9, §3.15      | **PENDENTE** (operação `UPDATED`)                |
 
@@ -1317,8 +1365,20 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.15  | v2.14; plano do Bloco 4 (decisão do autor, 2026-11-20) | Pendência "baixa confiança" (README §12 #10) passa do Bloco 4 para o Bloco 7, junto com o handoff e os cenários dele: o Bloco 4 não exercita transferência por baixa confiança. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança. Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.16  | v2.15; contrato HTTP v1.2 (decisões do autor, 2026-11-20); README §12 #19 | §3.1: `Employee.email` único, comparado sem diferenciar maiúsculas de minúsculas e sem espaços nas pontas. §8.5.2: chamado `RESOLVED` não tem vencido (`null`); para os demais status, `isOverdue(prazo vigente, now)`. Tipos, entidades e assinaturas das funções inalterados. |
 | v2.17  | v2.16; fechamento da fatia 0 do Bloco 4 (PR #33) | Cabeçalho, "Estado": passa a listar o que a fatia 0 implementou no ticket-service (`normalizeEmail`, `currentDueAt` e o vencido com a regra do `RESOLVED`, persistência de `Employee` com as FKs, leituras do funcionário e leitura por e-mail). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
+| v2.18  | v2.17; decisões do autor sobre a parte web das fatias 1 e 2 do Bloco 4 (2026-11-22) | §3.5 e §7.1 (invariante 17): no máximo uma `Conversation` não encerrada por funcionário; retomada ao entrar; nascimento na primeira mensagem; conversa nova só depois de `CLOSED`; vale na persistência, com o risco do DDL manual registrado como [Inferência]. §3.12: `toolExecutions.origin` (`MODEL` ou `CODE`). §3.15: `PolicyReasonCode` ganha `KNOWLEDGE_ARTICLE`, `INFORMATION_REQUEST` e `TICKET_NOT_AVAILABLE`; semântica dos códigos usados no Bloco 4; mapeamento parcial da L5 (pares do Bloco 4); convenção e catálogo dos `appliedRules`, vazio. Cabeçalho "Estado" inalterado. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.17 para a v2.18
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Uma conversa não encerrada por funcionário | 3.5, 6, 7.1 (invariante 17), 8.1 | No máximo uma `Conversation` não encerrada por funcionário; ao entrar, o web a retoma, com o histórico e a `PendingAction`; sem ela, a conversa nasce na primeira mensagem, não no login; conversa nova só depois de `CLOSED`. Vale na persistência; mecanismo e teste de concorrência no plano do web. Risco do DDL manual descartado pelo Prisma registrado como [Inferência]. §6: observação na cardinalidade `Employee` → `Conversation`. §8.1: nota na regra "`CLOSED` é terminal" (a conversa nova vale depois de `CLOSED`) |
+| Origem das execuções de tool | 3.12 | `toolExecutions.origin`: `MODEL` (emitida pelo modelo na fase 1) ou `CODE` (executada pelo código na recuperação da busca, `03-agent-flow.md` D25, nota de 2026-11-22) |
+| Novos `PolicyReasonCode` e semântica | 3.15 | `KNOWLEDGE_ARTICLE`, `INFORMATION_REQUEST`, `TICKET_NOT_AVAILABLE`; semântica, como usada no Bloco 4, desses três e de `INSUFFICIENT_INFORMATION` e `OUT_OF_SCOPE` |
+| L5, parcial | 3.15, 9 (lacuna #13), 10, 11.2 | Pares do Bloco 4: `ANSWER` → `KNOWLEDGE_ARTICLE` ou `INFORMATION_REQUEST`; `ASK` → `INSUFFICIENT_INFORMATION`; `DENY` → `TICKET_NOT_AVAILABLE`; `REDIRECT` → `OUT_OF_SCOPE`. Demais pares PENDENTES, nos blocos em que forem necessários; L5 parcialmente resolvida |
+| `appliedRules` | 3.12, 3.15, 9 (lacuna #13), 10 | Convenção `SD-<ÁREA>-<NNN>`, IDs nunca reutilizados; catálogo em tabela no §3.15, vazio na v2.18, com versão nova a cada inclusão; `reasonCode` e `appliedRules` não substituem um ao outro. §10: resta a inclusão dos IDs conforme a implementação |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.18. "Estado" inalterado |
 
 ### Alterações da v2.16 para a v2.17
 
