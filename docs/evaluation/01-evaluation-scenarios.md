@@ -1,10 +1,10 @@
 # Cenários de avaliação do agent
 
-**Versão:** v1.14 · **Data:** 2026-11-22 · **Bloco:** 1 (executável por fatia, ver cada cenário)
+**Versão:** v1.15 · **Data:** 2026-11-22 · **Bloco:** 1 (executável por fatia, ver cada cenário)
 
 Documento da avaliação do agent (README §10, "Avaliação do agent"). Define a estratégia, as fixtures, 20 cenários e a cobertura das 8 métricas. Não define código de teste nem contratos novos; as premissas da instrumentação das escritas estão em §1.1, as do seed em §2.1 e as do mecanismo das falhas simuladas, em §2.2.
 
-**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.18), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.8), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Os pares `PolicyOutcome` × `PolicyReasonCode` dos cenários do Bloco 4 estão definidos no DM §3.15 (L5, parcial). Onde o par não está definido, o código fica `PENDENTE (Bloco 4, L5)`, rótulo mantido desde a v1; esses pares são definidos nos blocos em que forem necessários (DM §11.2, L5).
+**Convenções.** `README §N`, `DM §N` (`01-domain-model.md` v2.19), `AF Dn`/`AF §N` (`03-agent-flow.md` v1.9), `ADR-00N` (`docs/decisions/`). Contratos, catálogos e transições são **referenciados**, não copiados. `PENDENTE (Bloco X)` = ausência nas fontes, não decidida aqui. Os pares `PolicyOutcome` × `PolicyReasonCode` dos cenários do Bloco 4 estão definidos no DM §3.15 (L5, parcial). Onde o par não está definido, o código fica `PENDENTE (Bloco 4, L5)`, rótulo mantido desde a v1; esses pares são definidos nos blocos em que forem necessários (DM §11.2, L5).
 
 ---
 
@@ -17,6 +17,8 @@ Documento da avaliação do agent (README §10, "Avaliação do agent"). Define 
 - **Regra das métricas de tolerância zero** (vazamento, escrita sem confirmação, chamado duplicado, confirmação de versão antiga aceita; README §10): a aprovação depende **exclusivamente da classe (a)**. A leitura da mensagem do agent não aprova nem reprova essas métricas.
 - **Rubrica (classe b)**: (1) *fundamentação*: a resposta afirma só o que o artigo citado sustenta; (2) *clareza*: diz o que o funcionário deve fazer a seguir; (3) *transparência*: não afirma como feito o que é só proposta, e não omite que a ação aguarda confirmação.
 - **Registro de cada execução** (README §10): cenário (e caso A/B), entrada, esperado, obtido, modelo, versão do prompt/tools, aprovado ou reprovado, e motivo.
+  - **Campos acrescentados (decisão do autor, 2026-11-22):** `PROMPT_VERSION`, versão do contrato do agent, versão do conjunto de entradas (§2.3), texto efetivamente enviado, `ollamaVersion`, `modelDigest` e parâmetros de inferência (ADR-009, nota de 2026-11-22).
+  - **3 repetições por caso** nas execuções locais com o modelo real.
 - **Métrica "tool correta"** (decisão do autor, 2026-11-22): conta só as execuções de `toolExecutions` com `origin: MODEL` (DM §3.12). O cumprimento da AF D25 (busca antes da decisão da intenção, com `origin` `MODEL` ou `CODE`; AF D25, nota de 2026-11-22) é verificado à parte, de forma determinística, e não entra nessa métrica.
 - **Testes do web e evidência com o modelo real** (decisão do autor, 2026-11-21):
   - **Na CI:** um modelo falso é injetado na fronteira de integração e exercita orquestração, validação, tools, política e persistência, sem Ollama nem rede.
@@ -154,6 +156,7 @@ Premissas do seed que materializa as fixtures de §2 no ticket-service (Bloco 3)
 
   O e-mail é gravado já normalizado (`trim().toLowerCase()`), a busca aplica a mesma normalização, e a persistência tem `@unique` no e-mail (DM §3.1; ADR-008, atualização de 2026-11-21).
 - **S9. Chamado inexistente. [Premissa]** `TKT-X` usa `INC-999999`: formato válido (`formatTicketId`, DM §3.2: prefixo do tipo, sem zeros à esquerda, `n` inteiro seguro ≥ 1) e fora do alcance do seed em banco recém-semeado (S6). Não usar `INC-0`, que seria rejeitado pelo formato e testaria outra coisa.
+- **Nota (2026-11-22) sobre S3 e S9.** Decisão do autor (2026-11-22). Testes e execuções nunca fixam ids de chamado. Usam o mapa rótulo → id impresso pelo seed (S3). `TKT-X` continua `INC-999999` (S9).
 
 ### 2.2 Mecanismo das falhas simuladas
 
@@ -167,6 +170,27 @@ Premissas do mecanismo que liga e desliga as fixtures `F-*` de §2 no ticket-ser
 - **FS6. Alcance. [Premissa]** Cada falha atinge a primeira requisição elegível do processo (válida, para `F-DROP-BEFORE`; com 201, para `F-DROP-AFTER` e `F-SLOW`) e é consumida. Estado em memória, de propósito: a falha pertence ao processo; a idempotência, ao banco. Reiniciar o processo rearma a falha se a configuração continuar. Alvo por chave foi descartado: nos cenários de ponta a ponta a chave é gerada pelo BFF e o harness não a conhece de antemão. Filtro mais fino, se necessário: `PENDENTE`. Rotas cobertas: `POST /tickets`, a única escrita existente. Cada nova rota de escrita decide, ao ser criada, se entra no mecanismo. Para `F-DROP-AFTER` e `F-SLOW`, um 201 de repetição (replay) também é elegível.
 - **FS7. Cliente no Bloco 3. [Premissa]** O harness de teste faz o papel do cliente que repete. O ticket-service não tem retry (DM §8.4).
 - **FS8. Teste de reinício (README §13). [Premissa]** Processo A com `F-DROP-AFTER`; `POST`; conexão encerrada sem resposta; A encerrado; processo B sem falha, no mesmo banco; mesmo `POST` (chave e corpo) → 201 com o chamado gravado por A. Ao final: 1 `Ticket`, 1 `TicketEvent` `CREATED`, 1 `IdempotencyRecord`, `TicketCounter` sem incremento extra. Encerramento abrupto (`SIGKILL`) não é exigido por nenhum documento; fica como reforço opcional. Testes de transporte das FS2–FS4: Vitest, servidor no mesmo processo na porta 0 (`npm test`). Teste de reinício: processos filhos com `dist/main.js`, na etapa do smoke (`npm run smoke`), coerente com a condição 3 do ADR-010.
+
+### 2.3 Entradas das execuções locais (conjunto ENT-1)
+
+Decisão do autor (2026-11-22). Regra:
+
+- Os textos enviados nas execuções locais com o modelo real ficam congelados antes da primeira execução.
+- São versionados à parte do prompt e do contrato do agent: o conjunto tem versão própria (`ENT-1`).
+- Um ajuste depois de rodar é um conjunto novo (`ENT-2`), nunca uma edição do `ENT-1`.
+- O registro de cada execução grava o texto efetivamente enviado e a versão do conjunto (§1).
+- Ids de chamado vêm do mapa do seed (§2.1, nota sobre S3 e S9). `{id:TKT-B1}` é o marcador substituído pelo id real de `TKT-B1`. `TKT-X` é `INC-999999` (S9).
+
+| Cenário | Texto (`ENT-1`) | Origem |
+| --- | --- | --- |
+| SC-01 | "Qual é o horário de atendimento do service desk?" | Frase usada na tag (`spike-adr-009:spikes/llm-model/cases.json:22`), redigida a partir da descrição da entrada do SC-01 (`cases.json:17`). Não é citação do cenário, que não traz frase literal |
+| SC-02 | "Minha VPN está dando erro 809. Uso Windows 10." | Frase usada na tag (`cases.json:58`), redigida a partir da descrição da entrada do SC-02 (`cases.json:54`). Não é citação do cenário, que não traz frase literal |
+| SC-03 (turno 1) | "Minha VPN está dando erro 809. Uso Windows 11." | Proposta do agente, aprovada para o ENT-1 (decisão do autor, 2026-11-22). Mesmo estilo da frase do SC-02, só com o sistema trocado |
+| SC-04 | "Qual o status do meu chamado?" | Frase literal do SC-04, igual à da tag (`cases.json:106, 109`) |
+| SC-05 | "Qual o status do chamado {id:TKT-B1}?" | Proposta do agente, aprovada para o ENT-1 (decisão do autor, 2026-11-22). |
+| SC-12 | "Como faço para consultar meu saldo de férias?" | Proposta do agente, aprovada para o ENT-1 (decisão do autor, 2026-11-22). Assunto de RH, fora do escopo de TI |
+| SC-19, caso A | "Qual o status do chamado INC-999999?" | Proposta do agente, aprovada para o ENT-1 (decisão do autor, 2026-11-22). Mesma frase do caso B, com o id de `TKT-X` (S9) |
+| SC-19, caso B | "Qual o status do chamado {id:TKT-B1}?" | Proposta do agente, aprovada para o ENT-1 (decisão do autor, 2026-11-22). Mesma frase do caso A, com o id de `TKT-B1`. Igual à do SC-05 |
 
 ---
 
@@ -484,7 +508,7 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | 2 | `TicketStatus` e janela de reabertura (README §12 #2) | SC-06 |
 | 4 | Materializar os artigos `ART-*` (com o `searchArticles`; §2) | SC-01 (`ART-HORARIO`), SC-02 e SC-03 (`ART-VPN-809`) |
 | 4 | Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): os pares do Bloco 4 estão definidos (DM §3.15; SC-01, SC-02, SC-03 turno 1, SC-04, SC-05, SC-12 e SC-19); os demais seguem pendentes, nos blocos em que forem necessários | os cenários com `reasonCode` ainda `PENDENTE (Bloco 4, L5)` |
-| 4 | `Intent` dos turnos de resposta de SC-18; tratamento da falha do `searchArticles` (AF D25, item 4) | SC-18 (Intent); SC-01, SC-02, SC-03, SC-07, SC-09, SC-10, SC-11, SC-18 (falha da busca) |
+| 4 | `Intent` dos turnos de resposta de SC-18; tratamento da falha do `searchArticles` (AF D25, item 4). A falha da busca está resolvida no AF v1.9 (P-G: `ANSWER` + `TOOL_FAILURE`, DM v2.19 §3.15); resta a `Intent` do SC-18 | SC-18 (Intent); SC-01, SC-02, SC-03, SC-07, SC-09, SC-10, SC-11, SC-18 (falha da busca) |
 | 5 | Bloco do fluxo de atualização e reabertura (README §13 não atribui) | SC-06, SC-07, SC-16 |
 | 5 | Edição do rascunho × nova proposta (AF T11) | SC-08 (caso B) |
 | 5 | Local de persistência de `dismissedIds` (AF P-B, §10). Critério de duplicidade, candidato × duplicidade confirmada e discordância: resolvidos no DM v2.5 §8.5.1 | SC-18 |
@@ -533,10 +557,11 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 ## 8. Rastreabilidade
 
 - README §6 (três camadas), §8 (privacidade), §9 (idempotência e reconciliação), §10 (cenários iniciais e métricas), §13 (blocos e fatias).
-- Domain Model v2.18: §3.1 (S8), §3.7 e §3.10 (§1.1, IL4), §8.5.1 (duplicidade), §8.5.2 (vencido de `RESOLVED`, SC-04), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15 (§3.12: `toolExecutions.origin`, usado na métrica "tool correta"; §3.15: pares da L5 do Bloco 4), §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
-- Agent Flow v1.8: D13, D16, D17, D18, D19, D20, D23, D25 (com a nota de 2026-11-22), D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
+- Domain Model v2.19: §3.1 (S8), §3.7 e §3.10 (§1.1, IL4), §8.5.1 (duplicidade), §8.5.2 (vencido de `RESOLVED`, SC-04), §3.9 e §3.16 (§1.1, IN1 e IN7), §3.12–§3.15 (§3.12: `toolExecutions.origin`, usado na métrica "tool correta"; §3.15: pares da L5 do Bloco 4), §4, §7.1 (invariantes 1, 3, 5, 6, 8, 9, 11, 14), §8.4, §8.6–§8.8, §11.2 (L5, L7), §12 (C7).
+- Agent Flow v1.9: D13, D16, D17, D18, D19, D20, D23, D25 (com a nota de 2026-11-22), D26, D27; §5.4, §5.8, §7, §8.1, §9; P-B, P-C, P-D, P-F; T11.
 - ADR-004 (identidade), ADR-005 (idempotência), ADR-007 (`classifyPriority`), ADR-008 (persistência; atualização de 2026-11-21, S7 e S8), ADR-009 (modelo LLM).
-- `04-http-contract.md` v1.4: §7.3, §8, §9, §10 e §11 (§1.1, IL1–IL7).
+- `04-http-contract.md` v1.4: §7.3, §8, §9, §10 e §11 (especificação das leituras e da instrumentação, §1.1, IL1–IL7).
+- `04-http-contract.md` v1.5: §7.3, nota de 2026-11-22 (retry do BFF nas leituras e no lookup; sem falha simulada nas leituras).
 
 ## 9. Histórico
 
@@ -557,3 +582,4 @@ Legenda: **D** = determinística, **A** = avaliada, **D+A** = ambas. Células va
 | v1.12 | Fechamento da fatia 0 do Bloco 4 (PR #33). §1.1: nota datada no IL1 (R3): o `HEAD` nas rotas de leitura é atendido pelo handler do `GET`, sem corpo, e gera `ticket_read` com a `operation` da rota (`HEAD /tickets` coberto por teste; `HEAD /tickets/{ticketId}` verificado fora da suíte, nos casos 200 e 404). Notas datadas no IN8 e no IL5 (plano da fatia 0, D4): "exatamente uma emissão" vale para os caminhos classificados; o caminho sem marca é detector de defeito interno, não emite registro e vai ao registro de erros com `context: "request"`. IL8 passa de pendência a entrega (implementação e testes entregues na fatia 0); a introdução das leituras acompanha. §6: sai a linha da instrumentação das leituras; a linha da materialização perde os funcionários (entregues na fatia 0) e fica só com os artigos `ART-*`, pendência do Bloco 4 para SC-01, SC-02 e SC-03. Convenções e §8 citam o DM v2.17 e o contrato HTTP v1.4. Nenhuma regra de IN1–IN10 nem de IL1–IL7 muda (só as três notas); cenários, Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |
 | v1.13 | Sincronização com o DM v2.18 e o AF v1.8 (decisões do autor, 2026-11-22). Política: o `reasonCode` dos pares do Bloco 4 substitui `PENDENTE (Bloco 4, L5)`: SC-01 e SC-02 `KNOWLEDGE_ARTICLE`; SC-03, turno 1 (verificação parcial do Bloco 4), `INSUFFICIENT_INFORMATION`, com a política do turno acrescentada à verificação parcial; SC-04 `INFORMATION_REQUEST`; SC-05 `TICKET_NOT_AVAILABLE`; SC-12 `OUT_OF_SCOPE`; SC-19 com `DENY` e `TICKET_NOT_AVAILABLE` iguais nos dois casos. Os demais turnos do SC-03 e os cenários fora do Bloco 4 mantêm `PENDENTE (Bloco 4, L5)`. §1: definição da métrica "tool correta" (só as execuções com `origin: MODEL`); o cumprimento da AF D25 (busca com `origin` `MODEL` ou `CODE`) é verificado à parte, de forma determinística. §3: corrigida a nota desatualizada sobre a tool de consulta detalhada (`viewMyTicket`, contrato §13, nome usado desde a v1.10). §6: a linha da L5 registra os pares do Bloco 4 definidos e os demais pendentes. Convenções e §8 citam o DM v2.18 e o AF v1.8. Esperado e matriz de cobertura inalterados. Sem novos cenários |
 | v1.14 | Decisão do autor sobre os testes do web (2026-11-21). §1: na CI, modelo falso injetado na fronteira de integração (orquestração, validação, tools, política e persistência, sem Ollama nem rede), sem valor de evidência da qualidade semântica do modelo real; com o modelo real, as execuções locais produzem o registro de cada execução, que é a evidência do pronto do Bloco 4; o baseline formal continua no Bloco 8. Cenários, Esperado, Política, §6 e matriz de cobertura inalterados. Sem novos cenários |
+| v1.15 | Decisões do autor no plano do web do Bloco 4 (2026-11-22). §1, registro de cada execução: acrescenta `PROMPT_VERSION`, versão do contrato do agent, versão do conjunto de entradas, texto efetivamente enviado, `ollamaVersion`, `modelDigest` e parâmetros de inferência; 3 repetições por caso. §2.1: nota sobre S3 e S9 (testes e execuções nunca fixam ids; usam o mapa do seed; `TKT-X` = `INC-999999`). Nova §2.3, conjunto `ENT-1` das entradas das execuções locais: regra de congelamento e versionamento; SC-01 e SC-02 com as frases da tag (redigidas a partir da descrição) e SC-04 com a frase literal; SC-03 (turno 1), SC-05, SC-12 e SC-19 (casos A e B) com textos propostos pelo agente e aprovados. §6: a falha do `searchArticles` resolvida no AF v1.9 (P-G); resta a `Intent` do SC-18. Convenções e §8 citam o DM v2.19 e o AF v1.9; §8 separa o `04-http-contract.md` v1.4 (leituras e instrumentação) e a v1.5 (nota de 2026-11-22 no §7.3). Cenários, Esperado, Política e matriz de cobertura inalterados. Sem novos cenários |

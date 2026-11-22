@@ -29,6 +29,8 @@ Com que ORM e banco o web persiste o estado conversacional, e onde fica a fronte
 - **Memória do Mastra desligada é a preferência.** Estado transitório em memória do processo é aceito, desde que nunca seja tratado como registro.
 - O transcript que o agent recebe é **reconstruído a partir das entidades do web**, inclusive o da fase 2 da integração D1 (ADR-009, decisão 2).
 
+**Atualização (2026-11-22, transcript da fase 2).** Nota posterior à decisão; o texto acima não muda. Esclarecimento (decisão do autor, 2026-11-22): o histórico dos turnos anteriores é reconstruído a partir das entidades do web, no formato do `toMessages` da tag do spike (ADR-009, nota de 2026-11-22; DM v2.19 §3.12, `toolExecutions`). A fase 2 do turno atual usa a resposta da fase 1 em memória, filtrada (`filterTranscript`), sem passar pela persistência.
+
 **Conhecimento.** `KnowledgeArticle` continua em JSON, fora do banco (ADR-003; DM §3.11).
 
 ## Lições do ADR-008 que valem para o web

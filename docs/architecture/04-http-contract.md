@@ -1,6 +1,6 @@
 # 04 — Contrato HTTP do ticket-service
 
-> Artefato do Bloco 3, **versão 1.4**, aprovada em 2026-11-21 (fechamento da fatia 0 do Bloco 4; ver seção 16, Histórico de versões). A v1.4 explicita no §4.1 e no §11 a posição do 415 na ordem de validação, como o `POST /tickets` já fazia, registra no §14 a limitação das rotas não mapeadas e marca como entregue o registro das leituras (§7.3).
+> Artefato do Bloco 3, **versão 1.5**, de 2026-11-22 (decisões do autor no plano do web do Bloco 4; ver seção 16, Histórico de versões). A v1.5 acrescenta ao §7.3 uma nota datada com o tratamento das falhas de leitura no cliente web/BFF. A v1.4 explicita no §4.1 e no §11 a posição do 415 na ordem de validação, como o `POST /tickets` já fazia, registra no §14 a limitação das rotas não mapeadas e marca como entregue o registro das leituras (§7.3).
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles e descreve só a **fronteira HTTP**: rotas, cabeçalhos, códigos de status e formato dos erros. Não redefine regras do domínio; remete ao DM.
 >
@@ -12,7 +12,7 @@ O cliente desta API é o web/BFF (ADR-002). A camada HTTP valida a forma da requ
 
 A v1.2 acrescenta as leituras do funcionário: listagem (§8) e consulta detalhada (§9), com as regras comuns no §7; e a leitura do funcionário para o login simulado (§10). Erros das rotas novas: §11. A leitura de classificação e prazo usada pelo `proposeTicketDraft` (README §6) fica fora desta versão (Bloco 5).
 
-Nas seções da v1.2 à v1.4: DM = `01-domain-model.md` v2.17; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.12.
+Nas seções da v1.2 à v1.4: DM = `01-domain-model.md` v2.17; AF = `03-agent-flow.md` v1.7; cenários = `01-evaluation-scenarios.md` v1.12. Na nota da v1.5 (§7.3): DM = `01-domain-model.md` v2.19; AF = `03-agent-flow.md` v1.9; cenários = `01-evaluation-scenarios.md` v1.15.
 
 ## 2. `POST /tickets`
 
@@ -194,6 +194,10 @@ Valem para `GET /tickets` (§8) e `GET /tickets/{ticketId}` (§9).
 - A política de retry das leituras é do cliente web/BFF (§5). O README §9, "Falhas na leitura", prevê retry com backoff curto e, se a falha persistir, aviso de instabilidade sem perder a conversa. **PENDENTE (README §12 #20, Bloco 4):** o tratamento concreto no cliente.
 - As falhas simuladas cobrem só escritas (cenários §2.2, FS6). **PENDENTE (README §12 #20):** se as leituras ganham falha simulada para exercitar o retry.
 - O registro das leituras (`"event": "ticket_read"`) está especificado nos cenários §1.1, IL1–IL7 (README §12 #21) e foi implementado e testado na fatia 0 do Bloco 4 (cenários §1.1, IL8). Este contrato não define o registro; nada dele chega à resposta HTTP.
+- **Nota (2026-11-22).** Decisão do autor (2026-11-22), no plano do web. As duas PENDENTES acima (README §12 #20) ficam decididas assim:
+  - **Tratamento no cliente:** o BFF faz retry nas leituras (§8, §9) e no lookup (§10): 2 tentativas extras, backoff de 200 e 600 ms, timeout de 3 s por tentativa, só para 5xx, timeout e erro de conexão, nunca para 4xx.
+  - **Sem falha simulada nas leituras:** o mecanismo do ticket-service continua só nas escritas (cenários §2.2, FS6). Os testes do web usam um ticket-service falso.
+  - A falha que persiste depois do retry é tratada pela política do web (DM v2.19 §3.15, `TOOL_FAILURE`). Nada muda nas rotas, nos códigos de status nem no formato dos erros.
 
 ## 8. `GET /tickets`: listagem dos chamados do funcionário
 
@@ -375,7 +379,7 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 
 | Pendência | Origem | Bloco |
 | --- | --- | --- |
-| Tratamento concreto das falhas nas leituras pelo cliente web/BFF; falha simulada nas leituras (§7.3) | README §12 #20 | 4 |
+| Tratamento concreto das falhas nas leituras pelo cliente web/BFF; falha simulada nas leituras (§7.3). **Decidida na v1.5** (§7.3, nota de 2026-11-22): retry do BFF nas leituras e no lookup; sem falha simulada nas leituras | README §12 #20 | 4 |
 | Campos exibidos pelo anexo `TICKET` e eventual histórico na consulta detalhada (§9.1) | AF §9.1, passo 4; DM §3.8 | 6 |
 | Leitura de classificação e prazo usada pelo `proposeTicketDraft` (§1) | README §6 | 5 |
 
@@ -391,6 +395,7 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 - v1.2: README §6 (tools), §8 (privacidade e login), §9 ("Falhas na leitura"), §12 #19, #20 e #21; DM v2.16: §1, §3.1 (unicidade e comparação do e-mail), §3.2, §3.7, §3.8, §3.9, §3.12, §3.16, §7.1 (invariantes 1 e 2), §7.2, §7.3, §8.5, §8.5.1 e §8.5.2 (vencido de `RESOLVED`); AF v1.7: D10, D17, D20, §7, §9.1 e §9.2; `01-evaluation-scenarios.md` v1.10: §1.1 (IN1, IN3), §2.1 (S3, S7, S9), §2.2 (FS6), SC-04, SC-05 e SC-19; ADR-004.
 - v1.3: README §8 (fronteira de confiança) e §12 #21; ADR-008 (atualização de 2026-11-21: FKs para `Employee`); `01-evaluation-scenarios.md` v1.11, §1.1 (IL1–IL8).
 - v1.4: README §12 #21 e §13 ("Evidência do pronto da fatia 0 do Bloco 4"); `01-evaluation-scenarios.md` v1.12, §1.1 (IL8).
+- v1.5: README §9 ("Falhas na leitura") e §12 #20; DM v2.19: §3.15 (`TOOL_FAILURE`); `01-evaluation-scenarios.md` v1.15, §2.2 (FS6).
 
 ## 16. Histórico de versões
 
@@ -401,3 +406,4 @@ Regra do DM §8.5.2 (v2.16), que resolve o README §12 #19:
 | 1.2 | 2026-11-20 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-20. Leituras do funcionário: regras comuns (§7: identidade pelos cabeçalhos do §2.2, só `EMPLOYEE`, repetição, falhas e instrumentação); `GET /tickets` (§8: listagem em resumo, todos os status, sem paginação, ordem por `updatedAt` decrescente; SC-04); `GET /tickets/{ticketId}` (§9: objeto `ticket` mais `currentDueAt` e `isOverdue`; 404 `TICKET_NOT_FOUND` idêntico para inexistente, alheio e malformado, AF D17; revalidação do foco, AF D20; SC-05, SC-19). `POST /employees/lookup` para o login simulado (§10: ator `SYSTEM`, sem senha, e-mail comparado pela regra do DM v2.16 §3.1, 404 `EMPLOYEE_NOT_FOUND`). Erros das rotas novas (§11). `isOverdue` de `RESOLVED` = `null` (§12; DM v2.16 §8.5.2; README §12 #19). Tool `viewMyTicket` (§13). Pendências (§14). Rastreabilidade e histórico renumerados para §15 e §16. `POST /tickets` (§2 a §6) inalterado |
 | 1.3 | 2026-11-21 | Fatia 0 do Bloco 4, conforme as decisões do autor de 2026-11-21. Nota informativa no §4.3 (precedente: v1.1): com as FKs para `Employee` (ADR-008, atualização de 2026-11-21), um `X-Actor-Employee-Id` sem `Employee` no `POST /tickets` viola a premissa do README §8 e resulta no 500 `INTERNAL_ERROR` do §4.3. Nenhuma regra alterada. Remissões atualizadas: §1 cita os cenários v1.11; §7.3 e §14 remetem à especificação do registro das leituras (cenários §1.1, IL1–IL7) e mantêm PENDENTE a implementação e os testes (IL8); §10.1 remete ao IL1 (login fora do `ticket_read`, sem registro; e-mail nunca registrado); §15 com a linha da v1.3 |
 | 1.4 | 2026-11-21 | Fechamento da fatia 0 do Bloco 4 (PR #33). §4.1 e §11: a posição do 415 na ordem de validação das duas rotas com corpo (`POST /tickets` e `POST /employees/lookup`) fica explícita: `Content-Type` antes dos cabeçalhos (decisão D8 do plano da fatia 0; é o que o `POST /tickets` já fazia). §14: limitação das rotas não mapeadas (`GET /tickets/` e `GET /tickets/a/b` recebem o 404 padrão do Hono, em texto, fora do Problem Details; decisão D3). §7.3 e §14: o registro das leituras deixa de ser pendência (implementado e testado na fatia 0). §1 cita o DM v2.17 e os cenários v1.12; §15 com a linha da v1.4. Nenhum código de status novo |
+| 1.5 | 2026-11-22 | Decisões do autor no plano do web do Bloco 4. §7.3: nota datada com o tratamento das falhas de leitura no cliente web/BFF (retry nas leituras e no lookup: 2 tentativas extras, backoff de 200 e 600 ms, timeout de 3 s, só para 5xx, timeout e erro de conexão, nunca para 4xx) e sem falha simulada nas leituras; resolve README §12 #20. §14: a pendência das falhas de leitura passa a decidida, com remissão ao §7.3. §1 cita o DM v2.19, o AF v1.9 e os cenários v1.15 para a nota da v1.5; §15 com a linha da v1.5. Cabeçalho com a versão. Nenhuma rota, código de status ou formato de erro alterado |

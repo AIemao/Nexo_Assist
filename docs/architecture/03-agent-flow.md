@@ -1,6 +1,6 @@
 # 03 — Agent Flow
 
-> Artefato do Bloco 1, **versão 1.8** (ver seção 13, Histórico de versões).
+> Artefato do Bloco 1, **versão 1.9** (ver seção 13, Histórico de versões).
 >
 > **Hierarquia das fontes:** o `README.md` é a fonte da verdade do projeto; o `01-domain-model.md` é a fonte da verdade do domínio. Este documento **deriva** deles: define como o `InteractionContext` se move durante o atendimento (resolve a lacuna L2) e **não redefine** regras de `Conversation`, `PendingAction` ou `OperationExecution`.
 >
@@ -377,6 +377,25 @@ Fonte: README §3 ("perguntas, prioridade com prazo, rascunho para confirmação
   - **Limitação aceita:** com `CLARIFY` num relato vago, o mecanismo não garante a busca desta decisão. A avaliação mede isso (o SC-10 espera `CREATE_TICKET`).
   - **Pertinência:** o modelo julga se o artigo trata do problema relatado. O código aplica o filtro de aplicabilidade dentro da tool, antes de o resultado chegar ao modelo (ADR-003; DM §3.11), e aceita como evidência só o artigo que veio da busca daquele turno, depois do filtro: nunca um id inventado ou de turno anterior (ADR-009, condição 2, sustentação).
   - **Segunda fase 2 que ainda viole esta decisão:** é falha da condição 2 do ADR-009. A resposta segura fica para o plano do web.
+- **Nota (2026-11-22): plano do web do Bloco 4. [Premissa]** Decisão do autor (2026-11-22). Nota posterior à decisão; as regras e a nota acima não mudam.
+  - **Tentativa de busca (G3):** é qualquer tool call de `searchArticles` na resposta da fase 1, executada ou não. A recusa de validação do Mastra conta como tentativa e como busca que falhou (P-G).
+  - **P-G resolvida:**
+    - a falha da busca leva ao par `ANSWER` + `TOOL_FAILURE` (DM v2.19 §3.15), com texto fixo do código e contexto inalterado;
+    - o turno não tem `ANSWER_KB` nem `CREATE_TICKET` e não dispara a recuperação;
+    - o `searchArticles` é local e não tem retry HTTP.
+  - **Segunda fase 2 que ainda viola esta decisão (item acima):** `ASK` + `INSUFFICIENT_INFORMATION`, com o `appliedRules` da regra violada e o contexto inalterado (DM v2.19 §3.15). Falha estrutural da interpretação (JSON ou Zod), em qualquer fase 2, não tem `DecisionRecord` e usa texto fixo (DM v2.19 §3.12).
+  - **Texto final ao funcionário:**
+    - `ANSWER` e `ASK` usam o texto final da fase 1, mostrado só depois da aprovação da política;
+    - `DENY`, `REDIRECT`, `TOOL_FAILURE`, tool sem efeito (`SD-TOOL-001`) e falha estrutural usam texto fixo do código, que prevalece sobre qualquer texto do modelo.
+  - **Sistema operacional do filtro de aplicabilidade:**
+    - extraído de forma determinística só das mensagens do funcionário persistidas na conversa, nunca do assistant nem dos artigos;
+    - vale a mensagem mais recente que cita um sistema; se ela cita dois sistemas diferentes, o sistema é desconhecido;
+    - com sistema desconhecido, um artigo com `applicability` não passa.
+  - **`proposeTicketDraft` e `requestHandoff` no Bloco 4:**
+    - ficam registradas, com `execute` sem efeito;
+    - resultados `{ accepted: false, reason: "PROPOSAL_NOT_AVAILABLE" }` e `{ accepted: false, reason: "HANDOFF_NOT_AVAILABLE" }`, com `status` `SUCCESS` (DM v2.19 §3.12);
+    - precedência: (1) par normal da interpretação; (2) nenhum efeito; (3) `SD-TOOL-001` em `appliedRules`; (4) texto final fixo.
+  - **Condições 1 e 3 do ADR-009 no Bloco 4:** o contrato fica como tipos e assinaturas no web, sem implementação e sem testes pulados. A garantia testada no Bloco 4 é que o `missingFields` do modelo nunca é autoridade.
 
 **D26. Quem prepara cada campo do rascunho. [Premissa]** Decidido em 2026-11-14.
 
@@ -394,6 +413,7 @@ Fonte: README §3 ("perguntas, prioridade com prazo, rascunho para confirmação
 - Esta decisão trata do `missingFields` da interpretação (DM §3.12, catálogo do DM §3.15). Não muda o `missingFields` devolvido pela `classifyPriority` (DM §4, coleta progressiva).
 - Prioridade e prazo nunca vêm do agent (DM §7.1, invariante 3). `proposeTicketDraft` só é chamada com o rascunho completo, e o backend valida a completude (D3). Propor não cria o chamado (DM §7.1, invariante 5).
 - PENDENTE (P-H; lacuna anterior a esta decisão, §2 × DM §3.12): onde título, descrição e tipo ficam antes da proposta. O `DecisionRecord.entities` tem só `problem`, `category`, `operatingSystem` e `impact`.
+  - **Nota (2026-11-22). [Premissa]** Decisão do autor (2026-11-22). A P-H fica para o Bloco 5. O Bloco 4 não grava `collectedData` com título, descrição e tipo.
 - **Exemplos:**
   - "Preciso de um segundo monitor." → `REQ` e `HARDWARE`, sem perguntar.
   - "Só para mim.", em resposta à pergunta do alcance → `affectedScope` `SELF`.
@@ -491,8 +511,8 @@ Pendências **novas** deste documento têm identificador P-x; as herdadas do DM 
 | P-D | Ordem e texto das perguntas de coleta de impacto (alcance, impacto no trabalho, compromisso); dependem do protótipo e da `classifyPriority` (DM §4)                                                                                                                               | **PENDENTE** (inalterada)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | P-E | Oferta de analista na Tela 3 (vencido): oferta com aceite ou transferência automática; representação do aceite na `Message`                                                                                                                                                       | **Resolvida na v1.1 por D18** quanto à oferta com aceite. Em aberto: representação do aceite na `Message` (Bloco 6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | P-F | Handoff com contexto não `NONE`/`IDLE` (coleta em andamento): o que o `summary` registra dos dados de trabalho (o DM diz que `summary` é a fotografia do contexto e que a `PendingAction` guarda o rascunho estruturado, DM §3.6)                                                 | **PENDENTE** (inalterada)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| P-G | Tratamento da falha do `searchArticles` (erro da tool, timeout, erro do provider) no relato de falha nova: a falha não equivale a "sem artigo aplicável" e não leva a `CREATE_TICKET` (D25, item 4) | **PENDENTE** (nova na v1.6; Bloco 4; Cenários §6) |
-| P-H | Onde título, descrição e tipo do rascunho ficam antes da proposta: o `DecisionRecord.entities` tem só `problem`, `category`, `operatingSystem` e `impact` (DM §3.12). Lacuna §2 × DM §3.12, anterior à D26 e registrada nela | **PENDENTE** (nova na v1.6; Bloco 4) |
+| P-G | Tratamento da falha do `searchArticles` (erro da tool, timeout, erro do provider) no relato de falha nova: a falha não equivale a "sem artigo aplicável" e não leva a `CREATE_TICKET` (D25, item 4) | **RESOLVIDA na v1.9** pela nota de 2026-11-22 na D25 (§8.1): `ANSWER` + `TOOL_FAILURE`, texto fixo, contexto inalterado, sem recuperação (DM v2.19 §3.15) |
+| P-H | Onde título, descrição e tipo do rascunho ficam antes da proposta: o `DecisionRecord.entities` tem só `problem`, `category`, `operatingSystem` e `impact` (DM §3.12). Lacuna §2 × DM §3.12, anterior à D26 e registrada nela | **PENDENTE**, movida do Bloco 4 para o **Bloco 5** na v1.9 (nota de 2026-11-22 na D26): o Bloco 4 não grava `collectedData` com título, descrição e tipo |
 
 ### Bloco 2
 
@@ -514,9 +534,9 @@ Nenhuma pendência deste documento permanece no Bloco 3 (v1.4):
 | Catálogo de `appliedRules`; mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5): por exemplo, qual par aplica-se à oferta por `OVERDUE_TICKET`                                                                                 | README §12 #11; DM §3.15 |
 | Mapeamento completo `Intent` → mudança de `flow`: este documento só usa as correspondências de nome (`CREATE_TICKET`, `UPDATE_TICKET`, `REOPEN_TICKET`), `LIST_MY_TICKETS` → `TICKET_LOOKUP` e `VIEW_TICKET` (DM §3.12); ver T2 | DM §3.12                 |
 | Interpretação e extração da resposta do funcionário sobre o candidato a duplicado ("mesmo problema", "complementar", "outro problema") como **entidade durante a coleta** (D23). **Não exige nova `Intent`** (T15)              | Decisão D23              |
-| Tratamento da falha do `searchArticles` no relato de falha nova (P-G). Continua PENDENTE depois da nota de 2026-11-22 na D25: a busca do modelo que falhou não dispara a recuperação e segue a P-G | Decisão D25 (item 4) |
+| Tratamento da falha do `searchArticles` no relato de falha nova (P-G). Na v1.8, permanecia PENDENTE depois da nota de 2026-11-22 na D25. **RESOLVIDA na v1.9** pela nova nota de 2026-11-22: `ANSWER` + `TOOL_FAILURE`, texto fixo e contexto inalterado | Decisão D25 (item 4) |
 | Quem garante a busca e quem julga a pertinência no relato de falha nova: **RESOLVIDA** pela nota de 2026-11-22 na D25 (§8.1) | README §12 #25; D25 |
-| Onde título, descrição e tipo do rascunho ficam antes da proposta (P-H) | Decisão D26; DM §3.12 |
+| Onde título, descrição e tipo do rascunho ficam antes da proposta (P-H). **Movida para o Bloco 5 na v1.9** (nota de 2026-11-22 na D26) | Decisão D26; DM §3.12 |
 
 ### Bloco 5
 
@@ -528,6 +548,7 @@ Nenhuma pendência deste documento permanece no Bloco 3 (v1.4):
 | Local de persistência de `dismissedIds` (estado operacional do backend, não dado do funcionário; comportamento no DM §8.5.1). O LLM não decide              | Decisão D13; DM §8.5.1  |
 | Detalhamento operacional da política de retry do cliente web/BFF: timeout, backoff, limite, classificação de erros transitórios × definitivos e recuperação após reinício do cliente web/BFF (afeta 7b e 7c da Tela 2, a ordem causal de §6 e a duração do bloqueio de D16 em `OUTCOME_UNKNOWN`; D21). A responsabilidade está decidida: o retry é do cliente, com a mesma chave e o mesmo corpo, sem laço no ticket-service. Movida do Bloco 3 na v1.4: é o bloco da primeira escrita do web | README §12 #7; DM v2.11 §3.16, §8.4 e §10 |
 | Operação de reabertura: transição `RESOLVED` → `WAITING_ANALYST`, remoção de `resolvedAt` e incremento de `version`. Movida do Bloco 3 na v1.4: é uma operação nova (`REOPEN`: caso de uso, `TicketEvent` `REOPENED`, idempotência), não parte da criação | DM v2.11 §8.5; README §13 |
+| Onde título, descrição e tipo do rascunho ficam antes da proposta (P-H). Movida do Bloco 4 na v1.9 (nota de 2026-11-22 na D26) | Decisão D26; DM §3.12 |
 
 ### Bloco 6
 
@@ -724,6 +745,7 @@ Cada item cita os dois trechos. As tensões abertas **não são resolvidas aqui*
 | v1.6   | v1.5; decisões D25–D27 (decididas em 2026-11-14), registradas em 2026-11-16 | Registra D25–D27 como **[Premissa]**. **D25** (§8.1): relato de falha nova passa pela central de ajuda antes da decisão da intenção; com artigo aplicável, `ANSWER_KB` (fora do percurso deste documento, §0.3); sem artigo aplicável, `CREATE_TICKET`; busca que falhou não leva a `CREATE_TICKET` (tratamento PENDENTE, Bloco 4). Resolve a `Intent` do turno 1 do SC-03 (Cenários §6). **D26** (§8.1): quem prepara cada campo do rascunho (descritivos pelo agent com evidência suficiente; impacto só o declarado; categoria `HARDWARE` para pedido de monitor aprovada nesta decisão); registra PENDENTE a lacuna §2 × DM §3.12 (onde título, descrição e tipo ficam antes da proposta). **D27** (novo §5.8): uso de `CLARIFY` na interpretação, sem alterar o catálogo do DM. **§10:** novas pendências P-G (tratamento da falha do `searchArticles`, D25 item 4) e P-H (onde título, descrição e tipo ficam antes da proposta, D26; lacuna §2 × DM §3.12), as duas no Bloco 4 e também na tabela do Bloco 4; remissões a elas na D25 e na D26. D25 esclarecida em 2026-11-16 (artigo aplicável). **Seções alteradas:** cabeçalho; §0.1 e §0.2 (faixa D1–D27); §0.3 (só a faixa D1–D27; escopo declarado inalterado); §1 (linhas D25–D27; coluna "Resolve" com "—" e o motivo entre parênteses, porque nenhuma delas resolve T/P deste documento); novo §5.8; §8 (fonte D1–D27); §8.1 (D25 e D26 antes do caminho principal; passo 1 condicionado à D25); §9 (fonte D1–D27); §10 (P-G e P-H; linhas no Bloco 4). DM inalterado. |
 | v1.7   | v1.6; decisão do autor sobre o plano do Bloco 4 (2026-11-20); `01-domain-model.md` v2.15; `README.md` v2.29 | **Sem mudança de decisão funcional** (D1–D27 inalteradas). **§10:** o critério de "baixa confiança" (README §12 #10) passa da tabela do Bloco 4 para a do Bloco 7, junto com o handoff e os cenários dele (DM v2.15 §10). Nenhuma outra pendência alterada. **Seções alteradas:** cabeçalho; §10. |
 | v1.8   | v1.7; decisão do autor (2026-11-22); `01-domain-model.md` v2.18 | **D25:** nota datada de 2026-11-22, sem reescrever a decisão: o modelo chama o `searchArticles` como tool e o código verifica; recuperação pelo código (uma busca com `origin: CODE` e uma segunda fase 2) quando valem juntas G1 (turno sem fluxo ativo), G2 (intenção preliminar `ANSWER_KB` ou `CREATE_TICKET`) e G3 (nenhuma tentativa de busca do modelo); busca que falhou segue a P-G e não dispara; intenções que nunca disparam; pedido expresso de chamado aceito como disparo, sem virar `ANSWER_KB`; limitação aceita com `CLARIFY`; pertinência julgada pelo modelo, com a aplicabilidade e a evidência garantidas pelo código; segunda fase 2 que viole a decisão é falha da condição 2 do ADR-009. Resolve README §12 #25. **§10, Bloco 4:** P-G continua PENDENTE; nova linha com "quem garante a busca e quem julga a pertinência", RESOLVIDA. **§12.2:** DM v2.18 §3.12 (`origin`), ADR-003 e ADR-009. **Seções alteradas:** cabeçalho; §8.1 (nota na D25); §10; §12.2. |
+| v1.9   | v1.8; decisões do autor no plano do web do Bloco 4 (2026-11-22); `01-domain-model.md` v2.19 | **D25:** nova nota datada de 2026-11-22 (plano do web), sem reescrever a decisão nem a nota anterior: tentativa de busca (G3) = qualquer tool call de `searchArticles` na fase 1, executada ou não, e a recusa de validação conta como busca que falhou; P-G resolvida (`ANSWER` + `TOOL_FAILURE`, texto fixo, contexto inalterado, sem recuperação, sem retry HTTP); segunda fase 2 que ainda viola a decisão → `ASK` + `INSUFFICIENT_INFORMATION`; falha estrutural sem `DecisionRecord`, texto fixo; texto final (fase 1 em `ANSWER` e `ASK`, depois da política; texto fixo nos demais casos); sistema operacional do filtro extraído só das mensagens do funcionário; `proposeTicketDraft` e `requestHandoff` sem efeito, com a precedência e o `SD-TOOL-001`; contrato das condições 1 e 3 do ADR-009 como tipos e assinaturas. **D26:** nota datada: P-H fica para o Bloco 5. **§10:** P-G RESOLVIDA (tabelas do Bloco 1 e do Bloco 4); P-H movida para o Bloco 5 (linha nova na tabela do Bloco 5). **Seções alteradas:** cabeçalho; §8.1 (notas na D25 e na D26); §10. |
 
 ### Ações de acompanhamento (fora deste documento)
 

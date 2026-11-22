@@ -1,6 +1,6 @@
 # 01 — Domain Model
 
-> Artefato do Bloco 1, **versão 2.18** (ver seção 14, Histórico de versões).
+> Artefato do Bloco 1, **versão 2.19** (ver seção 14, Histórico de versões).
 >
 > **Hierarquia das fontes:** este documento é a **fonte da verdade do domínio**; o `README.md` é a **fonte da verdade do projeto**.
 >
@@ -341,6 +341,7 @@ interface ConversationTicketInteraction {
   ticketId: string;
   type: ConversationTicketInteractionType;
   operationExecutionId?: string; // referência para idempotência do registro
+  decisionRecordId?: string; // só em VIEWED; chave de idempotência com ticketId (v2.19)
   occurredAt: string;
 }
 ```
@@ -357,7 +358,8 @@ Momento do registro de cada interação:
 
 - A associação nasce na **primeira interação efetiva**. Aparecer numa lista de resultados **não** cria associação.
 - `HANDED_OFF` só para chamados efetivamente encaminhados (por padrão, o chamado em foco; §8.7). A transferência **da conversa** é registrada em `ConversationEvent`. Handoff sem chamado em foco não gera `TRANSFER_TICKET` nem `HANDED_OFF`, mesmo com outros chamados vinculados.
-- O registro é **idempotente** pelo `operationExecutionId`: retries não duplicam interações.
+- O registro de `CREATED`, `UPDATED`, `REOPENED` e `HANDED_OFF` é **idempotente** pelo `operationExecutionId`: retries não duplicam interações. O `VIEWED` usa outra chave (abaixo), porque a consulta é leitura, sem `OperationExecution` (v2.19).
+- **[Premissa] `VIEWED` (v2.19).** Decisão do autor (2026-11-22). O `VIEWED` só é registrado quando a política aprova e a mensagem final do agent traz o anexo `TICKET` daquele chamado (§3.8), nunca por texto livre. É um `VIEWED` por chamado e por turno, único por (`decisionRecordId`, `ticketId`).
 
 ### 3.8 Message
 
@@ -392,6 +394,11 @@ interface Message {
 
 - A mensagem guarda **referências** aos cards, não cópias de dados.
 - Toda referência aponta para um recurso persistido ou snapshot recuperável. `QUICK_REPLIES` precisa reconstruir **exatamente** as opções oferecidas, mesmo após reinício. PENDENTE (Bloco 6): onde o snapshot das opções é armazenado (README §12 #15).
+- **[Premissa] `TICKET_SELECTOR` (v2.19).** Decisão do autor (2026-11-22).
+  - O `refId` é o id do `DecisionRecord` do turno.
+  - Antes de usar as evidências, o BFF verifica que o `DecisionRecord` pertence à mesma conversa da mensagem que contém o anexo e que essa conversa pertence ao funcionário autenticado na sessão. O `refId` não concede autorização nem permite acessar decisões de outra conversa.
+  - **Recuperação:** o BFF carrega o `DecisionRecord`, usa só as evidências `TICKET` como allowlist e busca os dados atuais no ticket-service com a identidade da sessão. Nunca usa uma listagem irrestrita como fonte. A identidade vem da sessão, nunca do `refId` nem do navegador.
+  - **Sem snapshot no Bloco 4:** os dados são os atuais. Reproduzir o conteúdo histórico exigiria snapshot (futuro).
 
 ### 3.9 TicketEvent
 
@@ -535,10 +542,14 @@ interface DecisionRecord {
     referenceId: string;
   }>;
   toolExecutions: Array<{
+    sequence: number; // ordem da chamada no turno (v2.19)
+    stepIndex: number; // agrupa as chamadas da mesma mensagem do assistant (v2.19)
     name: string;
     status: "SUCCESS" | "FAILED";
     durationMs: number;
     origin: "MODEL" | "CODE"; // quem iniciou a execução (regra abaixo)
+    args: JsonValue; // como o modelo enviou (MODEL) ou como o código chamou (CODE) (v2.19)
+    result?: JsonValue; // exatamente o que chegou ao modelo; ausente quando nada chegou (v2.19)
   }>;
   pendingActionId?: string; // ação criada OU alterada neste turno
   pendingActionVersion?: number; // versão do rascunho produzida neste turno
@@ -554,6 +565,16 @@ Regras:
 - Três camadas por resposta: **interpretação** (o que o modelo entendeu), **política** (o que o sistema permite), **execução** (o que realmente aconteceu) (README §6).
 - O **backend monta** `toolExecutions` a partir do que de fato rodou. O modelo não declara sucesso de nada (README §6).
 - **[Premissa] `toolExecutions.origin`.** Decisão do autor (2026-11-22). `MODEL` = tool emitida pelo modelo na fase 1 (ADR-009, decisão 2). `CODE` = tool executada pelo código na recuperação da busca (`03-agent-flow.md`, D25, nota de 2026-11-22). As duas entram em `toolExecutions` porque de fato rodaram.
+- **[Premissa] `toolExecutions`: campos e semântica (v2.19).** Decisão do autor (2026-11-22).
+  - **`args`:** os argumentos como o modelo enviou (`origin: MODEL`) ou como o código chamou (`origin: CODE`).
+  - **`result`:** exatamente o que chegou ao modelo. Fica ausente quando nada chegou e nunca é inventado.
+  - **`stepIndex`:** agrupa as chamadas da mesma mensagem do assistant. **`sequence`:** dá a ordem no turno.
+  - **`SUCCESS`:** a tool cumpriu o papel técnico, inclusive com resultado de negócio negativo (lista vazia, não encontrado, `accepted: false`).
+  - **`FAILED`:** falha técnica: recusa de validação do Mastra antes do `execute`, tool inexistente, exceção, leitura que falhou depois do retry, timeout.
+  - **Finalidade:** reconstruir o histórico no formato de referência da linha de base (ADR-009, nota de 2026-11-22).
+  - **Histórico × fase 2:** o histórico dos turnos anteriores é reconstruído no formato do `toMessages` da tag (ADR-009, nota de 2026-11-22), que representa a mensagem assistant com tool calls sem texto, seguida dos resultados e do texto final (`Message.content`); por isso o texto intermediário do assistant não é persistido. A fase 2 do turno atual usa a resposta da fase 1 em memória, filtrada (`filterTranscript`), sem passar pela persistência.
+  - O objeto `{ error: true, message, validationErrors }` é reservado à recusa de validação do Mastra. Nenhum `execute` do produto devolve essa forma.
+  - **Limitação do Bloco 4, não regra geral:** um turno com falha estrutural (JSON ou Zod) não tem `DecisionRecord`, e as tool calls dele não entram no histórico. É aceito porque as tools do Bloco 4 não têm efeito de escrita. Reavaliar quando houver tools com efeito; a alternativa é persistir as tentativas do turno independentemente do `DecisionRecord`. Nesse turno, a mensagem do agent tem texto fixo e não tem `decisionRecordId` (§3.8).
 - A **confiança declarada não autoriza nenhuma operação**; serve como um dos sinais para encaminhar ao analista (README §6).
 - **Não se expõe o raciocínio interno do modelo**; expõem-se evidências, regras e ações (README §6).
 - `appliedRules` usa IDs estáveis (ex.: `SD-PRIORITY-001`). Convenção e catálogo no §3.15 (README §12 #11); os IDs entram conforme as regras forem implementadas. `reasonCode` e `appliedRules` não substituem um ao outro (§3.15).
@@ -668,7 +689,7 @@ type PolicyReasonCode = // por que esta ação (política)
 - `PriorityReasonCode` e `PolicyReasonCode` são **catálogos distintos**.
 - Catálogos persistidos (enums no banco e fonte única no domínio): regra em README §5 (Princípios).
 
-**[Premissa] Semântica dos `PolicyReasonCode` usados no Bloco 4.** Decisão do autor (2026-11-22). `KNOWLEDGE_ARTICLE`, `INFORMATION_REQUEST` e `TICKET_NOT_AVAILABLE` são novos nesta versão; os demais códigos do catálogo seguem sem semântica registrada.
+**[Premissa] Semântica dos `PolicyReasonCode` usados no Bloco 4.** Decisão do autor (2026-11-22). `KNOWLEDGE_ARTICLE`, `INFORMATION_REQUEST` e `TICKET_NOT_AVAILABLE` são novos nesta versão. `TOOL_FAILURE` também tem semântica registrada (v2.19). Os demais códigos seguem sem semântica registrada.
 
 | Código | Semântica, como usada no Bloco 4 |
 | --- | --- |
@@ -677,6 +698,7 @@ type PolicyReasonCode = // por que esta ação (política)
 | `TICKET_NOT_AVAILABLE` | Negação neutra, igual para chamado inexistente e para chamado de outro funcionário (`03-agent-flow.md`, D17) |
 | `INSUFFICIENT_INFORMATION` | Pergunta de coleta: faltam dados para a ação |
 | `OUT_OF_SCOPE` | Assunto fora de TI, redirecionado |
+| `TOOL_FAILURE` | Aviso de instabilidade: uma leitura ou a busca falhou; nada foi inventado nem alterado (v2.19) |
 
 **[Premissa] Mapeamento `PolicyOutcome` × `PolicyReasonCode` (L5), parcial.** Decisão do autor (2026-11-22). Só os pares do Bloco 4:
 
@@ -686,8 +708,15 @@ type PolicyReasonCode = // por que esta ação (política)
 | `ASK` | `INSUFFICIENT_INFORMATION` |
 | `DENY` | `TICKET_NOT_AVAILABLE` |
 | `REDIRECT` | `OUT_OF_SCOPE` |
+| `ANSWER` | `TOOL_FAILURE` (v2.19) |
 
 Os demais pares continuam PENDENTES, nos blocos em que forem necessários (§10; §11.2, L5). A L5 não está resolvida por inteiro.
+
+**[Premissa] `TOOL_FAILURE` e esclarecimento no Bloco 4 (v2.19).** Decisão do autor (2026-11-22).
+
+- `ANSWER` → `TOOL_FAILURE` vale para a leitura com falha persistente depois do retry e para a falha da busca (`03-agent-flow.md`, P-G).
+- A falha do provider não é `TOOL_FAILURE`: sem interpretação válida, não há `DecisionRecord` (§3.12, `toolExecutions`).
+- `ASK` → `INSUFFICIENT_INFORMATION` também cobre o pedido de esclarecimento da condição 2 do ADR-009 (interpretação estruturalmente válida sem sustentação, inclusive a segunda fase 2 da AF D25), com o `appliedRules` da regra violada.
 
 **[Premissa] `appliedRules`: convenção e catálogo.** Decisão do autor (2026-11-22).
 
@@ -698,8 +727,17 @@ Os demais pares continuam PENDENTES, nos blocos em que forem necessários (§10;
 
 | ID | Regra | Versão do DM em que entrou |
 | --- | --- | --- |
+| `SD-KB-001` | Filtro determinístico de aplicabilidade por sistema operacional (§3.11; ADR-003; `03-agent-flow.md`, nota de 2026-11-22) | v2.19 |
+| `SD-KB-002` | Evidência só de artigo devolvido pela busca do turno, depois do filtro (`03-agent-flow.md` D25, pertinência) | v2.19 |
+| `SD-SEARCH-001` | Recuperação da busca com G1 a G3, uma vez, `origin: CODE` (`03-agent-flow.md` D25, nota de 2026-11-22) | v2.19 |
+| `SD-PRIVACY-001` | Negação idêntica para chamado inexistente, alheio ou malformado (`03-agent-flow.md` D17) | v2.19 |
+| `SD-SCOPE-001` | Assunto fora de TI → `REDIRECT`, sem handoff (README §2; SC-12) | v2.19 |
+| `SD-INTERP-001` | Contradição entre `entities` e `missingFields` (ADR-009, condição 2) | v2.19 |
+| `SD-INTERP-002` | Valor sem sustentação na conversa (ADR-009, condição 2) | v2.19 |
+| `SD-INTERP-003` | Conteúdo corrompido em campo de texto (ADR-009, condição 2) | v2.19 |
+| `SD-TOOL-001` | Tool sem efeito no Bloco 4 chamada pelo modelo (`proposeTicketDraft`, `requestHandoff`); nenhum efeito, texto fixo (`03-agent-flow.md`, nota de 2026-11-22) | v2.19 |
 
-Nenhum ID registrado na v2.18.
+Nenhum ID registrado na v2.18. Os nove IDs iniciais entraram na v2.19 (decisão do autor, 2026-11-22).
 
 ### 3.16 IdempotencyRecord (registro técnico do ticket-service)
 
@@ -926,7 +964,7 @@ Sobre as invariantes 11 e 12 em conjunto com o handoff, ver §8.6. A exceção d
 | Toda transição da conversa (§8.1) grava um `ConversationEvent`                                                                                                                                                                                                                 | §3.6, §8.1, README §7A |
 | `(conversationId, ticketId)` é único em `ConversationTicket`; `linkedAt` nunca é atualizado                                                                                                                                                                                    | §3.7                   |
 | Associação conversa–chamado nasce na primeira interação efetiva; listar resultados não associa                                                                                                                                                                                 | §3.7                   |
-| Registro de interação é idempotente por `operationExecutionId`                                                                                                                                                                                                                 | §3.7                   |
+| Registro de interação é idempotente por `operationExecutionId` (`CREATED`, `UPDATED`, `REOPENED`, `HANDED_OFF`); `VIEWED`, por (`decisionRecordId`, `ticketId`) (v2.19) | §3.7                   |
 | `requesterId` vem da sessão, nunca do rascunho; `assignedTo` não é escolhido na abertura                                                                                                                                                                                       | §3.2                   |
 | `Ticket.assignedTo` não é preenchido automaticamente no handoff nem ao assumir a conversa                                                                                                                                                                                      | §3.2, README §9        |
 | `Ticket.type` é a fonte da verdade do tipo; o prefixo do `id` é só apresentação                                                                                                                                                                                                | §3.2                   |
@@ -1180,7 +1218,7 @@ Das 13 lacunas da rodada anterior, permanecem abertas apenas as abaixo. A numera
 | 8   | Encerramento pelo funcionário sem `PendingActionType` `CLOSE` | Como a confirmação "Sim, resolvido / Ainda não" é representada na `Message` (L7)                              | §8.8. PENDENTE (Bloco 6) |
 | 10  | Efeito de `TRANSFER_TICKET`/assumir sobre `assignedTo`        | `ASSIGN_TICKET` fora de `OperationType`                                                                       | §8.7. PENDENTE (Bloco 7) |
 | 11  | Máquina D sem retentativa/saída de `OUTCOME_UNKNOWN`          | Parâmetros de timeout, backoff e tentativas; a responsabilidade (cliente web/BFF, README §12 #7) está decidida | §8.4. PENDENTE (quando o web existir) |
-| 13  | Catálogos de códigos string                                   | IDs de `appliedRules` (convenção e catálogo no §3.15, preenchido conforme as regras forem implementadas); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5): pares do Bloco 4 no §3.15, demais PENDENTES; `TicketStatus`: §8.5 | §3.15                    |
+| 13  | Catálogos de códigos string                                   | IDs de `appliedRules` (convenção e catálogo no §3.15, preenchido conforme as regras forem implementadas; nove IDs iniciais na v2.19); mapeamento `PolicyOutcome` x `PolicyReasonCode` (L5): pares do Bloco 4 no §3.15 (com `ANSWER` → `TOOL_FAILURE` na v2.19), demais PENDENTES; `TicketStatus`: §8.5 | §3.15                    |
 
 A lacuna #5 (estrutura de `InteractionContext`; transições entre pares `(flow, stage)`, L2) foi resolvida por `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
 
@@ -1194,7 +1232,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
 | PENDENTE (Bloco 7): matriz de transições do analista sobre `Ticket.status` (`TicketStatus` e demais regras: §8.5)                                       | 7     | §8.5, README §12 #2             |
 | PENDENTE (Bloco 7): critério de "baixa confiança" para transferir; definição e calibração junto com o handoff e os cenários dele. O Bloco 4 não introduz limiar provisório nem transferência automática por baixa confiança | 7     | README §12 #10                  |
-| PENDENTE (conforme as regras forem implementadas, a partir do Bloco 4): IDs do catálogo de `appliedRules`. Convenção e tabela definidas no §3.15 (decisão do autor, 2026-11-22) | 4 em diante | §3.15, README §12 #11           |
+| PENDENTE (conforme as regras forem implementadas, a partir do Bloco 4): IDs do catálogo de `appliedRules`. Convenção e tabela definidas no §3.15 (decisão do autor, 2026-11-22). Nove IDs iniciais registrados na v2.19; os próximos entram conforme as regras forem implementadas | 4 em diante | §3.15, README §12 #11           |
 | PENDENTE (Bloco 5): reabertura, quem propõe (agent propõe ao detectar o mesmo problema resolvido há ate 7 dias, decisão inicial)                        | 5     | README §12 #12                  |
 | PENDENTE (Bloco 5): `EXPIRED` e validade do rascunho; nova proposta com outra pendente aberta                                                           | 5     | README §7C, README §12 #13      |
 | PENDENTE (Bloco 6): limite de 30 mensagens (do usuário ou totais; por conversa ou por login)                                                            | 6     | README §12 #14                  |
@@ -1209,7 +1247,7 @@ Todas marcadas no README. Nenhuma bloqueia este artefato.
 | PENDENTE (operação `UPDATED`): contrato dos elementos de `TicketEvent.changes` (catálogo de `field`, `previousValue`, `newValue`) (L12)                  | —     | §3.9, README §12 #5             |
 | PENDENTE (operação `UPDATED`): onde garantir a imutabilidade de `requesterId` (caso de uso de atualização ou `update` do repositório)                    | —     | §3.2, §3.16                     |
 | PENDENTE (operação `TRANSFER`): como a verificação de solicitante da chave reutilizada se aplica quando o ator é `SYSTEM`                                | —     | §3.16                           |
-| PENDENTE (quando o web existir): detalhamento operacional da política de retry do cliente (timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos e recuperação após reinício) | —     | §8.4, §9 lacuna #11, README §12 #7 |
+| PENDENTE (quando o web existir): detalhamento operacional da política de retry do cliente (timeout, backoff, limite de tentativas, classificação de erros transitórios x definitivos e recuperação após reinício). Nas leituras e no lookup, decidido no `04-http-contract.md` v1.5 §7.3 (v2.19); continua PENDENTE nas escritas | —     | §8.4, §9 lacuna #11, README §12 #7 |
 | PENDENTE (Bloco 7): recuperação quando só um lado (conversa x chamado) conclui; integração da atribuição com o console                                  | 7     | README §9, README §12 #17       |
 
 As transições entre `flow` e `stage` do `InteractionContext` (L2) não constam mais como pendência: estão definidas em `03-agent-flow.md` v1.1, §§3–6 (§8.2, §11.2).
@@ -1222,7 +1260,7 @@ O endpoint de consulta pela chave de idempotência (README §12 #8) não consta 
 
 O ORM e o driver do SQLite (README §12 #6) não constam mais como pendência: estão decididos no ADR-008 (infraestrutura de persistência; não altera o domínio).
 
-O modelo LLM (README §12 #9) não consta mais como pendência: está decidido no ADR-009 (`qwen3:8b` servido localmente pelo Ollama, com condições de adoção; não altera o domínio nesta versão; o achado 2 do ADR-009 (schema do §3.12 compatível com provider estrito) pode exigir mudança futura, a decidir).
+O modelo LLM (README §12 #9) não consta mais como pendência: está decidido no ADR-009 (`qwen3:8b` servido localmente pelo Ollama, com condições de adoção; não altera o domínio nesta versão; o achado 2 do ADR-009 (schema do §3.12 compatível com provider estrito) pode exigir mudança futura, a decidir). O achado 2 fica fora do Bloco 4 (ADR-009, nota de 2026-11-22).
 
 Os campos de prazo do `Ticket` e o momento de recálculo (README §12 #4) não constam mais como pendência: estão em §3.2 e §8.5.2. Continua PENDENTE (Bloco 7) quais eventos contam como atualização do service desk (linha acima).
 
@@ -1239,7 +1277,7 @@ Os itens abaixo são ausências **observadas ao derivar o modelo**, que não tin
 | ID  | Lacuna                                                                                                                                                                       | Onde aparece     | Situação                                         |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------ |
 | L2  | `InteractionContext`: não há transições válidas entre pares `(flow, stage)` (ex.: quando `READY_TO_PROPOSE` volta a `IDLE`; o que acontece após `CONFIRMED`/`REJECTED`).     | §3.5, README §7B | **RESOLVIDA** por `03-agent-flow.md` v1.1, §§3–6 |
-| L5  | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PARCIALMENTE RESOLVIDA**: pares do Bloco 4 no §3.15 (decisão do autor, 2026-11-22); demais pares **PENDENTES**, nos blocos em que forem necessários |
+| L5  | `PolicyOutcome` x `PolicyReasonCode`: não há mapeamento de quais motivos valem para cada resultado (ex.: `USER_CONFIRMED_RESOLUTION` com `REQUEST_RESOLUTION_CONFIRMATION`). | README §6, §3.15 | **PARCIALMENTE RESOLVIDA**: pares do Bloco 4 no §3.15 (decisão do autor, 2026-11-22; `ANSWER` → `TOOL_FAILURE` na v2.19); demais pares **PENDENTES**, nos blocos em que forem necessários |
 | L7  | Como a pergunta "Sim, resolvido / Ainda não" é representada na `Message` (`QUICK_REPLIES`? outro anexo?).                                                                    | README §6, §3.8  | **PENDENTE** (Bloco 6)                           |
 | L12 | `TicketEvent.changes[].field` e `OperationExecution`-ticket: não há catálogo de nomes de campo (string livre). Mesmo caso de `TicketEvent.summary`.                          | §3.9, §3.15      | **PENDENTE** (operação `UPDATED`)                |
 
@@ -1366,8 +1404,22 @@ Itens do README **não** cobertos por este modelo, por pertencerem a outros arte
 | v2.16  | v2.15; contrato HTTP v1.2 (decisões do autor, 2026-11-20); README §12 #19 | §3.1: `Employee.email` único, comparado sem diferenciar maiúsculas de minúsculas e sem espaços nas pontas. §8.5.2: chamado `RESOLVED` não tem vencido (`null`); para os demais status, `isOverdue(prazo vigente, now)`. Tipos, entidades e assinaturas das funções inalterados. |
 | v2.17  | v2.16; fechamento da fatia 0 do Bloco 4 (PR #33) | Cabeçalho, "Estado": passa a listar o que a fatia 0 implementou no ticket-service (`normalizeEmail`, `currentDueAt` e o vencido com a regra do `RESOLVED`, persistência de `Employee` com as FKs, leituras do funcionário e leitura por e-mail). Nenhuma regra, entidade, tipo ou função do domínio foi alterada. |
 | v2.18  | v2.17; decisões do autor sobre a parte web das fatias 1 e 2 do Bloco 4 (2026-11-22) | §3.5 e §7.1 (invariante 17): no máximo uma `Conversation` não encerrada por funcionário; retomada ao entrar; nascimento na primeira mensagem; conversa nova só depois de `CLOSED`; vale na persistência, com o risco do DDL manual registrado como [Inferência]. §3.12: `toolExecutions.origin` (`MODEL` ou `CODE`). §3.15: `PolicyReasonCode` ganha `KNOWLEDGE_ARTICLE`, `INFORMATION_REQUEST` e `TICKET_NOT_AVAILABLE`; semântica dos códigos usados no Bloco 4; mapeamento parcial da L5 (pares do Bloco 4); convenção e catálogo dos `appliedRules`, vazio. Cabeçalho "Estado" inalterado. |
+| v2.19  | v2.18; decisões do autor no plano do web do Bloco 4 (2026-11-22) | §3.12: `toolExecutions` com `sequence`, `stepIndex`, `args` e `result?`; semântica de `SUCCESS` e `FAILED`; forma reservada à recusa de validação do Mastra; limitação do Bloco 4 para o turno com falha estrutural; histórico dos turnos anteriores no formato do `toMessages` da tag e fase 2 do turno atual pela resposta da fase 1 em memória. §3.7 e §7.2: `ConversationTicketInteraction.decisionRecordId?` (só em `VIEWED`); `VIEWED` só com a política aprovada e o anexo `TICKET` na mensagem final, único por (`decisionRecordId`, `ticketId`); idempotência por `operationExecutionId` mantida para os demais tipos. §3.8: `TICKET_SELECTOR` com `refId` = id do `DecisionRecord`, verificado contra a conversa da mensagem e o funcionário da sessão, recuperado pelas evidências `TICKET` com a identidade da sessão, sem snapshot no Bloco 4. §3.15: semântica de `TOOL_FAILURE`, também citada na premissa da semântica dos códigos; par `ANSWER` → `TOOL_FAILURE`; falha do provider sem `DecisionRecord`; `ASK` → `INSUFFICIENT_INFORMATION` também para a condição 2 do ADR-009; nove IDs iniciais de `appliedRules`. §9, §10 e §11.2: remissões; §10, parágrafo do ADR-009: achado 2 fora do Bloco 4. Cabeçalho "Estado" inalterado. |
 
 As decisões das versões v2 e v2.1 vieram da antiga README §4.2, aprovada na revisão da v2. Os modelos das seções 3 a 7 derivam da antiga README §4 (v2.2), que não existe mais no README. Esse registro é apenas histórico; o corpo deste documento não cita mais essas seções.
+
+### Alterações da v2.18 para a v2.19
+
+| Item | Seção(ões) | Efeito |
+| --- | --- | --- |
+| Campos e semântica de `toolExecutions` | 3.12 | Cada item passa a ter `sequence`, `stepIndex`, `args` e `result?`, além de `name`, `status`, `durationMs` e `origin`. `SUCCESS` = papel técnico cumprido, inclusive com negativo de negócio; `FAILED` = falha técnica. `{ error: true, message, validationErrors }` reservado à recusa de validação do Mastra. Finalidade: reconstruir o histórico no formato de referência da linha de base (ADR-009, nota de 2026-11-22). Limitação do Bloco 4: turno com falha estrutural sem `DecisionRecord` e fora do histórico, com mensagem de texto fixo sem `decisionRecordId`. Histórico × fase 2: turnos anteriores no formato do `toMessages` da tag (texto intermediário do assistant não persistido); fase 2 do turno atual pela resposta da fase 1 em memória, filtrada |
+| `VIEWED` | 3.7, 7.2 | `ConversationTicketInteraction.decisionRecordId?`, só em `VIEWED`. Registro só com a política aprovada e o anexo `TICKET` na mensagem final, nunca por texto livre; único por (`decisionRecordId`, `ticketId`). A idempotência por `operationExecutionId` continua para `CREATED`, `UPDATED`, `REOPENED` e `HANDED_OFF` |
+| `TICKET_SELECTOR` | 3.8 | `refId` = id do `DecisionRecord` do turno. O BFF verifica que o `DecisionRecord` pertence à conversa da mensagem e que a conversa pertence ao funcionário da sessão; o `refId` não concede autorização. O BFF usa só as evidências `TICKET` como allowlist e busca os dados atuais com a identidade da sessão; sem listagem irrestrita; sem snapshot no Bloco 4 |
+| `TOOL_FAILURE` e L5 | 3.15, 9 (lacuna #13), 11.2 | Semântica de `TOOL_FAILURE`, também citada na premissa da semântica dos códigos; par `ANSWER` → `TOOL_FAILURE` (leitura com falha persistente; falha da busca, AF P-G); falha do provider não é `TOOL_FAILURE`; `ASK` → `INSUFFICIENT_INFORMATION` também para a condição 2 do ADR-009, com o `appliedRules` da regra violada |
+| `appliedRules` | 3.15, 9 (lacuna #13), 10 | Nove IDs iniciais: `SD-KB-001`, `SD-KB-002`, `SD-SEARCH-001`, `SD-PRIVACY-001`, `SD-SCOPE-001`, `SD-INTERP-001` a `SD-INTERP-003` e `SD-TOOL-001` |
+| Retry das leituras | 10 | Remissão ao `04-http-contract.md` v1.5 §7.3; continua PENDENTE nas escritas |
+| Achado 2 do ADR-009 | 10 | Parágrafo do ADR-009: o achado 2 fica fora do Bloco 4 (ADR-009, nota de 2026-11-22) |
+| Cabeçalho e histórico | cabeçalho, 14 | Versão 2.19. "Estado" inalterado |
 
 ### Alterações da v2.17 para a v2.18
 

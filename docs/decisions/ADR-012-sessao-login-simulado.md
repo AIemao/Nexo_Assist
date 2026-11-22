@@ -41,6 +41,15 @@ Decisão do autor (2026-11-21).
 
 **Dependências.** Nenhuma biblioteca além do `node:crypto`.
 
+**Atualização (2026-11-22).** Nota posterior à decisão; o texto acima não muda. Decisão do autor (2026-11-22), no plano do web:
+
+- **Logout:** grava `revokedAt`, e a linha fica no banco. `revokedAt` invalida a sessão antes de `expiresAt`.
+- **Nome:** `name` é guardado na `Session` como retrato do lookup do login, como o papel.
+- **Analista no Bloco 4:** um funcionário com `role` `ANALYST` não recebe sessão. A resposta é "O acesso de analista ainda não está disponível." O login do analista continua no Bloco 7 ("Fora do escopo").
+- **Senha:** obrigatória e não vazia, sem verificação contra segredo (login simulado).
+- **Limpeza:** no login, as sessões expiradas há mais de 1 dia são apagadas. Sessões válidas nunca são apagadas. Isso responde à [Inferência] das "Negativas e custos".
+- **`Secure`:** primeiro, testar o cookie `Secure` em `http://localhost`. A variável `SESSION_COOKIE_SECURE` só existe se o teste mostrar que é necessária, com padrão `true` e proibida como `false` em produção.
+
 ## Alternativas consideradas
 
 ### A. Cookie assinado, sem estado no servidor

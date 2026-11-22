@@ -49,6 +49,23 @@ São contratos do Bloco 4. O Bloco 4 precisa implementá-las e validá-las antes
 
 **Atualização (2026-11-21).** Nota posterior à decisão; as condições acima não mudam. A versão do Mastra adotada no produto é a `@mastra/core` **1.81.0**, a mesma das evidências do spike (seção "Evidências do spike"; README §5, "Versões das dependências"). Mudar de versão exige revalidar os comportamentos do framework medidos nesta versão ("Comportamentos do framework medidos (Mastra 1.81.0)", em "Evidências do spike").
 
+**Atualização (2026-11-22, linha de base no produto).** Nota posterior à decisão; as condições acima não mudam. Decisão do autor (2026-11-22). Como a condição 4 se aplica no produto:
+
+- **W8.1. A linha de base é o que o modelo vê.**
+  - **Textos:** `prompt.ts` e `descriptions.ts` da V4 (tag `spike-adr-009`) copiados sem mudança, com hash SHA-256. São só texto, sem imports.
+  - **Projeção da requisição:** gerada uma vez a partir da tag, com o `fetch` interceptado e sem rede, nas duas fases. É o corpo inteiro, menos o conteúdo do turno e os campos dinâmicos. Cada exclusão tem caminho JSON exato e justificativa. A mensagem de sistema fica e é comparada. A ordem das tools e dos arrays é preservada; a das chaves de objeto, não. Fica num JSON no repositório, com hash fixado. Um teste na CI gera a projeção do produto e compara.
+  - **Resultados das tools:** a estrutura (campos, tipos, obrigatoriedade, ausente × `null` × valor, variantes) é extraída da tag, inclusive do código do `execute`, e comparada com o produto. Só a estrutura, nunca os valores das fixtures.
+  - **Histórico e filtro da fase 2:** testes com entrada e saída de referência, geradas pelo código da tag.
+  - **Caminho do provider:** o mesmo do spike (`@mastra/core` 1.81.0, com o provider compatível com OpenAI empacotado, em `/v1/chat/completions`). A versão do Ollama e o digest do modelo ficam registrados com a referência.
+- **W8.2.** Nenhum código do spike no produto. Tools e schemas são montados com o `packages/contracts` e os catálogos do web. Ficam de fora `execute`, fixtures, instrumentação e o `tools.ts` da V4.
+- **W8.3.** Produto = V4 + desvios autorizados, com allowlist no teste. O `PROMPT_VERSION` (`spike-adr009-prompt-v4`) identifica os textos da V4 e só muda quando eles mudarem. O contrato do agent tem versão própria. Os dois entram no registro de cada execução. Qualquer diferença fora da allowlist faz o teste falhar.
+- **W8.4.** A superfície nova (descrição, schema, resultado e comportamento observável) é definida antes de rodar os cenários que dependem dela. Um ajuste depois de ver os resultados vira versão nova registrada (alternativa E deste ADR).
+- **W8.5.** As quatro tools da V4 ficam registradas no Bloco 4. A `proposeTicketDraft` e a `requestHandoff` têm `execute` determinístico e sem efeito não autorizado.
+- **W8.6.** PENDENTE (Bloco 8). O baseline original (V4, com o protocolo do spike) e a avaliação do produto (versão derivada) são distintos. A avaliação do produto não é reprodução do baseline, e a V4 pura não atende aos cenários que dependem da `viewMyTicket`.
+- **Ambiente.** O Ollama local é o 0.40.17, diferente do 0.40.16 das evidências (seção "Evidências do spike"), e fica registrado como desvio de ambiente. Cada execução grava `ollamaVersion` e `modelDigest`. A atualização automática do Ollama fica desligada. Se um cenário medido no spike divergir, a versão é a primeira hipótese, não uma conclusão.
+- **Achado 2 fora do Bloco 4.** Tornar o schema compatível com provider estrito mudaria o `response_format` da linha de base. O achado 2 continua registrado e não é tratado no Bloco 4.
+- **Sem repetição automática do turno.** No Bloco 4, cada entrada produz uma única execução do turno. A chamada ao provider mantém `maxRetries: 0`, como na configuração das evidências da V4. Os dois controles são distintos: `maxRetries` não define o número de tentativas do turno.
+
 ## Alternativas consideradas
 
 ### A. `qwen3:4b-instruct` (Ollama local)
