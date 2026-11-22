@@ -1,0 +1,23 @@
+// Schema do web (ADR-011): banco próprio, separado do ticket-service.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ADR-012 e nota de 2026-11-22. Guarda o hash SHA-256 do token, nunca o token.
+// Sem defaults: datas e id são fornecidos pelo web.
+model Session {
+  id         String    @id
+  tokenHash  String    @unique
+  employeeId String
+  role       String
+  name       String
+  createdAt  DateTime
+  expiresAt  DateTime
+  revokedAt  DateTime?
+}

@@ -1,0 +1,25 @@
+# Next.js (build e tipos gerados)
+/.next/
+/out/
+/build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Cliente Prisma gerado (recriado no postinstall; ADR-011, lições do ADR-008)
+/src/generated/
+
+# Bancos SQLite locais e descartáveis
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Variáveis de ambiente locais (o .env.example é versionado)
+.env*
+!.env.example
+
+# Diversos
+/coverage/
+*.pem
+npm-debug.log*
+.DS_Store
