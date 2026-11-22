@@ -83,7 +83,7 @@ Usar a memória ou o storage do Mastra como fonte das mensagens e do estado. Rej
 **Atualização (2026-11-22, validação na F2 do plano do web).** Nota posterior à decisão; os riscos acima ficam registrados como estavam. Resultado da validação:
 
 - O `better-sqlite3` 12.11.1 e o cliente Prisma 7.10.1 (`prisma-client`, gerado em `apps/web/src/generated/prisma`) funcionam no `next build` e no `next start` do Next.js 16.4.6 (Turbopack), **sem `serverExternalPackages`** e sem nenhuma outra configuração: o `next.config.ts` do web está vazio. Evidência: o smoke do web (`apps/web/scripts/smoke.ts`) faz o build, sobe o servidor com um banco temporário migrado e recebe 200 do `GET /api/health` com uma leitura real pelo Prisma; um teste de integração (Vitest) cria e lê `Session` pela Unit of Work.
-- Validado no Windows (máquina do autor). Na CI (`ubuntu-latest`), o mesmo smoke roda no PR da F2.
+- Validado no Windows (máquina do autor) e na CI (`ubuntu-latest`), no PR da F2.
 
 ## Consequências
 
