@@ -1,0 +1,566 @@
+{
+  "cases": [
+    {
+      "description": "histórico vazio mais input",
+      "function": "toMessages",
+      "id": "H1",
+      "input": {
+        "history": [],
+        "input": "Olá."
+      },
+      "output": [
+        {
+          "content": "Olá.",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "description": "par user/assistant sem tool",
+      "function": "toMessages",
+      "id": "H2",
+      "input": {
+        "history": [
+          {
+            "content": "Pergunta anterior.",
+            "role": "user"
+          },
+          {
+            "content": "Resposta anterior.",
+            "role": "assistant"
+          }
+        ],
+        "input": "Nova pergunta."
+      },
+      "output": [
+        {
+          "content": "Pergunta anterior.",
+          "role": "user"
+        },
+        {
+          "content": "Resposta anterior.",
+          "role": "assistant"
+        },
+        {
+          "content": "Nova pergunta.",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "description": "assistant com content e uma tool call com resultado",
+      "function": "toMessages",
+      "id": "H3",
+      "input": {
+        "history": [
+          {
+            "content": "Pergunta anterior.",
+            "role": "user"
+          },
+          {
+            "content": "Texto final do turno anterior.",
+            "role": "assistant",
+            "toolCalls": [
+              {
+                "args": {
+                  "query": "consulta"
+                },
+                "result": {
+                  "articles": []
+                },
+                "tool": "searchArticles"
+              }
+            ]
+          }
+        ],
+        "input": "Nova pergunta."
+      },
+      "output": [
+        {
+          "content": "Pergunta anterior.",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "hist-1-0",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "hist-1-0",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        },
+        {
+          "content": "Texto final do turno anterior.",
+          "role": "assistant"
+        },
+        {
+          "content": "Nova pergunta.",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "description": "assistant com content e duas tool calls no mesmo turno",
+      "function": "toMessages",
+      "id": "H4",
+      "input": {
+        "history": [
+          {
+            "content": "Pergunta anterior.",
+            "role": "user"
+          },
+          {
+            "content": "Texto final do turno anterior.",
+            "role": "assistant",
+            "toolCalls": [
+              {
+                "args": {
+                  "query": "consulta"
+                },
+                "result": {
+                  "articles": []
+                },
+                "tool": "searchArticles"
+              },
+              {
+                "args": {},
+                "result": {
+                  "tickets": []
+                },
+                "tool": "listMyTickets"
+              }
+            ]
+          }
+        ],
+        "input": "Nova pergunta."
+      },
+      "output": [
+        {
+          "content": "Pergunta anterior.",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "hist-1-0",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            },
+            {
+              "input": {},
+              "toolCallId": "hist-1-1",
+              "toolName": "listMyTickets",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "hist-1-0",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            },
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "tickets": []
+                }
+              },
+              "toolCallId": "hist-1-1",
+              "toolName": "listMyTickets",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        },
+        {
+          "content": "Texto final do turno anterior.",
+          "role": "assistant"
+        },
+        {
+          "content": "Nova pergunta.",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "description": "fase 1 sem tool",
+      "function": "filterTranscript",
+      "id": "F1",
+      "input": [
+        {
+          "content": [
+            {
+              "text": "Texto final.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "output": []
+    },
+    {
+      "description": "uma tool e texto final",
+      "function": "filterTranscript",
+      "id": "F2",
+      "input": [
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        },
+        {
+          "content": [
+            {
+              "text": "Texto final.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "output": [
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        }
+      ]
+    },
+    {
+      "description": "partes de raciocínio",
+      "function": "filterTranscript",
+      "id": "F3",
+      "input": [
+        {
+          "content": [
+            {
+              "text": "raciocínio",
+              "type": "reasoning"
+            },
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        },
+        {
+          "content": [
+            {
+              "text": "raciocínio",
+              "type": "reasoning"
+            },
+            {
+              "text": "Texto final.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "output": [
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        }
+      ]
+    },
+    {
+      "description": "assistant só com raciocínio",
+      "function": "filterTranscript",
+      "id": "F4",
+      "input": [
+        {
+          "content": [
+            {
+              "text": "raciocínio",
+              "type": "reasoning"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        },
+        {
+          "content": [
+            {
+              "text": "Texto final.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "output": [
+        {
+          "content": [
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        }
+      ]
+    },
+    {
+      "description": "texto intermediário junto da tool call",
+      "function": "filterTranscript",
+      "id": "F5",
+      "input": [
+        {
+          "content": [
+            {
+              "text": "Texto intermediário.",
+              "type": "text"
+            },
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        },
+        {
+          "content": [
+            {
+              "text": "Texto final.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "output": [
+        {
+          "content": [
+            {
+              "text": "Texto intermediário.",
+              "type": "text"
+            },
+            {
+              "input": {
+                "query": "consulta"
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-call"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "output": {
+                "type": "json",
+                "value": {
+                  "articles": []
+                }
+              },
+              "toolCallId": "A1",
+              "toolName": "searchArticles",
+              "type": "tool-result"
+            }
+          ],
+          "role": "tool"
+        }
+      ]
+    }
+  ],
+  "description": "Entradas e saídas de referência do toMessages (src/run.ts) e do filterTranscript (v3/src/transcript.ts) da tag (ADR-009, nota de 2026-11-22, W8.1). Ids gerados pela tag ficam como ela gerou."
+}
