@@ -155,6 +155,8 @@ Quase todas as falhas restantes passaram de inventar para omitir ou perguntar de
 2. **O schema do DM §3.12 precisa ser compatível com provider estrito** (propriedades obrigatórias que aceitam `null`), para não excluir providers como o Groq numa reavaliação.
 3. **O estouro de tempo precisa ser detectado** (`aborted` sem exceção). O instrumento da V3 e da V4 detecta; o produto precisa detectar.
 
+**Atualização (2026-11-22).** Nota posterior à decisão; o texto dos achados não muda. O achado 1 foi resolvido pela nota de 2026-11-22 na AF D25 (`03-agent-flow.md` v1.8; README §12 #25): o modelo chama o `searchArticles` como tool, e o código verifica e, quando valem as condições G1 a G3 da AF D25, executa a busca uma vez, com `origin: CODE` (DM v2.18 §3.12). Com `CLARIFY`, o mecanismo não garante a busca (limitação aceita, AF D25). Os achados 2 e 3 não mudam.
+
 ## E se o produto crescer para 20 mil funcionários?
 
 O custo zero (E1) é uma restrição do estudo, não do produto. A configuração testada (um modelo local na máquina do desenvolvedor) não foi dimensionada nem validada para esse cenário: o spike não mediu capacidade de produção. Dados reais também exigem um provider com termos de tratamento aceitos (E3).

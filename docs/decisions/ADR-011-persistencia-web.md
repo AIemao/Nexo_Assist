@@ -71,6 +71,8 @@ Usar a memória ou o storage do Mastra como fonte das mensagens e do estado. Rej
 
 - **Mecanismo de sessão do login** (cookie, armazenamento da sessão, expiração). É um gate do plano de implementação do web. Este ADR não o decide.
 
+**Atualização (2026-11-22).** Nota posterior à decisão; o texto acima não muda. O mecanismo de sessão, deixado fora do escopo como gate do plano do web, foi decidido no ADR-012 (aceito em 2026-11-21).
+
 ## Riscos a validar na implementação
 
 - [Inferência] O `better-sqlite3` é módulo nativo. Nenhum documento confirma que ele carrega sem ajuste no servidor do Next.js 16 (empacotamento do servidor e runtime das rotas). A validação é instalar, compilar e rodar as rotas que acessam o banco.
