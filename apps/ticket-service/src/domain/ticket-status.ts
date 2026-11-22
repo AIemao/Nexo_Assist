@@ -1,7 +1,10 @@
+import type { TicketStatus } from "@nexo/contracts";
+
 import type { Ticket } from "./ticket.js";
 
-export const TICKET_STATUSES = ["WAITING_ANALYST", "APPROVED", "RESOLVED"] as const;
-export type TicketStatus = (typeof TICKET_STATUSES)[number];
+// DM §3.2 e §8.5. Fonte única no packages/contracts (README §5, Princípios).
+export { TICKET_STATUSES } from "@nexo/contracts";
+export type { TicketStatus } from "@nexo/contracts";
 
 // DM §8.5: [PRD] reabertura "até 7 dias"; [Premissa] 168 horas corridas, limite incluído.
 const REOPEN_WINDOW_MS = 168 * 60 * 60 * 1000;

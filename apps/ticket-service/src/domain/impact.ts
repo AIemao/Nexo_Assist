@@ -1,11 +1,14 @@
-export const AFFECTED_SCOPES = ["SELF", "TEAM", "COMPANY", "UNKNOWN"] as const;
-export type AffectedScope = (typeof AFFECTED_SCOPES)[number];
+import type { AffectedScope, CommitmentRisk, WorkImpact } from "@nexo/contracts";
 
-export const WORK_IMPACTS = ["BLOCKED", "DEGRADED_WITH_WORKAROUND", "NONE"] as const;
-export type WorkImpact = (typeof WORK_IMPACTS)[number];
+// DM §3.4. Fonte única no packages/contracts (README §5, Princípios).
+export { AFFECTED_SCOPES } from "@nexo/contracts";
+export type { AffectedScope } from "@nexo/contracts";
 
-export const COMMITMENT_RISKS = ["YES", "NO", "UNKNOWN", "NOT_ASKED"] as const;
-export type CommitmentRisk = (typeof COMMITMENT_RISKS)[number];
+export { WORK_IMPACTS } from "@nexo/contracts";
+export type { WorkImpact } from "@nexo/contracts";
+
+export { COMMITMENT_RISKS } from "@nexo/contracts";
+export type { CommitmentRisk } from "@nexo/contracts";
 
 export interface ImpactAssessment {
   affectedScope: AffectedScope;

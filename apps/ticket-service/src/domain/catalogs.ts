@@ -1,6 +1,5 @@
-export type MissingField =
-  | "TITLE" | "DESCRIPTION" | "TYPE" | "CATEGORY" | "AFFECTED_SCOPE" | "WORK_IMPACT"
-  | "COMMITMENT_RISK" | "TARGET_TICKET" | "ADDITIONAL_INFORMATION" | "REOPEN_REASON";
+// DM §3.15. Fonte única no packages/contracts (README §5, Princípios): derivado de MISSING_FIELDS.
+export type { MissingField } from "@nexo/contracts";
 
 export type PriorityReasonCode =
   | "TEAM_OR_COMPANY_BLOCKED" | "SELF_BLOCKED" | "AFFECTED_SCOPE_UNKNOWN"
