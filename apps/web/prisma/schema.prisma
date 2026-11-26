@@ -1,4 +1,5 @@
 // Schema do web (ADR-011): banco próprio, separado do ticket-service.
+// Enums na ordem dos arrays de src/domain/conversation.ts (README §5, "Catálogos persistidos").
 
 generator client {
   provider = "prisma-client"
@@ -20,4 +21,79 @@ model Session {
   createdAt  DateTime
   expiresAt  DateTime
   revokedAt  DateTime?
+}
+
+// DM §3.5.
+enum ConversationStatus {
+  AI_ACTIVE
+  WAITING_ANALYST
+  ANALYST_ACTIVE
+  CLOSED
+}
+
+enum InteractionFlow {
+  NONE
+  CREATE_TICKET
+  UPDATE_TICKET
+  REOPEN_TICKET
+  TICKET_LOOKUP
+}
+
+enum InteractionStage {
+  IDLE
+  COLLECTING_DETAILS
+  SELECTING_TICKET
+  READY_TO_PROPOSE
+}
+
+enum ResolutionSource {
+  AGENT
+  ANALYST
+}
+
+// DM §3.5 e invariante 17. O InteractionContext fica em colunas (flow, stage, targetTicketId) e
+// collectedData em JSON validado por Zod no repositório (plano T4). openOwnerEmployeeId é o
+// ownerEmployeeId enquanto a conversa não está CLOSED e null depois: o índice único garante no
+// máximo uma conversa não encerrada por funcionário, sem DDL manual (plano T5).
+model Conversation {
+  id                  String             @id
+  ownerEmployeeId     String
+  status              ConversationStatus
+  assignedAnalystId   String?
+  flow                InteractionFlow
+  stage               InteractionStage
+  targetTicketId      String?
+  collectedData       Json?
+  resolutionSource    ResolutionSource?
+  createdAt           DateTime
+  updatedAt           DateTime
+  openOwnerEmployeeId String?            @unique
+  messages            Message[]
+
+  @@index([ownerEmployeeId])
+}
+
+// DM §3.8.
+enum MessageAuthorType {
+  EMPLOYEE
+  ANALYST
+  AGENT
+  SYSTEM
+}
+
+// DM §3.8. O autor em duas colunas; attachments em JSON validado por Zod, com a ordem preservada.
+// position dá a ordem das mensagens na conversa. decisionRecordId sem FK nesta fatia.
+model Message {
+  id               String            @id
+  conversationId   String
+  conversation     Conversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  position         Int
+  authorType       MessageAuthorType
+  authorEmployeeId String?
+  content          String
+  decisionRecordId String?
+  attachments      Json
+  createdAt        DateTime
+
+  @@unique([conversationId, position])
 }

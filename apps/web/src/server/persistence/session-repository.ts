@@ -17,6 +17,10 @@ export interface Session {
 export interface SessionRepository {
   create(session: Session): Promise<Session>;
   findByTokenHash(tokenHash: string): Promise<Session | undefined>;
+  // Logout: grava revokedAt numa sessão ainda não revogada; a linha fica. Devolve se revogou.
+  revoke(tokenHash: string, revokedAt: string): Promise<boolean>;
+  // Limpeza no login: apaga as sessões com expiresAt antes do instante dado. Devolve quantas.
+  deleteExpiredBefore(instant: string): Promise<number>;
   count(): Promise<number>;
 }
 
@@ -30,6 +34,19 @@ export function createSessionRepository(db: Pick<PrismaClient, "session">): Sess
     async findByTokenHash(tokenHash) {
       const row = await db.session.findUnique({ where: { tokenHash } });
       return row === null ? undefined : toDomain(row);
+    },
+
+    async revoke(tokenHash, revokedAt) {
+      const result = await db.session.updateMany({
+        where: { tokenHash, revokedAt: null },
+        data: { revokedAt: new Date(revokedAt) },
+      });
+      return result.count > 0;
+    },
+
+    async deleteExpiredBefore(instant) {
+      const result = await db.session.deleteMany({ where: { expiresAt: { lt: new Date(instant) } } });
+      return result.count;
     },
 
     count() {

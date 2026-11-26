@@ -50,6 +50,8 @@ Decisão do autor (2026-11-21).
 - **Limpeza:** no login, as sessões expiradas há mais de 1 dia são apagadas. Sessões válidas nunca são apagadas. Isso responde à [Inferência] das "Negativas e custos".
 - **`Secure`:** primeiro, testar o cookie `Secure` em `http://localhost`. A variável `SESSION_COOKIE_SECURE` só existe se o teste mostrar que é necessária, com padrão `true` e proibida como `false` em produção.
 
+**Atualização (2026-11-26, teste do Secure).** Teste manual do autor no Brave 1.100.59 (Chromium 158.0.8127.92, 64 bits), em `http://localhost:3000`, com o web em `next dev` e o ticket-service semeado: o cookie `nexo_session` foi aceito com `Secure`, `HttpOnly` e `SameSite=Lax`; o login de `ana@nexo.example` mostrou a página inicial com o nome; o logout voltou para `/login` e o token antigo deixou de valer; o login de `carla@nexo.example` recebeu "O acesso de analista ainda não está disponível.". Como o `Secure` funciona em `http://localhost`, a variável `SESSION_COOKIE_SECURE` não foi criada (nota de 2026-11-22).
+
 ## Alternativas consideradas
 
 ### A. Cookie assinado, sem estado no servidor
