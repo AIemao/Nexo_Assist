@@ -3,8 +3,12 @@ import { PrismaClient } from "../../generated/prisma/client";
 import { requireConfig } from "../config";
 import { createUnitOfWork, type UnitOfWork } from "./unit-of-work";
 
-export function createPrismaClient(databaseUrl: string): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: databaseUrl }) });
+// busy_timeout do SQLite (opção timeout do better-sqlite3): espera por um lock de outra conexão
+// antes de falhar com SQLITE_BUSY. 5000 ms é o padrão do better-sqlite3, escrito aqui de propósito.
+export const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
+
+export function createPrismaClient(databaseUrl: string, busyTimeoutMs = DEFAULT_BUSY_TIMEOUT_MS): PrismaClient {
+  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: databaseUrl, timeout: busyTimeoutMs }) });
 }
 
 // Um cliente (uma conexão pelo adapter) por processo do servidor.

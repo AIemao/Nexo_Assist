@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase, type TestDatabase } from "./support/test-database";
 
-describe("saúde do esqueleto (GET /api/health)", () => {
+// A primeira importação da rota carrega o @mastra/core (vi.resetModules a cada teste); com a suíte
+// inteira em paralelo, isso passa dos 5 s padrão do Vitest.
+const IMPORT_TIMEOUT_MS = 30_000;
+
+describe("saúde do esqueleto (GET /api/health)", { timeout: IMPORT_TIMEOUT_MS }, () => {
   let database: TestDatabase;
 
   beforeEach(() => {

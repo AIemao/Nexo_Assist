@@ -203,6 +203,16 @@ async function smoke(): Promise<void> {
     deepStrictEqual(body, { db: "ok", contracts: { ticketTypes: 2 }, agent: "loaded" });
     log(`GET /api/health → 200 ${JSON.stringify(body)}`);
 
+    // F4: a página de login responde, e a inicial sem sessão redireciona para ela.
+    const login = await fetch(`${baseUrl}/login`);
+    if (login.status !== 200) throw new Error(`GET /login: esperado 200, recebido ${login.status}`);
+    const home = await fetch(`${baseUrl}/`, { redirect: "manual" });
+    const location = home.headers.get("location") ?? "";
+    if (home.status < 300 || home.status >= 400 || new URL(location, baseUrl).pathname !== "/login") {
+      throw new Error(`GET / sem sessão: esperado redirecionamento para /login, recebido ${home.status} ${location}`);
+    }
+    log(`GET /login → 200; GET / sem sessão → ${home.status} para /login`);
+
     checkClientBundle();
     await stopServer(server);
     log("OK");
