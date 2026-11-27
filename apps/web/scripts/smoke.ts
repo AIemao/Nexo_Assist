@@ -174,7 +174,16 @@ async function smoke(): Promise<void> {
     run("next build", [nextCli, "build"], baseEnv(), BUILD_TIMEOUT_MS);
 
     log("sem configuração: o servidor não pode subir");
-    const unconfigured = startServer(await freePort(), baseEnv());
+    // Variáveis definidas e vazias: o Next só usa um valor de apps/web/.env* quando a variável está
+    // indefinida no processo, então um .env local do desenvolvedor não preenche a configuração aqui.
+    // O readConfig trata valor vazio como ausente.
+    const unconfigured = startServer(await freePort(), {
+      ...baseEnv(),
+      WEB_DATABASE_URL: "",
+      TICKET_SERVICE_URL: "",
+      OLLAMA_BASE_URL: "",
+      DATABASE_URL: "",
+    });
     const refused = await withTimeout(unconfigured.exited, STEP_TIMEOUT_MS, "servidor sem configuração");
     if (refused.code !== 1 || !unconfigured.output().includes("WEB_DATABASE_URL é obrigatória")) {
       throw new Error(`sem configuração, esperado código 1 e a mensagem de configuração:\n${unconfigured.output()}`);

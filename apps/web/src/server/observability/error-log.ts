@@ -2,7 +2,7 @@
 // ticket-service, README §12 #22). Uma linha JSON no stderr só com campos permitidos e literais
 // fixos de quem chama. Nunca a mensagem do erro, o corpo da requisição nem o e-mail.
 
-export type ErrorLogContext = "login" | "logout" | "session";
+export type ErrorLogContext = "login" | "logout" | "session" | "knowledge";
 
 export interface ErrorLogRecord {
   event: "unexpected_error";
