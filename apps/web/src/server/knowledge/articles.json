@@ -1,0 +1,28 @@
+[
+  {
+    "id": "ART-HORARIO",
+    "title": "Horário do service desk",
+    "content": "O service desk atende de segunda a sexta-feira, das 8h às 18h. Incidentes críticos têm plantão 24 horas.",
+    "keywords": [
+      "horario",
+      "atendimento",
+      "expediente",
+      "funcionamento",
+      "servicedesk"
+    ]
+  },
+  {
+    "id": "ART-VPN-809",
+    "title": "VPN: erro 809",
+    "content": "Erro 809 na VPN do Windows 10: reinicie o serviço de VPN, confira se a rede permite a conexão e tente de novo. Se persistir, abra um chamado.",
+    "keywords": [
+      "vpn",
+      "809"
+    ],
+    "applicability": {
+      "operatingSystems": [
+        "Windows 10"
+      ]
+    }
+  }
+]
