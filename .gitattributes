@@ -4,3 +4,6 @@
 # de fim de linha, iguais no Windows e no Linux.
 apps/web/src/server/agent/baseline/** -text
 apps/web/test/baseline/** -text
+
+# Extensões do contrato do agent fora da linha de base (W8.3; PW-8): bytes fixados por SHA-256.
+apps/web/src/server/agent/extensions/** -text

@@ -62,3 +62,76 @@ export async function startFakeTicketService(): Promise<FakeTicketService> {
 export const ANA = { id: "EMP-A", name: "Ana Souza", email: "ana@nexo.example", department: "Operações", role: "EMPLOYEE" };
 export const CARLA = { id: "ANALYST-1", name: "Carla Mendes", email: "carla@nexo.example", department: "Service Desk", role: "ANALYST" };
 export const NOT_FOUND = { type: "about:blank", title: "Not Found", status: 404, code: "EMPLOYEE_NOT_FOUND" };
+
+// Leituras de chamados (contrato §8 e §9). Cenários v1.15 §2.1, S3: os testes nunca fixam ids; usam
+// este mapa rótulo → id, como o mapa impresso pelo seed. S9: TKT-X é INC-999999.
+const seedId = (n: number) => `INC-${n}`;
+export const SEED_TICKET_IDS = Object.freeze({ "TKT-A1": seedId(1), "TKT-A2": seedId(2), "TKT-B1": seedId(3) });
+export const TKT_X = "INC-999999";
+export const TICKET_NOT_FOUND = { type: "about:blank", title: "Not Found", status: 404, code: "TICKET_NOT_FOUND" };
+
+// Item da listagem (§8.2): TKT-A1 aberto; TKT-A2 resolvido, com resolvedAt e isOverdue null.
+export const SUMMARY_A1 = {
+  id: SEED_TICKET_IDS["TKT-A1"],
+  type: "INC",
+  title: "Notebook lento",
+  category: "HARDWARE",
+  priority: "MEDIUM",
+  status: "WAITING_ANALYST",
+  createdAt: "2026-11-20T14:40:00.000Z",
+  updatedAt: "2026-11-20T14:40:00.000Z",
+  currentDueAt: "2026-11-25T14:40:00.000Z",
+  isOverdue: false,
+};
+export const SUMMARY_A2 = {
+  id: SEED_TICKET_IDS["TKT-A2"],
+  type: "INC",
+  title: "Senha do SAP não funciona",
+  category: "ACCESS",
+  priority: "MEDIUM",
+  status: "RESOLVED",
+  createdAt: "2026-11-14T15:00:00.000Z",
+  updatedAt: "2026-11-16T15:00:00.000Z",
+  resolvedAt: "2026-11-16T15:00:00.000Z",
+  currentDueAt: "2026-11-18T21:00:00.000Z",
+  isOverdue: null,
+};
+
+// Detalhe (§9.1): o objeto ticket inteiro do DM §3.2, mais currentDueAt e isOverdue.
+export const DETAIL_A1 = {
+  id: SEED_TICKET_IDS["TKT-A1"],
+  version: 1,
+  type: "INC",
+  title: "Notebook lento",
+  description: "O notebook está lento para abrir programas desde a última atualização.",
+  category: "HARDWARE",
+  priority: "MEDIUM",
+  status: "WAITING_ANALYST",
+  requesterId: "EMP-A",
+  impactAssessment: { affectedScope: "SELF", workImpact: "DEGRADED_WITH_WORKAROUND", commitmentRisk: "NO" },
+  createdAt: "2026-11-20T14:40:00.000Z",
+  updatedAt: "2026-11-20T14:40:00.000Z",
+  firstResponseDueAt: "2026-11-25T14:40:00.000Z",
+  currentDueAt: "2026-11-25T14:40:00.000Z",
+  isOverdue: false,
+};
+
+// TKT-A2 resolvido, coerente com o SUMMARY_A2: resolvedAt presente e isOverdue null (contrato §12).
+export const DETAIL_A2 = {
+  id: SEED_TICKET_IDS["TKT-A2"],
+  version: 2,
+  type: "INC",
+  title: "Senha do SAP não funciona",
+  description: "A senha do SAP é recusada no login.",
+  category: "ACCESS",
+  priority: "MEDIUM",
+  status: "RESOLVED",
+  requesterId: "EMP-A",
+  impactAssessment: { affectedScope: "SELF", workImpact: "DEGRADED_WITH_WORKAROUND", commitmentRisk: "NO" },
+  createdAt: "2026-11-14T15:00:00.000Z",
+  updatedAt: "2026-11-16T15:00:00.000Z",
+  resolvedAt: "2026-11-16T15:00:00.000Z",
+  firstResponseDueAt: "2026-11-18T21:00:00.000Z",
+  currentDueAt: "2026-11-18T21:00:00.000Z",
+  isOverdue: null,
+};

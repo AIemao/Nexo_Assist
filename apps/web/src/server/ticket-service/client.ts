@@ -1,3 +1,4 @@
+import { PRIORITIES, TICKET_CATEGORIES, TICKET_STATUSES, TICKET_TYPES } from "@nexo/contracts";
 import { z } from "zod";
 
 // Cliente HTTP do ticket-service, só do servidor (ADR-013). O ator é montado aqui, nunca vem do
@@ -37,8 +38,76 @@ export type LookupResult =
   // 5xx, timeout ou erro de conexão depois das tentativas.
   | { kind: "unavailable" };
 
+// Ator das leituras do funcionário (contrato §7.1 e §7.2): só EMPLOYEE, com o id da sessão. Montado
+// pelo código; o cliente não recebe cabeçalhos de fora.
+export interface EmployeeActor {
+  employeeId: string;
+}
+
+// Contrato §8.2: item da listagem, em resumo. currentDueAt e isOverdue vêm prontos do ticket-service
+// (DM §7.2: o web não recalcula). Campos extras da resposta são ignorados.
+const ticketSummaryShape = z.object({
+  id: z.string().min(1),
+  type: z.enum(TICKET_TYPES),
+  title: z.string(),
+  category: z.enum(TICKET_CATEGORIES),
+  priority: z.enum(PRIORITIES),
+  status: z.enum(TICKET_STATUSES),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  resolvedAt: z.string().optional(),
+  currentDueAt: z.string(),
+  isOverdue: z.boolean().nullable(),
+});
+
+// Regra do status (contrato §8.2 e §12; DM §3.2 e §8.5.2): resolvedAt existe se, e só se, o status é
+// RESOLVED; isOverdue é null exatamente em RESOLVED e true ou false nos demais. Resposta que viola a
+// regra está fora do contrato (defeito do BFF).
+function statusRule(
+  ticket: { status: string; resolvedAt?: string | undefined; isOverdue: boolean | null },
+  ctx: z.RefinementCtx,
+): void {
+  const resolved = ticket.status === "RESOLVED";
+  if (resolved !== (ticket.resolvedAt !== undefined)) {
+    ctx.addIssue({ code: "custom", path: ["resolvedAt"], message: "resolvedAt existe se, e só se, o status é RESOLVED" });
+  }
+  if (resolved !== (ticket.isOverdue === null)) {
+    ctx.addIssue({ code: "custom", path: ["isOverdue"], message: "isOverdue é null exatamente em RESOLVED" });
+  }
+}
+
+const ticketSummarySchema = ticketSummaryShape.superRefine(statusRule);
+
+const ticketListSchema = z.object({ tickets: z.array(ticketSummarySchema) });
+
+// Contrato §9.1: o objeto ticket do DM §3.2, sem envelope, mais currentDueAt e isOverdue. Só os
+// campos que o web usa são validados; os demais da resposta são ignorados. Mesma regra do status.
+const ticketDetailSchema = ticketSummaryShape.extend({ description: z.string() }).superRefine(statusRule);
+
+export type TicketSummary = z.infer<typeof ticketSummarySchema>;
+export type TicketDetail = z.infer<typeof ticketDetailSchema>;
+
+export type ListTicketsResult =
+  | { kind: "ok"; tickets: TicketSummary[] }
+  | { kind: "rejected"; status: number }
+  | { kind: "unavailable" };
+
+export type ViewTicketResult =
+  | { kind: "found"; ticket: TicketDetail }
+  // Contrato §9.2: 404 TICKET_NOT_FOUND, idêntico para inexistente, alheio e malformado.
+  | { kind: "not_found" }
+  | { kind: "rejected"; status: number }
+  | { kind: "unavailable" };
+
 export interface TicketServiceClient {
   lookupEmployee(email: string): Promise<LookupResult>;
+  listMyTickets(actor: EmployeeActor): Promise<ListTicketsResult>;
+  viewTicket(actor: EmployeeActor, ticketId: string): Promise<ViewTicketResult>;
+}
+
+// Contrato §2.2 e §7.1: os dois cabeçalhos do ator EMPLOYEE, construídos do zero a cada chamada.
+function employeeHeaders(actor: EmployeeActor): Record<string, string> {
+  return { "X-Actor-Type": "EMPLOYEE", "X-Actor-Employee-Id": actor.employeeId };
 }
 
 type Attempt = { kind: "response"; status: number; body: unknown } | { kind: "transport_failure" };
@@ -93,6 +162,33 @@ export function createTicketServiceClient(options: TicketServiceClientOptions): 
         return parsed.success ? { kind: "found", employee: parsed.data } : { kind: "rejected", status: 200 };
       }
       if (result.status === 404 && isProblem(result.body, "EMPLOYEE_NOT_FOUND")) return { kind: "not_found" };
+      return { kind: "rejected", status: result.status };
+    },
+
+    async listMyTickets(actor) {
+      // Contrato §8: GET /tickets, sem parâmetros de consulta.
+      const result = await withRetry("/tickets", { method: "GET", headers: employeeHeaders(actor) });
+      if (result.kind === "transport_failure" || result.status >= 500) return { kind: "unavailable" };
+      if (result.status === 200) {
+        const parsed = ticketListSchema.safeParse(result.body);
+        return parsed.success ? { kind: "ok", tickets: parsed.data.tickets } : { kind: "rejected", status: 200 };
+      }
+      return { kind: "rejected", status: result.status };
+    },
+
+    async viewTicket(actor, ticketId) {
+      // Contrato §9: GET /tickets/{ticketId}, com o id codificado no caminho.
+      const result = await withRetry(`/tickets/${encodeURIComponent(ticketId)}`, {
+        method: "GET",
+        headers: employeeHeaders(actor),
+      });
+      if (result.kind === "transport_failure" || result.status >= 500) return { kind: "unavailable" };
+      if (result.status === 200) {
+        const parsed = ticketDetailSchema.safeParse(result.body);
+        return parsed.success ? { kind: "found", ticket: parsed.data } : { kind: "rejected", status: 200 };
+      }
+      // Só o código do contrato vale como negação; um 404 com outro corpo é defeito do BFF.
+      if (result.status === 404 && isProblem(result.body, "TICKET_NOT_FOUND")) return { kind: "not_found" };
       return { kind: "rejected", status: result.status };
     },
   };
