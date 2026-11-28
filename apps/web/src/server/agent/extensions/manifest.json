@@ -1,0 +1,9 @@
+{
+  "agentContractVersion": "nexo-agent-contract-v1",
+  "description": "Extensões do contrato do agent fora da linha de base da V4 (W8.3; PW-8). Sem hash de si mesmo.",
+  "files": {
+    "src/server/agent/extensions/view-my-ticket.ts": {
+      "sha256": "43ad892b2fb52c7fc2d5e54619054ee80261e151c2eceeb2f9df5788916485ed"
+    }
+  }
+}
